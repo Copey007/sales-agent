@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent — AI Sales Agent with Workflow Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #111;
+      --accent: #d44a9a;
+      --accent-light: #f5d0e8;
+      --bg: #f7f7f7;
+      --white: #fff;
+      --text: #444;
+      --muted: #888;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--primary);
+      line-height: 1.6;
+      background: var(--white);
+    }
+    
+    .logo { font-family: 'Caveat', cursive; font-size: 2rem; font-weight: 700; }
+    .logo span { color: var(--accent); }
+    
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem 5%;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    nav ul { display: flex; list-style: none; gap: 2rem; }
+    nav a { text-decoration: none; color: var(--text); font-weight: 500; font-size: 0.95rem; }
+    nav a:hover { color: var(--accent); }
+    
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-size: 0.95rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #c03d87; transform: translateY(-1px); }
+    .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+    .btn-outline:hover { background: var(--primary); color: white; }
+    
+    .hero {
+      text-align: center;
+      padding: 5rem 5% 3rem;
+      background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+    }
+    
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      line-height: 1.1;
+    }
+    
+    .hero h1 .accent {
+      color: var(--accent);
+      font-family: 'Caveat', cursive;
+      font-size: 4rem;
+    }
+    
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+    }
+    
+    .features { padding: 4rem 5%; max-width: 1200px; margin: 0 auto; }
+    .features h2 { text-align: center; font-size: 2.5rem; margin-bottom: 3rem; }
+    
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; }
+    
+    .feature-card {
+      padding: 2rem;
+      border-radius: 16px;
+      background: var(--bg);
+      border: 1px solid #eee;
+      transition: transform 0.2s;
+    }
+    
+    .feature-card:hover { transform: translateY(-4px); }
+    
+    .feature-icon { font-size: 2rem; margin-bottom: 1rem; }
+    .feature-card h3 { font-size: 1.2rem; margin-bottom: 0.75rem; }
+    .feature-card p { color: var(--muted); font-size: 0.95rem; }
+    
+    .how-it-works {
+      padding: 4rem 5%;
+      background: var(--primary);
+      color: white;
+    }
+    
+    .how-it-works h2 { text-align: center; font-size: 2.5rem; margin-bottom: 3rem; }
+    
+    .steps {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    .step { text-align: center; max-width: 220px; }
+    .step-num {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 auto 1rem;
+    }
+    
+    .step h3 { margin-bottom: 0.5rem; }
+    .step p { color: #aaa; font-size: 0.9rem; }
+    
+    .pricing { padding: 5rem 5%; max-width: 900px; margin: 0 auto; text-align: center; }
+    .pricing h2 { font-size: 2.5rem; margin-bottom: 1rem; }
+    .pricing-subtitle { color: var(--muted); margin-bottom: 3rem; }
+    
+    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; margin-top: 2rem; }
+    
+    .pricing-card {
+      border: 2px solid #eee;
+      border-radius: 20px;
+      padding: 2rem;
+    }
+    
+    .pricing-card.featured { border-color: var(--accent); position: relative; }
+    
+    .badge {
+      background: var(--accent);
+      color: white;
+      padding: 0.25rem 1rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+    
+    .pricing-card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    .price { font-size: 2.5rem; font-weight: 700; margin: 1rem 0; }
+    .price span { font-size: 1rem; color: var(--muted); font-weight: 400; }
+    
+    .features-list { list-style: none; text-align: left; margin: 1.5rem 0; }
+    .features-list li { padding: 0.5rem 0; font-size: 0.9rem; }
+    .features-list li::before { content: "✓"; color: var(--accent); margin-right: 0.5rem; font-weight: 600; }
+    
+    .cta { text-align: center; padding: 5rem 5%; background: var(--accent-light); }
+    .cta h2 { font-size: 2.5rem; margin-bottom: 1rem; }
+    .cta p { margin-bottom: 2rem; }
+    
+    footer { padding: 2rem 5%; text-align: center; border-top: 1px solid #eee; }
+    footer p { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">A-<span>Gent</span></div>
+  <ul>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how">How it Works</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="/dashboard">Dashboard</a></li>
+  </ul>
+  <a href="#pricing" class="btn btn-primary">Get Started</a>
+</nav>
+
+<section class="hero">
+  <h1>Your AI Sales Agent<br><span class="accent">Tracks. Learns. Automates.</span></h1>
+  <p>Free workflow tracking shows where your time goes. Turn on automations one by one as you see value. Upgrade when you're ready.</p>
+  <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+    <a href="/dashboard" class="btn btn-primary">Try Free — Install Extension</a>
+    <a href="#how" class="btn btn-outline">See How it Works</a>
+  </div>
+</section>
+
+<section class="features" id="features">
+  <h2>What A-Gent Does</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">⏱️</div>
+      <h3>Workflow Tracking</h3>
+      <p>Automatic tracking of time in every application. Know where your hours go — email, CRM, chat, docs.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🖱️</div>
+      <h3>Click Intelligence</h3>
+      <p>Count clicks and track patterns. "You do this 22x per week" — that's an automation opportunity.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <h3>Turn On Automations</h3>
+      <p>$9/mo each. CRM sync, email sequences, contact enrichment. Enable only what you need.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <h3>Dashboard Insights</h3>
+      <p>See your week in charts. Category breakdowns, click patterns, savings estimates.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔄</div>
+      <h3>Agentic Workflows</h3>
+      <p>A-Gent does the work or refines your workflows based on what it learns.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🚀</div>
+      <h3>Full AI Agent</h3>
+      <p>Upgrade to $99/mo for proactive automation — the AI works while you sleep.</p>
+    </div>
+  </div>
+</section>
+
+<section class="how-it-works" id="how">
+  <h2>How It Works</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <h3>Install Free</h3>
+      <p>Chrome extension installs in one click</p>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <h3>Track Workflows</h3>
+      <p>Agent tracks in background automatically</p>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <h3>See Patterns</h3>
+      <p>Dashboard shows where time goes</p>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <h3>Turn On Automations</h3>
+      <p>Enable one, see value, enable more</p>
+    </div>
+  </div>
+</section>
+
+<section class="pricing" id="pricing">
+  <h2>Simple Pricing</h2>
+  <p class="pricing-subtitle">Start free. Upgrade when you see value.</p>
+  
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <span class="badge" style="background: #6b7280;">Free</span>
+      <h3>Free</h3>
+      <div class="price">$0</div>
+      <ul class="features-list">
+        <li>Workflow tracking</li>
+        <li>Click counting</li>
+        <li>Daily popup summary</li>
+        <li>Weekly dashboard</li>
+        <li>1 free automation</li>
+      </ul>
+      <a href="/dashboard" class="btn btn-outline">Install Free</a>
+    </div>
+    
+    <div class="pricing-card featured">
+      <span class="badge">Pro</span>
+      <h3>Pro Bundle</h3>
+      <div class="price">$29<span>/mo</span></div>
+      <ul class="features-list">
+        <li>Everything in Free</li>
+        <li>All 6 automations</li>
+        <li>CRM Auto-Sync</li>
+        <li>Email Sequences</li>
+        <li>Contact Enrichment</li>
+        <li>Account Research</li>
+        <li>Signal Detection</li>
+      </ul>
+      <a href="#" class="btn btn-primary">Start Trial</a>
+    </div>
+    
+    <div class="pricing-card">
+      <span class="badge" style="background: #10b981;">Full</span>
+      <h3>Full AI Agent</h3>
+      <div class="price">$99<span>/mo</span></div>
+      <ul class="features-list">
+        <li>Everything in Pro</li>
+        <li>Proactive AI agent</li>
+        <li>Signal-triggered outreach</li>
+        <li>Unlimited accounts</li>
+        <li>Priority support</li>
+      </ul>
+      <a href="#" class="btn btn-outline">Learn More</a>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <h2>Ready to work smarter?</h2>
+  <p>Install free and start tracking in 30 seconds.</p>
+  <a href="/dashboard" class="btn btn-primary" style="background: var(--accent); font-size: 1.1rem; padding: 1rem 2rem;">
+    Install A-Gent — Free
+  </a>
+</section>
+
+<footer>
+  <div class="logo" style="margin-bottom: 1rem;">A-<span>Gent</span></div>
+  <p>AI Sales Agent with Workflow Intelligence</p>
+  <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #aaa;">Part of the GTM Revolution ecosystem</p>
+</footer>
+
+</body>
+</html>
