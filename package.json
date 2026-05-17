@@ -1,0 +1,21 @@
+{
+  "name": "sales-agent",
+  "version": "1.0.0",
+  "description": "Autonomous AI sales agent — account research, prospecting, email outreach, signal detection",
+  "main": "cli.js",
+  "scripts": {
+    "start": "node cli.js",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [
+    "sales",
+    "ai-agent",
+    "prospecting",
+    "crm",
+    "hubspot",
+    "salesforce"
+  ],
+  "author": "Mark Cope",
+  "license": "MIT",
+  "dependencies": {}
+}
