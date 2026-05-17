@@ -36,11 +36,40 @@ Autonomous AI sales agent that researches accounts, prospects, drafts emails, an
 - **Working memory:** in-progress research, current prospect lists
 - **Long-term:** account histories, past interactions, learned preferences
 
-## Layer 3 — Capabilities
-- **account_research:** gather company info, key contacts, news
-- **prospecting:** find decision-makers, build lead lists
-- **email_drafting:** generate personalized outreach emails
-- **list_building:** compile and format prospect lists
+## Layer 3 — Capabilities (what the agent actually does)
+
+### 1. Account Research
+- Gather company info (size, industry, tech stack, funding)
+- Find key contacts (decision makers, VP level, buying committee)
+- News & signals (funding, hires, expansion, pain points)
+- Check memory before researching — don't duplicate work
+
+### 2. CRM Updates
+- Write research findings directly to HubSpot/Salesforce fields
+- Update contact records, account fields, activity logs
+- Tag accounts with signals for follow-up
+
+### 3. AI SDR (Outbound Prospecting)
+- Build prospect lists from account research
+- Personalize outreach emails at scale
+- Multi-channel: email, LinkedIn, etc.
+- Track cadence and follow-up sequences
+
+### 4. Signal Listening
+- Monitor accounts for intent signals:
+  - Funding events, hiring sprees, executive changes
+  - News, press releases, technology changes
+  - Buying intent signals
+- Trigger the AI SDR when signals fire
+- Route to appropriate action (prospect, draft email, alert rep)
+
+## Capability → Data Flow
+
+```
+Signal detected → Account Research → [decision] → AI SDR → CRM Update
+                                                    ↓
+                                           Email sent, logged, follow-up scheduled
+```
 
 ## Layer 4 — Integrations
 - **hubspot:** CRM read/write
