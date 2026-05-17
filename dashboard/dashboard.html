@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — GTM Revolution</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-primary: #111;
+      --brand-accent: #d44a9a;
+      --brand-accent-light: #f5d0e8;
+      --bg-light: #f7f7f7;
+      --text-dark: #1a1a1a;
+      --text-gray: #6b6b6b;
+      --white: #ffffff;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--text-dark);
+      background: var(--bg-light);
+      line-height: 1.6;
+    }
+    
+    .logo-text {
+      font-family: 'Caveat', cursive;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--brand-primary);
+    }
+    
+    .logo-text span { color: var(--brand-accent); }
+    
+    /* Layout */
+    .dashboard {
+      display: flex;
+      min-height: 100vh;
+    }
+    
+    .sidebar {
+      width: 260px;
+      background: var(--white);
+      border-right: 1px solid #eee;
+      padding: 1.5rem;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    
+    .sidebar-logo {
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .sidebar nav a {
+      display: block;
+      padding: 0.75rem 1rem;
+      color: var(--text-gray);
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    
+    .sidebar nav a:hover,
+    .sidebar nav a.active {
+      background: var(--brand-accent-light);
+      color: var(--brand-accent);
+    }
+    
+    .main-content {
+      flex: 1;
+      margin-left: 260px;
+      padding: 2rem 3rem;
+    }
+    
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    
+    .header h1 {
+      font-size: 1.75rem;
+    }
+    
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-size: 0.9rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .btn-primary {
+      background: var(--brand-accent);
+      color: white;
+    }
+    
+    .btn-primary:hover { background: #c03d87; }
+    
+    .btn-secondary {
+      background: var(--white);
+      color: var(--text-dark);
+      border: 1px solid #ddd;
+    }
+    
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+      background: var(--white);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid #eee;
+    }
+    
+    .stat-label {
+      color: var(--text-gray);
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-top: 0.5rem;
+    }
+    
+    .stat-change {
+      font-size: 0.85rem;
+      color: var(--success);
+      margin-top: 0.25rem;
+    }
+    
+    /* Accounts Table */
+    .card {
+      background: var(--white);
+      border-radius: 12px;
+      border: 1px solid #eee;
+      overflow: hidden;
+    }
+    
+    .card-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .card-header h2 {
+      font-size: 1.1rem;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    th {
+      text-align: left;
+      padding: 1rem 1.5rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      color: var(--text-gray);
+      font-weight: 600;
+      border-bottom: 1px solid #eee;
+      background: #fafafa;
+    }
+    
+    td {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+    
+    tr:last-child td { border-bottom: none; }
+    
+    tr:hover td { background: #fafafa; }
+    
+    .account-name {
+      font-weight: 600;
+    }
+    
+    .contact-count {
+      background: var(--bg-light);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+    }
+    
+    .signals-list {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    
+    .signal-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .signal-funding { background: #d1fae5; color: #065f46; }
+    .signal-executive { background: #fef3c7; color: #92400e; }
+    .signal-hiring { background: #dbeafe; color: #1e40af; }
+    .signal-news { background: #f3f4f6; color: #6b7280; }
+    
+    .action-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: 1px solid #ddd;
+      background: white;
+      transition: all 0.2s;
+    }
+    
+    .action-btn:hover {
+      border-color: var(--brand-accent);
+      color: var(--brand-accent);
+    }
+    
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+    
+    .empty-state h3 {
+      margin-bottom: 0.5rem;
+    }
+    
+    .empty-state p {
+      color: var(--text-gray);
+      margin-bottom: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="dashboard">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">GTM <span>REVOLUTION</span></div>
+    </div>
+    <nav>
+      <a href="#accounts" class="active">Accounts</a>
+      <a href="#contacts">Contacts</a>
+      <a href="#signals">Signals</a>
+      <a href="#emails">Emails</a>
+      <a href="#settings">Settings</a>
+    </nav>
+    <div style="margin-top: auto; padding-top: 2rem;">
+      <a href="/" style="display: block; padding: 0.75rem 1rem; color: var(--text-gray); text-decoration: none;">← Back to Home</a>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="header">
+      <h1>Accounts</h1>
+      <button class="btn btn-primary" onclick="addAccount()">+ Add Account</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Accounts</div>
+        <div class="stat-value" id="totalAccounts">1</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Contacts</div>
+        <div class="stat-value" id="totalContacts">10</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Emails Found</div>
+        <div class="stat-value" id="emailsFound">6</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Signals Detected</div>
+        <div class="stat-value" id="signalsCount">3</div>
+      </div>
+    </div>
+
+    <!-- Accounts Table -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Monitored Accounts</h2>
+        <button class="btn btn-secondary" onclick="scanAccounts()">🔄 Scan Signals</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Contacts</th>
+            <th>Signals</th>
+            <th>Last Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="accountsTable">
+          <tr>
+            <td class="account-name">General Electric</td>
+            <td><span class="contact-count">10 contacts</span></td>
+            <td>
+              <div class="signals-list">
+                <span class="signal-badge signal-funding">Funding $6.5B</span>
+                <span class="signal-badge signal-executive">Exec Change</span>
+                <span class="signal-badge signal-news">News</span>
+              </div>
+            </td>
+            <td>Just now</td>
+            <td>
+              <button class="action-btn" onclick="researchAccount('general_electric')">Research</button>
+              <button class="action-btn" onclick="prospectAccount('general_electric')">Prospect</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Sample Contacts Section -->
+    <div class="card" style="margin-top: 2rem;">
+      <div class="card-header">
+        <h2>Recent Contacts</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Title</th>
+            <th>Company</th>
+            <th>Email</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="contactsTable">
+          <tr>
+            <td class="account-name">Lawrence Culp</td>
+            <td>CEO</td>
+            <td>General Electric</td>
+            <td>larry.culp@ge.com</td>
+            <td><span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">97</span></td>
+          </tr>
+          <tr>
+            <td class="account-name">Scott Strazik</td>
+            <td>CEO</td>
+            <td>GE Vernova</td>
+            <td>scott.strazik@ge.com</td>
+            <td><span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">97</span></td>
+          </tr>
+          <tr>
+            <td class="account-name">Kristin Carvell</td>
+            <td>Executive</td>
+            <td>GE Appliances</td>
+            <td>kristin.carvell@ge.com</td>
+            <td><span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">98</span></td>
+          </tr>
+          <tr>
+            <td class="account-name">Vic Abate</td>
+            <td>Executive</td>
+            <td>GE</td>
+            <td>victor.abate@ge.com</td>
+            <td><span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem;">95</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Placeholder functions - connect to agent backend
+  function addAccount() {
+    const name = prompt('Enter company name:');
+    if (name) {
+      alert(`Adding ${name}... Connect to agent backend to trigger research.`);
+    }
+  }
+  
+  function scanAccounts() {
+    alert('Triggering signal scan... Connect to agent backend to run scan.');
+  }
+  
+  function researchAccount(accountId) {
+    alert(`Researching ${accountId}... Connect to agent backend to run research.`);
+  }
+  
+  function prospectAccount(accountId) {
+    alert(`Running outbound for ${accountId}... Connect to agent backend to trigger SDR.`);
+  }
+</script>
+
+</body>
+</html>

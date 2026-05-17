@@ -1,7 +1,7 @@
 {
   "accountId": "general_electric",
   "createdAt": "2026-05-17T17:44:14.428Z",
-  "updatedAt": "2026-05-17T17:45:11.058Z",
+  "updatedAt": "2026-05-17T22:04:44.787Z",
   "name": "general_electric",
   "domain": "www.ge.com",
   "contacts": [
@@ -107,7 +107,18 @@
     }
   ],
   "research": [],
-  "notes": [],
+  "notes": [
+    {
+      "id": "1779055484780",
+      "addedAt": "2026-05-17T22:04:44.780Z",
+      "text": "Signal detected: funding - $3 billion"
+    },
+    {
+      "id": "1779055484785",
+      "addedAt": "2026-05-17T22:04:44.786Z",
+      "text": "Signal detected: executive_change - {\"role\":\"CEO 2025 Pay Revealed\",\"name\":\"GENERAL ELECTRIC CO ($GE) CEO 2025 Pay Revealed\"}"
+    }
+  ],
   "emails": [],
   "tags": [],
   "size": null,
@@ -131,6 +142,22 @@
       "type": "news",
       "detail": "Home | GE News",
       "snippet": "GE Aerospace Launches as Independent, Investment-Grade Public Company Following Completion of GE Ver"
+    },
+    {
+      "type": "funding",
+      "severity": "high",
+      "detail": "$3 billion",
+      "date": "Aug 13, 2025",
+      "source": "news"
+    },
+    {
+      "type": "executive_change",
+      "severity": "high",
+      "detail": {
+        "role": "CEO 2025 Pay Revealed",
+        "name": "GENERAL ELECTRIC CO ($GE) CEO 2025 Pay Revealed"
+      },
+      "source": "news"
     }
   ],
   "sources": [],

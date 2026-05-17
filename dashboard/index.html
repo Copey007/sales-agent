@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTM Revolution — AI Sales Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-primary: #111;
+      --brand-accent: #d44a9a;
+      --brand-accent-light: #f5d0e8;
+      --bg-light: #f7f7f7;
+      --text-dark: #1a1a1a;
+      --text-gray: #6b6b6b;
+      --white: #ffffff;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--text-dark);
+      background: var(--white);
+      line-height: 1.6;
+    }
+    
+    .logo-text {
+      font-family: 'Caveat', cursive;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--brand-primary);
+    }
+    
+    .logo-text span {
+      color: var(--brand-accent);
+    }
+    
+    /* Navigation */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem 5%;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 2rem;
+    }
+    
+    nav a {
+      text-decoration: none;
+      color: var(--text-dark);
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+    
+    nav a:hover { color: var(--brand-accent); }
+    
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      font-size: 0.95rem;
+    }
+    
+    .btn-primary {
+      background: var(--brand-accent);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #c03d87;
+      transform: translateY(-1px);
+    }
+    
+    .btn-outline {
+      background: transparent;
+      border: 2px solid var(--brand-primary);
+      color: var(--brand-primary);
+    }
+    
+    .btn-outline:hover {
+      background: var(--brand-primary);
+      color: white;
+    }
+    
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 6rem 5% 4rem;
+      background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+    }
+    
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      line-height: 1.1;
+    }
+    
+    .hero h1 .accent {
+      color: var(--brand-accent);
+      font-family: 'Caveat', cursive;
+      font-size: 4rem;
+    }
+    
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-gray);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+    }
+    
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .hero-img {
+      max-width: 800px;
+      margin: 3rem auto 0;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    }
+    
+    /* Features */
+    .features {
+      padding: 5rem 5%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .features h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 3rem;
+    }
+    
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+    
+    .feature-card {
+      padding: 2rem;
+      border-radius: 16px;
+      background: var(--bg-light);
+      transition: transform 0.2s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-4px);
+    }
+    
+    .feature-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      background: var(--brand-accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    
+    .feature-card p {
+      color: var(--text-gray);
+      font-size: 0.95rem;
+    }
+    
+    /* How it works */
+    .how-it-works {
+      padding: 5rem 5%;
+      background: var(--brand-primary);
+      color: white;
+    }
+    
+    .how-it-works h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 3rem;
+    }
+    
+    .steps {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    .step {
+      text-align: center;
+      max-width: 250px;
+    }
+    
+    .step-num {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: var(--brand-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 auto 1rem;
+    }
+    
+    .step h3 {
+      margin-bottom: 0.5rem;
+    }
+    
+    .step p {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+    
+    /* Pricing */
+    .pricing {
+      padding: 5rem 5%;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    .pricing h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .pricing-subtitle {
+      text-align: center;
+      color: var(--text-gray);
+      margin-bottom: 3rem;
+    }
+    
+    .pricing-card {
+      border: 2px solid var(--brand-primary);
+      border-radius: 20px;
+      padding: 3rem;
+      text-align: center;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    
+    .pricing-card.popular {
+      border-color: var(--brand-accent);
+      position: relative;
+    }
+    
+    .badge {
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--brand-accent);
+      color: white;
+      padding: 0.5rem 1.5rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    
+    .price {
+      font-size: 3rem;
+      font-weight: 700;
+      margin: 1.5rem 0;
+    }
+    
+    .price span {
+      font-size: 1rem;
+      color: var(--text-gray);
+      font-weight: 400;
+    }
+    
+    .features-list {
+      list-style: none;
+      text-align: left;
+      margin: 2rem 0;
+    }
+    
+    .features-list li {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .features-list li::before {
+      content: "✓";
+      color: var(--brand-accent);
+      margin-right: 0.75rem;
+      font-weight: 600;
+    }
+    
+    /* CTA */
+    .cta {
+      text-align: center;
+      padding: 5rem 5%;
+      background: var(--brand-accent-light);
+    }
+    
+    .cta h2 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .cta p {
+      color: var(--text-gray);
+      margin-bottom: 2rem;
+    }
+    
+    /* Footer */
+    footer {
+      padding: 2rem 5%;
+      text-align: center;
+      border-top: 1px solid #eee;
+    }
+    
+    footer p {
+      color: var(--text-gray);
+      font-size: 0.9rem;
+    }
+    
+    /* Telegram Button */
+    .telegram-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #0088cc;
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 50px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1.1rem;
+      transition: transform 0.2s;
+    }
+    
+    .telegram-btn:hover {
+      transform: scale(1.05);
+    }
+    
+    .telegram-btn svg {
+      width: 24px;
+      height: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="logo-text">GTM <span>REVOLUTION</span></div>
+  <ul>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how">How it Works</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="/dashboard">Dashboard</a></li>
+  </ul>
+  <a href="https://t.me/OpenClawSalesBot" class="btn btn-primary">Talk to Agent</a>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Your AI Sales Agent<br><span class="accent">Works 24/7</span></h1>
+  <p>Autonomous account research, prospect outreach, and signal detection — powered by AI that never sleeps, never misses a lead, and always has the right context.</p>
+  <div class="hero-buttons">
+    <a href="https://t.me/OpenClawSalesBot" class="btn btn-primary">Chat with Agent</a>
+    <a href="#how" class="btn btn-outline">See How it Works</a>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+  <h2>What the Agent Does</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🔍</div>
+      <h3>Account Research</h3>
+      <p>Automatically gathers company info, key contacts, tech stack, funding events, and organizational changes from across the web.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📧</div>
+      <h3>AI SDR Outreach</h3>
+      <p>Personalized email campaigns at scale. Finds decision-makers, crafts compelling messages, and sends from your domain.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📡</div>
+      <h3>Signal Detection</h3>
+      <p>Monitors your accounts for intent signals — funding rounds, new hires, executive changes, expansion news — and triggers action.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔄</div>
+      <h3>CRM Sync</h3>
+      <p>Writes research, contacts, and activity directly to your HubSpot or Salesforce. One source of truth, always up to date.</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it Works -->
+<section class="how-it-works" id="how">
+  <h2>How it Works</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <h3>Add Accounts</h3>
+      <p>Tell the agent which companies to monitor</p>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <h3>Agent Researches</h3>
+      <p>AI researches and finds key contacts automatically</p>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <h3>Signals Trigger</h3>
+      <p>Funding, hiring, exec changes alert your team</p>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <h3>Outreach Sent</h3>
+      <p>Personalized emails to the right people at the right time</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="pricing" id="pricing">
+  <h2>Simple Pricing</h2>
+  <p class="pricing-subtitle">Start free, scale as you grow</p>
+  <div class="pricing-card popular">
+    <span class="badge">Most Popular</span>
+    <h3>Pro</h3>
+    <div class="price">$99<span>/month</span></div>
+    <ul class="features-list">
+      <li>Unlimited account monitoring</li>
+      <li>50,000 email credits/month</li>
+      <li>Real-time signal alerts</li>
+      <li>CRM integration (HubSpot/Salesforce)</li>
+      <li>API access</li>
+      <li>Priority support</li>
+    </ul>
+    <a href="https://t.me/OpenClawSalesBot" class="btn btn-primary">Get Started</a>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <h2>Ready to Revolutionize Your Sales?</h2>
+  <p>Talk to the agent right now — no commitment, no credit card required</p>
+  <a href="https://t.me/OpenClawSalesBot" class="telegram-btn">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+    Chat on Telegram
+  </a>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="logo-text" style="margin-bottom: 1rem;">GTM <span>REVOLUTION</span></div>
+  <p>AI-powered sales automation for modern revenue teams</p>
+</footer>
+
+</body>
+</html>

@@ -1,8 +1,8 @@
 // Signal Monitoring Cron Job
 // Scans all accounts for intent signals and triggers SDR actions
 
-const memory = require('./memory')
-const webSearch = require('./integrations/web_search')
+const memory = require('../memory')
+const webSearch = require('../integrations/web_search')
 
 // Main scan function — called by cron
 async function scanAllAccountsForSignals() {
