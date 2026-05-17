@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WeekWise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #111;
+      --accent: #d44a9a;
+      --accent-light: #f5d0e8;
+      --bg: #f7f7f7;
+      --white: #fff;
+    }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      width: 320px;
+      min-height: 400px;
+      background: var(--white);
+      color: var(--primary);
+    }
+    
+    .logo { 
+      font-family: 'Caveat', cursive; 
+      font-size: 1.5rem; 
+      font-weight: 700;
+      padding: 1.25rem;
+      border-bottom: 1px solid #eee;
+    }
+    .logo span { color: var(--accent); }
+    
+    /* Signup Screen */
+    .signup-screen { padding: 1.5rem; text-align: center; }
+    .signup-screen h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+    .signup-screen p { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.5; }
+    
+    input[type="email"] {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      border: 2px solid #eee;
+      border-radius: 10px;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s;
+    }
+    input[type="email"]:focus { outline: none; border-color: var(--accent); }
+    
+    .btn {
+      width: 100%;
+      padding: 0.875rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #c03d87; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    /* Dashboard Screen */
+    .dashboard { display: none; }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      padding: 1rem;
+    }
+    
+    .stat-card {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    
+    .stat-label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+    
+    .section {
+      padding: 0 1rem 1rem;
+    }
+    
+    .section-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      color: #888;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.75rem;
+    }
+    
+    .category-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    
+    .category-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem;
+      background: var(--bg);
+      border-radius: 8px;
+    }
+    
+    .category-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+    .category-dot.email { background: #3b82f6; }
+    .category-dot.crm { background: #10b981; }
+    .category-dot.chat { background: #f59e0b; }
+    .category-dot.docs { background: #8b5cf6; }
+    .category-dot.web { background: #6b7280; }
+    
+    .category-name { flex: 1; font-size: 0.9rem; }
+    .category-time { font-size: 0.85rem; color: #666; }
+    
+    /* Footer */
+    .footer {
+      padding: 1rem;
+      border-top: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .status {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .status.active { color: #10b981; }
+    
+    .footer-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    
+    /* Hidden class */
+    .hidden { display: none !important; }
+    
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #888;
+    }
+    
+    .loading::after {
+      content: '...';
+      animation: dots 1.5s infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Signup Screen -->
+<div id="signupScreen" class="signup-screen">
+  <div class="logo">Week<span>Wise</span></div>
+  <h2>Track your work week</h2>
+  <p>Discover where your time goes, find automation opportunities, and work smarter.</p>
+  <input type="email" id="emailInput" placeholder="your@email.com" />
+  <button class="btn" id="startBtn">Start Tracking →</button>
+</div>
+
+<!-- Dashboard Screen -->
+<div id="dashboardScreen" class="dashboard">
+  <div class="logo">Week<span>Wise</span></div>
+  
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value" id="totalHours">0.0</div>
+      <div class="stat-label">Hours today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="sessionCount">0</div>
+      <div class="stat-label">Sessions</div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Time by Category</div>
+    <div class="category-list" id="categoryList">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Top Tools</div>
+    <div id="topTools">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+  
+  <div class="footer">
+    <span class="status active" id="statusIndicator">● Tracking</span>
+    <button class="footer-btn" id="viewDashboardBtn">View Full Dashboard →</button>
+  </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

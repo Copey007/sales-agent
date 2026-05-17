@@ -1,0 +1,13 @@
+{
+  "name": "WeekWise",
+  "version": "1.0.0",
+  "description": "Workflow intelligence that reveals automation opportunities",
+  "scripts": {
+    "build": "echo 'No build step needed - static extension'",
+    "test": "echo 'Load in Chrome via chrome://extensions'"
+  },
+  "keywords": ["chrome-extension", "workflow", "productivity", "automation"],
+  "author": "Mark Cope",
+  "license": "MIT",
+  "devDependencies": {}
+}
