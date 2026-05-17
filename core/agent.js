@@ -7,6 +7,8 @@ const sdr = require('../capabilities/sdr')
 const signals = require('../capabilities/signals')
 const { hubspot, salesforce } = require('../integrations/crm')
 const email = require('../integrations/email')
+const hunter = require('../integrations/email_enrichment')
+const webSearch = require('../integrations/web_search')
 
 class SalesAgent {
   constructor(config = {}) {
@@ -202,7 +204,7 @@ class SalesAgent {
     // Step 1: Research
     const researchResult = await research.research(accountId)
     
-    // Step 2: Check if we have contacts
+    // Step 2: Load account and get contacts
     const account = memory.longTerm.loadAccount(accountId)
     const contacts = account.contacts || []
     
@@ -216,10 +218,38 @@ class SalesAgent {
       }
     }
     
-    // Step 3: Compose and queue emails (don't actually send without email config)
+    // Step 3: Find company domain if not available
+    let domain = account.domain
+    if (!domain) {
+      const domainResults = await webSearch.search(`${account.name || accountId} website`)
+      if (domainResults.snippets && domainResults.snippets.length > 0) {
+        // Try to extract domain from snippet
+        const firstLink = domainResults.snippets.find(s => s.link)?.link || ''
+        const domainMatch = firstLink.match(/https?:\/\/([^\/]+)/)
+        if (domainMatch) {
+          domain = domainMatch[1]
+        }
+        // Fallback: construct from company name
+        if (!domain) {
+          domain = `${accountId.replace(/_/g, '')}.com`
+        }
+      }
+      console.log(`[Agent] Using domain: ${domain}`)
+    }
+    
+    // Step 4: Enrich emails with Hunter.io
+    const enrichedContacts = await hunter.enrichContacts(contacts, domain)
+    
+    // Update contacts in memory with emails
+    memory.longTerm.saveAccount(accountId, { 
+      contacts: enrichedContacts,
+      domain: domain 
+    })
+    
+    // Step 5: Compose emails for contacts with valid emails
     const emails = []
-    for (const contact of contacts) {
-      if (contact.email) {
+    for (const contact of enrichedContacts) {
+      if (contact.email && contact.emailScore > 50) {  // Only high-confidence emails
         emails.push({
           to: contact.email,
           toName: contact.name,
@@ -230,18 +260,26 @@ class SalesAgent {
       }
     }
     
-    // Step 4: Return what we would send (email integration requires SMTP creds)
+    // Step 6: Return summary
     return {
       accountId,
-      accountName: account.name,
+      accountName: account.name || accountId,
       researched: true,
       contactsFound: contacts.length,
-      contacts: contacts.map(c => ({ name: c.name, title: c.title, hasEmail: !!c.email })),
+      contactsEnriched: enrichedContacts.filter(c => c.email).length,
+      domain: domain,
+      contacts: enrichedContacts.map(c => ({ 
+        name: c.name, 
+        title: c.title, 
+        hasEmail: !!c.email,
+        email: c.email ? c.email : null,
+        emailScore: c.emailScore || null
+      })),
       emailsQueued: emails.length,
       emails: emails,
       nextSteps: emails.length > 0 
-        ? 'Emails ready to send. Configure SMTP credentials to activate.'
-        : 'No email addresses found. Add email enrichment to enable outreach.'
+        ? 'Emails enriched and ready. Configure SMTP credentials to send.'
+        : 'No high-confidence emails found. Try a different company domain.'
     }
   }
   
