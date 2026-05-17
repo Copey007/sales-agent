@@ -10,60 +10,89 @@
 
 ---
 
-## How It Works
-
-```
-Install A-Gent (free)
-         ↓
-Agent tracks workflows in background
-         ↓
-Dashboard shows:
-  - "You spent 4.5 hrs/week manually updating Salesforce"
-  - "You do 18 repetitive tasks/week"
-  - "These are automation candidates"
-         ↓
-Click "Turn on" on any automation
-         ↓
-Automation activates ($9/mo)
-         ↓
-See time savings → enable more → Full AI Agent ($99/mo)
-```
-
----
-
 ## Pricing
 
 ### Free — The Eye-Opener
 Install A-Gent and it tracks your workflows for free.
 
-| Feature | Details |
-|---------|---------|
-| Workflow tracking | Time in each app |
-| Click counting | Clicks within apps |
-| Daily popup | Quick stats |
-| Weekly dashboard | Patterns and trends |
+| Feature | What it means |
+|---------|---------------|
+| **Workflow tracking** | How much time in what applications |
+| **Workflow tracking** | Specific areas of the app and user flows |
+| **Click counting** | Where you spend your time |
+| **Automation recommendations** | Dashboard shows what to automate |
 | **1 free automation** | Try one to see value |
 
-### Automation Modules — $9/mo each
-Turn on only what you need:
+### $9/mo — Automation Modules (turn on one by one)
 
 | Automation | What it does |
-|------------|---------------|
-| **CRM Auto-Sync** | Salesforce/HubSpot auto-update |
-| **Email Sequences** | Follow-up automation |
+|-----------|-------------|
+| **CRM Auto-Sync** | HubSpot/Salesforce auto-update |
+| **Agentic Workflows** | A-Gent does the work or refines workflows |
+| **Email Sequences** | Follow-up automation + email management |
 | **Contact Enrichment** | Hunter.io email finding |
 | **Account Research** | AI-powered company research |
 | **Signal Detection** | Funding/hiring/exec change alerts |
 
-**Pro Bundle:** $29/mo (all 5 automations)
+**Pro Bundle:** $29/mo (all 6 automations)
 
 ### Full AI Agent — $99/mo
 Everything in Pro plus:
 - Proactive prospect finding
 - Signal-triggered outreach
 - Unlimited account monitoring
+- Agentic workflows on all accounts
 - Priority support
 - Ongoing AI optimization
+
+---
+
+## How It Works
+
+```
+Install A-Gent (free)
+         ↓
+Agent tracks in background:
+  - Time in applications
+  - Specific areas within apps
+  - Click patterns
+         ↓
+Dashboard shows:
+  - "You spent 4.5 hrs/week in Salesforce"
+  - "You clicked 'Update Contact' 67 times"
+  - "These are automation candidates"
+         ↓
+Click "Turn on" on any automation
+         ↓
+A-Gent does the work for you
+         ↓
+See time savings → enable more → Full AI Agent ($99/mo)
+```
+
+---
+
+## What's Tracked (Free)
+
+A-Gent free shows users:
+- Time spent in each application (email, CRM, chat, docs)
+- Specific areas within apps (which tabs, which features)
+- Click patterns (where they spend effort)
+- Automation opportunities with savings estimates
+
+The dashboard tells them: "You spend 4.5 hours/week on manual Salesforce updates — we automate that."
+
+---
+
+## What's Automated ($9/mo each)
+
+Each automation module is independent — turn on only what you need:
+
+- **CRM Auto-Sync:** Automatically updates HubSpot/Salesforce. No manual data entry.
+- **Agentic Workflows:** A-Gent performs tasks or refines workflows based on patterns detected.
+- **Email Sequences:** Automated follow-ups, personalized sequences, inbox management.
+- **Contact Enrichment:** Finds emails, company data, LinkedIn profiles automatically.
+- **Account Research:** AI researches companies, finds contacts, detects signals.
+- **Signal Detection:** Monitors for funding, hiring, exec changes. Alerts you when intent signals fire.
 
 ---
 
@@ -78,22 +107,10 @@ User sees: "You do X manually Y times/week"
          ↓
 Turn on 1 automation ($9/mo) → See value
          ↓
-Bundle all 5 ($29/mo) → Pro
+Bundle all 6 ($29/mo) → Pro
          ↓
 Want proactive AI → Full Agent ($99/mo)
 ```
-
----
-
-## What's Included in Free
-
-A-Gent free is the eye-opener. It shows users:
-- Where their time goes
-- How many clicks they make
-- What repetitive tasks they do
-- Where automation opportunities exist
-
-Then the upgrade conversation writes itself: "You spend 4.5 hours/week on manual Salesforce updates — we automate that for $9/mo."
 
 ---
 
@@ -150,7 +167,7 @@ sales-agent/
 - ✅ Account research (Serper API)
 - ✅ Email enrichment (Hunter.io)
 - ✅ Signal detection (cron job)
-- ✅ Chrome extension (scaffold)
+- ✅ Chrome extension (scaffold with tracking)
 - ✅ Web dashboard (ready to deploy)
 
 **To deploy:**
