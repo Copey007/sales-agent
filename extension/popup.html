@@ -3,229 +3,316 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WeekWise</title>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>A-Gent</title>
   <style>
-    :root {
-      --primary: #111;
-      --accent: #d44a9a;
-      --accent-light: #f5d0e8;
-      --bg: #f7f7f7;
-      --white: #fff;
-    }
-    
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     body {
-      font-family: 'Inter', sans-serif;
       width: 320px;
-      min-height: 400px;
-      background: var(--white);
-      color: var(--primary);
+      min-height: 420px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f1419;
+      color: #faf8f0;
     }
     
-    .logo { 
-      font-family: 'Caveat', cursive; 
-      font-size: 1.5rem; 
-      font-weight: 700;
-      padding: 1.25rem;
-      border-bottom: 1px solid #eee;
-    }
-    .logo span { color: var(--accent); }
+    .hidden { display: none !important; }
     
     /* Signup Screen */
-    .signup-screen { padding: 1.5rem; text-align: center; }
-    .signup-screen h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
-    .signup-screen p { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.5; }
+    .signup-container {
+      padding: 2.5rem 2rem;
+      text-align: center;
+    }
+    
+    .emblem img { border-radius: 50%; }
+    .emblem-small img { border-radius: 50%; }
+    
+    h1 {
+      font-family: 'Georgia', serif;
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      color: #faf8f0;
+      letter-spacing: 1px;
+    }
+    
+    .tagline {
+      color: #c9a227;
+      font-size: 0.8rem;
+      margin-bottom: 2rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    
+    .tagline-sub {
+      color: #666;
+      font-size: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    
+    .input-group {
+      margin-bottom: 1rem;
+    }
     
     input[type="email"] {
       width: 100%;
       padding: 0.875rem 1rem;
-      border: 2px solid #eee;
-      border-radius: 10px;
-      font-size: 1rem;
-      margin-bottom: 1rem;
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 6px;
+      background: #1a2332;
+      color: #faf8f0;
+      font-size: 0.9rem;
+      outline: none;
       transition: border-color 0.2s;
     }
-    input[type="email"]:focus { outline: none; border-color: var(--accent); }
     
-    .btn {
+    input[type="email"]:focus {
+      border-color: #c9a227;
+    }
+    
+    input[type="email"]::placeholder {
+      color: #555;
+    }
+    
+    .start-btn {
       width: 100%;
-      padding: 0.875rem;
-      background: var(--accent);
-      color: white;
+      padding: 1rem;
+      background: linear-gradient(135deg, #c9a227 0%, #a88420 100%);
       border: none;
-      border-radius: 10px;
-      font-size: 1rem;
+      border-radius: 6px;
+      color: #0f1419;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
-    .btn:hover { background: #c03d87; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .start-btn:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 15px rgba(201,162,39,0.4);
+    }
+    
+    .start-btn:active {
+      transform: scale(0.98);
+    }
+    
+    .privacy {
+      font-size: 0.7rem;
+      color: #555;
+      margin-top: 1.5rem;
+      line-height: 1.5;
+    }
     
     /* Dashboard Screen */
-    .dashboard { display: none; }
+    .dashboard-container {
+      padding: 1.5rem;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(201,162,39,0.2);
+    }
+    
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .emblem-small img {
+      border-radius: 50%;
+    }
+    
+    .header-title {
+      font-family: 'Georgia', serif;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #faf8f0;
+    }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: #666;
+    }
+    
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: #22c55e;
+      border-radius: 50%;
+    }
     
     .stats-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0.75rem;
-      padding: 1rem;
+      margin-bottom: 1.5rem;
     }
     
     .stat-card {
-      background: var(--bg);
-      border-radius: 10px;
+      background: #1a2332;
+      border-radius: 8px;
       padding: 1rem;
       text-align: center;
+      border: 1px solid rgba(255,255,255,0.05);
     }
     
     .stat-value {
       font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--primary);
+      font-weight: 600;
+      color: #faf8f0;
+      font-family: 'Georgia', serif;
     }
     
     .stat-label {
-      font-size: 0.75rem;
-      color: #888;
+      font-size: 0.65rem;
+      color: #c9a227;
+      text-transform: uppercase;
+      letter-spacing: 1px;
       margin-top: 0.25rem;
     }
     
-    .section {
-      padding: 0 1rem 1rem;
-    }
-    
     .section-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      color: #888;
-      letter-spacing: 0.5px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #666;
       margin-bottom: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
     }
     
     .category-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+      background: #1a2332;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
     }
     
     .category-row {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem;
-      background: var(--bg);
-      border-radius: 8px;
+      padding: 0.65rem 0.875rem;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    
+    .category-row:last-child {
+      border-bottom: none;
     }
     
     .category-dot {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: #ccc;
+      margin-right: 0.75rem;
     }
+    
     .category-dot.email { background: #3b82f6; }
-    .category-dot.crm { background: #10b981; }
-    .category-dot.chat { background: #f59e0b; }
-    .category-dot.docs { background: #8b5cf6; }
-    .category-dot.web { background: #6b7280; }
+    .category-dot.crm { background: #8b5cf6; }
+    .category-dot.chat { background: #06b6d4; }
+    .category-dot.docs { background: #10b981; }
+    .category-dot.social { background: #f59e0b; }
+    .category-dot.web { background: #6366f1; }
+    .category-dot.other { background: #888; }
     
-    .category-name { flex: 1; font-size: 0.9rem; }
-    .category-time { font-size: 0.85rem; color: #666; }
-    
-    /* Footer */
-    .footer {
-      padding: 1rem;
-      border-top: 1px solid #eee;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .category-name {
+      flex: 1;
+      font-size: 0.8rem;
+      color: #faf8f0;
     }
     
-    .status {
+    .category-time {
       font-size: 0.8rem;
       color: #888;
-    }
-    .status.active { color: #10b981; }
-    
-    .footer-btn {
-      background: none;
-      border: none;
-      color: var(--accent);
-      font-size: 0.85rem;
-      cursor: pointer;
+      font-weight: 500;
     }
     
-    /* Hidden class */
-    .hidden { display: none !important; }
-    
-    /* Loading */
-    .loading {
+    .empty-state {
+      padding: 1.5rem;
       text-align: center;
-      padding: 2rem;
-      color: #888;
+      color: #555;
+      font-size: 0.8rem;
+      font-style: italic;
     }
     
-    .loading::after {
-      content: '...';
-      animation: dots 1.5s infinite;
+    .view-dashboard-btn {
+      width: 100%;
+      padding: 0.875rem;
+      background: transparent;
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 6px;
+      color: #c9a227;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
     
-    @keyframes dots {
-      0%, 20% { content: '.'; }
-      40% { content: '..'; }
-      60%, 100% { content: '...'; }
+    .view-dashboard-btn:hover {
+      background: rgba(201,162,39,0.1);
+      border-color: #c9a227;
     }
   </style>
 </head>
 <body>
-
-<!-- Signup Screen -->
-<div id="signupScreen" class="signup-screen">
-  <div class="logo">Week<span>Wise</span></div>
-  <h2>Track your work week</h2>
-  <p>Discover where your time goes, find automation opportunities, and work smarter.</p>
-  <input type="email" id="emailInput" placeholder="your@email.com" />
-  <button class="btn" id="startBtn">Start Tracking →</button>
-</div>
-
-<!-- Dashboard Screen -->
-<div id="dashboardScreen" class="dashboard">
-  <div class="logo">Week<span>Wise</span></div>
-  
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-value" id="totalHours">0.0</div>
-      <div class="stat-label">Hours today</div>
+  <!-- Signup Screen -->
+  <div id="signupScreen" class="signup-container">
+    <div class="emblem"><img src="icons/icon128.png" width="64" height="64" alt="A-Gent"></div>
+    <h1>A-Gent</h1>
+    <p class="tagline">Your Personal Butler</p>
+    <p class="tagline-sub">AI-powered sales agent</p>
+    
+    <div class="input-group">
+      <input type="email" id="emailInput" placeholder="Your work email">
     </div>
-    <div class="stat-card">
-      <div class="stat-value" id="sessionCount">0</div>
-      <div class="stat-label">Sessions</div>
-    </div>
+    
+    <button class="start-btn" id="startBtn">Begin Service</button>
+    
+    <p class="privacy">🔒 Your data remains private.<br>We track categories only — never URLs.</p>
   </div>
   
-  <div class="section">
+  <!-- Dashboard Screen -->
+  <div id="dashboardScreen" class="dashboard-container hidden">
+    <div class="header">
+      <div class="header-left">
+        <div class="emblem-small"><img src="icons/icon36.png" width="36" height="36" alt="A-Gent"></div>
+        <span class="header-title">A-Gent</span>
+      </div>
+      <div class="status">
+        <span class="status-dot"></span>
+        <span id="statusIndicator">At your service</span>
+      </div>
+    </div>
+    
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalHours">0.0</div>
+        <div class="stat-label">Hours Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="sessionCount">0</div>
+        <div class="stat-label">Sessions</div>
+      </div>
+    </div>
+    
     <div class="section-title">Time by Category</div>
     <div class="category-list" id="categoryList">
-      <!-- Populated by JS -->
+      <div class="empty-state">No activity recorded yet.<br>Start browsing — I'll take note.</div>
     </div>
+    
+    <button class="view-dashboard-btn" id="viewDashboardBtn">View Dashboard</button>
   </div>
   
-  <div class="section">
-    <div class="section-title">Top Tools</div>
-    <div id="topTools">
-      <!-- Populated by JS -->
-    </div>
-  </div>
-  
-  <div class="footer">
-    <span class="status active" id="statusIndicator">● Tracking</span>
-    <button class="footer-btn" id="viewDashboardBtn">View Full Dashboard →</button>
-  </div>
-</div>
-
-<script src="popup.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

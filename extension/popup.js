@@ -1,4 +1,4 @@
-// WeekWise Popup Script
+// A-Gent Popup Script
 
 const signupScreen = document.getElementById('signupScreen');
 const dashboardScreen = document.getElementById('dashboardScreen');
@@ -16,7 +16,7 @@ chrome.storage.local.get(['userEmail'], (result) => {
   }
 });
 
-// Start tracking
+// Begin service
 startBtn.addEventListener('click', () => {
   const email = emailInput.value.trim();
   
@@ -38,7 +38,7 @@ startBtn.addEventListener('click', () => {
 
 // View full dashboard
 viewDashboardBtn.addEventListener('click', () => {
-  chrome.tabs.create({ url: 'https://weekwise.app/dashboard' });
+  chrome.tabs.create({ url: 'https://agent.dev/dashboard' });
 });
 
 function showSignup() {
@@ -73,7 +73,7 @@ function updateStats() {
         </div>
       `).join('');
     } else {
-      categoryList.innerHTML = '<p style="color:#888;font-size:0.85rem;text-align:center;padding:1rem;">No data yet. Start browsing!</p>';
+      categoryList.innerHTML = '<div class="empty-state">No activity recorded yet.<br>Start browsing — I\'ll take note.</div>';
     }
     
     // Update last updated time

@@ -1,96 +1,86 @@
-# A-Gent — AI Sales Agent with Built-in Workflow Intelligence
+# A-Gent — Your Personal AI Butler 🎩
 
-**One product.** Starts free, tracks workflows, upgrades when you "turn on" automations.
+> "A-Gent: A gentleman who never rests."
 
----
+A-Gent is an AI-powered sales agent that tracks your workflows, learns your patterns, and executes automations — all with the precision of a gentleman's personal assistant.
 
-## What is A-Gent?
-
-**Problem:** Sales people spend 40%+ of their time on repetitive manual tasks. They don't know what to automate first or how to get started.
-
-**Solution:** A-Gent tracks your workflows (time, clicks, patterns), shows automation opportunities, and lets you enable them one at a time.
+**The metaphor:** Think English butler. Proper. Precise. Always at attention. Your work is tracked, categorized, and reported back to you with aristocratic calm.
 
 ---
 
-## How It Works
+## The Tiers
+
+| Member | Price | Role |
+|--------|-------|------|
+| **Associate** | $0/mo | Entry-level — tracks your day, reports back |
+| **Butler** | $29/mo | Full service — all automations, CRM sync, email sequences |
+| **Estate Manager** | $99/mo | Complete autonomy — AI works while you sleep |
+
+---
+
+## What It Does
+
+**Workflow Tracking**
+- Chrome extension tracks time across Email, CRM, Chat, Docs, Social, Web
+- Daily popup shows today's hours and session count
+- Category breakdown with color-coded dots
+
+**Click Intelligence**
+- Counts repetitive actions per week
+- "You send 40 follow-ups manually" → that's an automation candidate
+
+**Automations (Butler tier)**
+- CRM Auto-Sync (Salesforce/HubSpot)
+- Email Sequences (multi-step outreach)
+- Contact Enrichment (Hunter.io)
+- Account Research (company intel)
+- Signal Detection (intent alerts)
+
+---
+
+## Install
+
+### Chrome Extension (Developer Mode)
+
+1. Open `chrome://extensions/`
+2. Enable **Developer mode** (top right toggle)
+3. Click **Load unpacked**
+4. Select the `extension/` folder
+5. Click the 🎩 icon in your toolbar
+
+### Marketing Site
+
+The `index.html` at the root deploys to Netlify. Already configured with `netlify.toml`.
+
+---
+
+## Structure
 
 ```
-Install A-Gent (free)
-         ↓
-Agent tracks workflows in background
-         ↓
-Dashboard shows:
-  - "You spent 4.5 hrs/week manually updating Salesforce"
-  - "You do 18 repetitive tasks/week"
-  - "These are automation candidates"
-         ↓
-Click "Turn on" on any automation
-         ↓
-Automation activates ($9-29/mo)
-         ↓
-See time savings → enable more → Full AI Agent ($99/mo)
+sales-agent/
+├── index.html           # Marketing site (butler theme)
+├── netlify.toml         # Netlify deploy config
+├── package.json
+├── cli.js               # Agent command line
+├── integrate.js
+├── cron_signal_scan.js
+├── README.md
+├── ARCHITECTURE.md
+│
+├── extension/           # Chrome extension
+│   ├── manifest.json
+│   ├── background.js    # Service worker — tracking logic
+│   ├── popup.html       # Butler-themed popup UI
+│   ├── popup.js
+│   ├── privacy.html     # Privacy policy
+│   └── icons/
+│
+├── core/                # Agent brain
+├── capabilities/        # Skills
+├── integrations/        # API wrappers
+├── dashboard/           # Web dashboard
+└── memory/              # File-based storage
 ```
-
----
-
-## Pricing
-
-| Tier | Price | What's Included |
-|------|-------|-----------------|
-| **Free** | $0 | Workflow tracking, 1 account, basic research, 1 free automation |
-| **Pro** | $29/mo | All automation modules, unlimited accounts, full dashboard |
-| **Full AI Agent** | $99/mo | Everything + proactive AI agent |
-
----
-
-## Core Features
-
-### Workflow Tracking (Free)
-- Chrome extension tracks time + clicks
-- Daily popup summary
-- Weekly dashboard with patterns
-- Automation opportunity detection
-
-### Account Research (Free)
-- Company research via Serper API
-- Contact discovery
-- Signal detection (funding, hiring, exec changes)
-
-### Email Outreach (Pro)
-- Personalized email sequences
-- CRM auto-sync
-- Follow-up automation
-
-### AI SDR (Full Agent)
-- Proactive prospect finding
-- Signal-triggered outreach
-- Full sales automation
-
----
-
-## Automation Modules
-
-Each can be turned on/off independently:
-
-- **CRM Auto-Sync** — Salesforce/HubSpot auto-update ($9/mo)
-- **Email Follow-ups** — Sequence automation ($9/mo)
-- **Contact Enrichment** — Hunter.io email finding ($9/mo)
-- **Signal Detection** — Intent monitoring + alerts ($9/mo)
-- **Report Generation** — Weekly summaries ($9/mo)
-
-Bundle all 5 for $29/mo (Pro tier)
-
----
-
-## Tech Stack
-
-- **Agent:** Node.js, single-threaded, file-based memory
-- **Extension:** Chrome Extension API (Manifest V3)
-- **Dashboard:** Static HTML + API calls
-- **Search:** Serper.dev (Google results)
-- **Email:** SMTP/Gmail + Hunter.io for enrichment
-- **Hosting:** Netlify (dashboard) + Mac mini (agent backend)
-- **CRM:** HubSpot / Salesforce integration
 
 ---
 
@@ -99,9 +89,6 @@ Bundle all 5 for $29/mo (Pro tier)
 ```bash
 # Research an account
 node cli.js "research acme corp"
-
-# Send outreach
-node cli.js "prospect acme corp"
 
 # Scan for signals
 node cli.js "scan accounts"
@@ -112,66 +99,31 @@ node cli.js "check acme corp"
 
 ---
 
-## Structure
-
-```
-sales-agent/
-├── extension/           # Chrome extension
-│   ├── manifest.json
-│   ├── background.js
-│   ├── popup.html
-│   └── popup.js
-├── core/                # Agent brain
-│   ├── agent.js
-│   ├── task_queue.js
-│   └── skills.js
-├── capabilities/        # Skills
-│   ├── research.js
-│   ├── sdr.js
-│   ├── signals.js
-│   └── workflow_tracker.js
-├── integrations/        # APIs
-│   ├── crm.js
-│   ├── email.js
-│   ├── email_enrichment.js
-│   └── web_search.js
-├── dashboard/           # Web UI
-│   ├── index.html
-│   └── dashboard.html
-└── memory/             # Storage
-    ├── short_term.js
-    ├── long_term.js
-    └── working.js
-```
-
----
-
 ## Status
 
-**Built and working:**
+**Built:**
 - ✅ Agent core (Telegram-ready)
 - ✅ Account research (Serper API)
 - ✅ Email enrichment (Hunter.io)
 - ✅ Signal detection (cron job)
-- ✅ Chrome extension (scaffold)
-- ✅ Web dashboard (ready to deploy)
+- ✅ Chrome extension (butler-themed UI)
+- ✅ Marketing site (butler-themed)
 
-**To deploy:**
-- Netlify dashboard (manual 2-min step)
-
-**Next to build:**
-- Automation "turn on" flow
-- Payment integration (Stripe)
-- Chrome Web Store listing
+**Waiting on:**
+- ⏳ Chrome Web Store account (appealing suspension)
+- ⏳ Netlify dashboard deploy
 
 ---
 
-## Links
+## Tech Stack
 
-- **Repo:** https://github.com/Copey007/sales-agent
-- **Dashboard:** (deploy to Netlify)
-- **GTM Revolution:** https://gtmrevolution.com
+- **Agent:** Node.js, file-based memory
+- **Extension:** Chrome Extension API (Manifest V3)
+- **Dashboard:** Static HTML + API calls
+- **Search:** Serper.dev
+- **Email:** SMTP + Hunter.io
+- **Hosting:** Netlify + Mac mini backend
 
 ---
 
-*Part of the GTM Revolution ecosystem — workflow intelligence meets AI sales automation.*
+*Part of the GTM Revolution ecosystem*

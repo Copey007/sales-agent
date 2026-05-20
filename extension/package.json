@@ -1,6 +1,6 @@
 {
-  "name": "WeekWise",
-  "version": "1.0.0",
+  "name": "A-Gent",
+  "version": "0.1.0",
   "description": "Workflow intelligence that reveals automation opportunities",
   "scripts": {
     "build": "echo 'No build step needed - static extension'",

@@ -1,5 +1,5 @@
-// WeekWise - Background Service Worker
-// Tracks active tab and time spent
+// A-Gent - Background Service Worker
+// Your Personal AI Butler — tracks activity and serves insights
 
 let currentTab = null;
 let currentTabStart = null;

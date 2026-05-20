@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "WeekWise",
+  "name": "A-Gent",
   "version": "0.1.0",
-  "description": "Workflow intelligence that reveals automation opportunities",
+  "description": "AI sales agent companion — tracks activity, surfaces insights, and identifies automation opportunities",
   "permissions": [
     "activeTab",
     "storage",
