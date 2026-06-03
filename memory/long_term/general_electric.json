@@ -1,7 +1,7 @@
 {
   "accountId": "general_electric",
   "createdAt": "2026-05-17T17:44:14.428Z",
-  "updatedAt": "2026-05-17T22:04:44.787Z",
+  "updatedAt": "2026-06-03T10:24:47.432Z",
   "name": "general_electric",
   "domain": "www.ge.com",
   "contacts": [
@@ -117,6 +117,141 @@
       "id": "1779055484785",
       "addedAt": "2026-05-17T22:04:44.786Z",
       "text": "Signal detected: executive_change - {\"role\":\"CEO 2025 Pay Revealed\",\"name\":\"GENERAL ELECTRIC CO ($GE) CEO 2025 Pay Revealed\"}"
+    },
+    {
+      "id": "1780482038055",
+      "addedAt": "2026-06-03T10:20:38.055Z",
+      "text": "Signal detected: executive_change - {\"role\":\"CFO Rahul Ghai to Replace\",\"name\":\"GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe\"}"
+    },
+    {
+      "id": "1780482073814",
+      "addedAt": "2026-06-03T10:21:13.814Z",
+      "text": "Email sent to Mohamed Ali: undefined"
+    },
+    {
+      "id": "1780482073815",
+      "addedAt": "2026-06-03T10:21:13.815Z",
+      "text": "Email sent to Commercial Engines: undefined"
+    },
+    {
+      "id": "1780482073815",
+      "addedAt": "2026-06-03T10:21:13.815Z",
+      "text": "Email sent to Lawrence Culp: undefined"
+    },
+    {
+      "id": "1780482073815",
+      "addedAt": "2026-06-03T10:21:13.815Z",
+      "text": "Email sent to global technology: undefined"
+    },
+    {
+      "id": "1780482073815",
+      "addedAt": "2026-06-03T10:21:13.815Z",
+      "text": "Email sent to CEO of: undefined"
+    },
+    {
+      "id": "1780482073816",
+      "addedAt": "2026-06-03T10:21:13.816Z",
+      "text": "Email sent to Scott Strazik: undefined"
+    },
+    {
+      "id": "1780482073816",
+      "addedAt": "2026-06-03T10:21:13.816Z",
+      "text": "Email sent to Pete Arduini: undefined"
+    },
+    {
+      "id": "1780482073816",
+      "addedAt": "2026-06-03T10:21:13.816Z",
+      "text": "Email sent to Vic Abate: undefined"
+    },
+    {
+      "id": "1780482073816",
+      "addedAt": "2026-06-03T10:21:13.816Z",
+      "text": "Email sent to Steven Baert: undefined"
+    },
+    {
+      "id": "1780482073817",
+      "addedAt": "2026-06-03T10:21:13.817Z",
+      "text": "Email sent to Kristin Carvell: undefined"
+    },
+    {
+      "id": "1780482093523",
+      "addedAt": "2026-06-03T10:21:33.523Z",
+      "text": "Email sent to Mohamed Ali: undefined"
+    },
+    {
+      "id": "1780482093523",
+      "addedAt": "2026-06-03T10:21:33.523Z",
+      "text": "Email sent to Commercial Engines: undefined"
+    },
+    {
+      "id": "1780482093524",
+      "addedAt": "2026-06-03T10:21:33.524Z",
+      "text": "Email sent to Lawrence Culp: undefined"
+    },
+    {
+      "id": "1780482093524",
+      "addedAt": "2026-06-03T10:21:33.524Z",
+      "text": "Email sent to global technology: undefined"
+    },
+    {
+      "id": "1780482093524",
+      "addedAt": "2026-06-03T10:21:33.524Z",
+      "text": "Email sent to CEO of: undefined"
+    },
+    {
+      "id": "1780482093525",
+      "addedAt": "2026-06-03T10:21:33.525Z",
+      "text": "Email sent to Scott Strazik: undefined"
+    },
+    {
+      "id": "1780482093525",
+      "addedAt": "2026-06-03T10:21:33.525Z",
+      "text": "Email sent to Pete Arduini: undefined"
+    },
+    {
+      "id": "1780482093526",
+      "addedAt": "2026-06-03T10:21:33.526Z",
+      "text": "Email sent to Vic Abate: undefined"
+    },
+    {
+      "id": "1780482093526",
+      "addedAt": "2026-06-03T10:21:33.526Z",
+      "text": "Email sent to Steven Baert: undefined"
+    },
+    {
+      "id": "1780482093526",
+      "addedAt": "2026-06-03T10:21:33.526Z",
+      "text": "Email sent to Kristin Carvell: undefined"
+    },
+    {
+      "id": "1780482287430",
+      "addedAt": "2026-06-03T10:24:47.430Z",
+      "text": "Email sent to Commercial Engines: Quick question about general_electric"
+    },
+    {
+      "id": "1780482287430",
+      "addedAt": "2026-06-03T10:24:47.430Z",
+      "text": "Email sent to Lawrence Culp: Quick question about general_electric"
+    },
+    {
+      "id": "1780482287431",
+      "addedAt": "2026-06-03T10:24:47.431Z",
+      "text": "Email sent to Scott Strazik: Quick question about general_electric"
+    },
+    {
+      "id": "1780482287431",
+      "addedAt": "2026-06-03T10:24:47.431Z",
+      "text": "Email sent to Vic Abate: Quick question about general_electric"
+    },
+    {
+      "id": "1780482287432",
+      "addedAt": "2026-06-03T10:24:47.432Z",
+      "text": "Email sent to Steven Baert: Quick question about general_electric"
+    },
+    {
+      "id": "1780482287432",
+      "addedAt": "2026-06-03T10:24:47.432Z",
+      "text": "Email sent to Kristin Carvell: Quick question about general_electric"
     }
   ],
   "emails": [],
@@ -156,6 +291,15 @@
       "detail": {
         "role": "CEO 2025 Pay Revealed",
         "name": "GENERAL ELECTRIC CO ($GE) CEO 2025 Pay Revealed"
+      },
+      "source": "news"
+    },
+    {
+      "type": "executive_change",
+      "severity": "high",
+      "detail": {
+        "role": "CFO Rahul Ghai to Replace",
+        "name": "GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe"
       },
       "source": "news"
     }

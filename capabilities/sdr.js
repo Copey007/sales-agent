@@ -44,20 +44,41 @@ async function runOutbound(accountId, campaignId) {
 
 // Personalize email based on account/contact data
 async function sendPersonalizedEmail(account, contact, campaign) {
-  const template = campaign.emailTemplate
+  if (!contact.email) {
+    return { contactId: contact.id, status: 'bounced', reason: 'no email' }
+  }
+  
+  // Get latest signal for personalization
+  const latestSignal = account.signals && account.signals.length > 0 
+    ? account.signals[account.signals.length - 1] 
+    : null
+  
+  const signalText = latestSignal 
+    ? (typeof latestSignal.detail === 'string' ? latestSignal.detail : latestSignal.detail?.name || JSON.stringify(latestSignal.detail))
+    : 'recent activity'
+  
+  const template = campaign.emailTemplate || ''
+  const campaignSubject = campaign.subject || 'Quick question about {{companyName}}'
   
   // Variable substitution
   const personalizedBody = template
-    .replace('{{firstName}}', contact.firstName || 'there')
-    .replace('{{companyName}}', account.name)
-    .replace('{{myName}}', campaign.senderName)
-    .replace('{{signals}}', account.signals && account.signals.length > 0 
-      ? account.signals[0].detail 
-      : 'recent growth')
+    .replace(/\{\{firstName\}\}/g, contact.firstName || contact.name?.split(' ')[0] || 'there')
+    .replace(/\{\{contact\.name\}\}/g, contact.name || 'there')
+    .replace(/\{\{companyName\}\}/g, account.name || '')
+    .replace(/\{\{account\.name\}\}/g, account.name || '')
+    .replace(/\{\{signal\.detail\.name\}\}/g, signalText)
+    .replace(/\{\{signals\}\}/g, signalText)
+    .replace(/\{\{myName\}\}/g, campaign.senderName || 'Mark')
+  
+  const personalizedSubject = campaignSubject
+    .replace(/\{\{firstName\}\}/g, contact.firstName || contact.name?.split(' ')[0] || 'there')
+    .replace(/\{\{contact\.name\}\}/g, contact.name || 'there')
+    .replace(/\{\{companyName\}\}/g, account.name || '')
+    .replace(/\{\{account\.name\}\}/g, account.name || '')
   
   const emailData = {
     to: contact.email,
-    subject: template.subject,
+    subject: personalizedSubject,
     body: personalizedBody,
     from: campaign.senderEmail
   }
@@ -67,6 +88,8 @@ async function sendPersonalizedEmail(account, contact, campaign) {
   
   return {
     contactId: contact.id,
+    to: contact.email,
+    subject: personalizedSubject,
     status: result.success ? 'sent' : 'failed',
     messageId: result.messageId
   }

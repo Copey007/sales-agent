@@ -1,0 +1,15 @@
+{
+  "taskId": "signal_outbound",
+  "createdAt": "2026-06-03T10:21:06.300Z",
+  "prospects": [],
+  "drafts": [],
+  "research": {},
+  "status": "in_progress",
+  "id": "signal_outbound",
+  "name": "Signal-Triggered Outbound",
+  "emailTemplate": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+  "subject": "Quick question about {{account.name}}",
+  "updatedAt": "2026-06-03T10:24:47.417Z",
+  "senderName": "Mark",
+  "senderEmail": "mark@cope.com"
+}

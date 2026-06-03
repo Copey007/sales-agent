@@ -17,5 +17,7 @@
   ],
   "author": "Mark Cope",
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {
+    "resend": "^6.12.4"
+  }
 }

@@ -1,0 +1,222 @@
+[
+  {
+    "id": "1780482073814",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.814Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073815",
+    "to": "commercial.engines@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.815Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073815",
+    "to": "larry.culp@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.815Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073815",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.815Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073815",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.815Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073815",
+    "to": "scott.strazik@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.815Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073816",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.816Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073816",
+    "to": "victor.abate@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.816Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073816",
+    "to": "steven.baert@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.816Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482073816",
+    "to": "kristin.carvell@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": null,
+    "sentAt": "2026-06-03T10:21:13.816Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093523",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.523Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093523",
+    "to": "commercial.engines@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.523Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093523",
+    "to": "larry.culp@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.523Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093524",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.524Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093524",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.524Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093525",
+    "to": "scott.strazik@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.525Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093525",
+    "to": null,
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.525Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093525",
+    "to": "victor.abate@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.525Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093526",
+    "to": "steven.baert@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.526Z",
+    "status": "sent"
+  },
+  {
+    "id": "1780482093526",
+    "to": "kristin.carvell@ge.com",
+    "body": "Hi {{contact.name}}, I noticed {{signal.detail.name}} at {{account.name}}. Congrats on the new role — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:21:33.526Z",
+    "status": "sent"
+  },
+  {
+    "id": "mock_1780482287429",
+    "to": "commercial.engines@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Commercial Engines, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.429Z",
+    "status": "sent",
+    "error": null
+  },
+  {
+    "id": "mock_1780482287430",
+    "to": "larry.culp@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Lawrence Culp, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.430Z",
+    "status": "sent",
+    "error": null
+  },
+  {
+    "id": "mock_1780482287431",
+    "to": "scott.strazik@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Scott Strazik, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.431Z",
+    "status": "sent",
+    "error": null
+  },
+  {
+    "id": "mock_1780482287431",
+    "to": "victor.abate@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Vic Abate, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.431Z",
+    "status": "sent",
+    "error": null
+  },
+  {
+    "id": "mock_1780482287431",
+    "to": "steven.baert@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Steven Baert, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.431Z",
+    "status": "sent",
+    "error": null
+  },
+  {
+    "id": "mock_1780482287432",
+    "to": "kristin.carvell@ge.com",
+    "subject": "Quick question about general_electric",
+    "body": "Hi Kristin Carvell, I noticed GE Names New CFO Rahul Ghai to Replace Carolina Dybeck Happe at general_electric. Congrats on the new CFO hire — when you are ready to scale outbound, A-Gent handles prospecting automatically. Worth a conversation?",
+    "from": "mark@cope.com",
+    "sentAt": "2026-06-03T10:24:47.432Z",
+    "status": "sent",
+    "error": null
+  }
+]
