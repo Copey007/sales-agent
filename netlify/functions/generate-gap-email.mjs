@@ -161,7 +161,8 @@ function buildUserPrompt(prospect, signals, sender, productContext) {
   
   prompt += `\n## Sender Context\n`;
   prompt += `- **Sender Name:** ${sender?.name || 'Mark'}\n`;
-  prompt += `- **Sender Company:** ${sender?.company || 'A-Gent'}\n`;
+  prompt += `- **Sender Company:** A-Gent Fleet\n`;
+  prompt += `- **Signature Format:** [Sender Name] | A-Gent Fleet\n`;
   
   if (productContext) {
     prompt += `\n## What We Solve (for credibility line only — do NOT feature-dump)\n${productContext}\n`;

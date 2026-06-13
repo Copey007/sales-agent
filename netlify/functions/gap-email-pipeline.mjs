@@ -222,7 +222,7 @@ const GAP_SYSTEM_PROMPT = `You are an expert cold email writer trained in the GA
 Return ONLY valid JSON:
 {
   "subject": "2-4 word subject line in sentence case",
-  "body": "The full email body text (plain text, use newlines for paragraph breaks)",
+  "body": "The full email body text (plain text, use newlines for paragraph breaks). End with a signature line: '[Sender Name] | A-Gent Fleet'",
   "signals_used": [{"type": "...", "source_url": "...", "why": "brief reason this signal was chosen"}],
   "gap_analysis": {
     "current_state": "What pain/problem the prospect likely has",
@@ -265,7 +265,8 @@ async function generateGapEmail(prospect, signals, sender, productContext) {
   
   userPrompt += `\n## Sender Context
 - **Sender Name:** ${sender?.name || 'Mark'}
-- **Sender Company:** ${sender?.company || 'A-Gent'}
+- **Sender Company:** A-Gent Fleet
+- **Signature Format:** [Sender Name] | A-Gent Fleet
 `;
   
   if (productContext) {
@@ -364,10 +365,12 @@ export default async (req, context) => {
     let signalGatheringResult = { skipped: false };
     
     if (!skip_signals && signals.length === 0) {
+      const serpApiKey = typeof Netlify !== 'undefined' ? Netlify.env.get('SERP_API_KEY') : process.env.SERP_API_KEY;
       signals = await gatherSignals(prospect);
       signalGatheringResult = {
         skipped: false,
         signals_found: signals.length,
+        serp_api_active: !!serpApiKey,
         sources_queried: ['web_news', 'job_postings', 'prospect_content', 'linkedin_public', 
           ...(prospect.linkedin_profile_text ? ['linkedin_manual'] : [])]
       };
