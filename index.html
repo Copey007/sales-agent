@@ -1,646 +1,204 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A-Gent — Your Personal AI Butler</title>
+  <title>A-Gent AI SDR</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Orbitron:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --navy: #0f1419;
-      --navy-light: #1a2332;
-      --gold: #c9a227;
-      --gold-light: #e8d48a;
-      --cream: #faf8f0;
-      --cream-dark: #f0ede0;
-      --burgundy: #722f37;
-      --charcoal: #2d2d2d;
-    }
-    
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      font-family: 'Inter', sans-serif;
-      color: var(--cream);
-      line-height: 1.6;
-      background: var(--navy);
-    }
-    
-    h1, h2, h3 {
-      font-family: 'Cormorant Garamond', serif;
-      font-weight: 600;
-    }
-    
-    /* Navigation */
-    nav {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1.5rem 5%;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    
-    .logo {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--cream);
-    }
-    
-    .logo span {
-      color: var(--gold);
-    }
-    
-    nav ul { display: flex; list-style: none; gap: 2.5rem; }
-    nav a { text-decoration: none; color: var(--cream); opacity: 0.8; font-weight: 400; font-size: 0.95rem; transition: opacity 0.2s; }
-    nav a:hover { opacity: 1; color: var(--gold); }
-    
-    .btn {
-      padding: 0.75rem 1.75rem;
-      border-radius: 4px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-      font-size: 0.9rem;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      transition: all 0.2s;
-      font-family: 'Inter', sans-serif;
-    }
-    
-    .btn-primary {
-      background: var(--gold);
-      color: var(--navy);
-    }
-    .btn-primary:hover {
-      background: var(--gold-light);
-      transform: translateY(-1px);
-    }
-    
-    .btn-outline {
-      background: transparent;
-      border: 1px solid var(--gold);
-      color: var(--gold);
-    }
-    .btn-outline:hover {
-      background: var(--gold);
-      color: var(--navy);
-    }
-    
-    .btn-ghost {
-      background: transparent;
-      color: var(--cream);
-      opacity: 0.8;
-    }
-    .btn-ghost:hover {
-      opacity: 1;
-      color: var(--gold);
-    }
-    
-    /* Hero */
-    .hero {
-      text-align: center;
-      padding: 7rem 5% 5rem;
-      background: linear-gradient(180deg, var(--navy) 0%, var(--navy-light) 100%);
-      position: relative;
-      overflow: hidden;
-    }
-    
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, rgba(201,162,39,0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    
-    .hero-badge {
-      display: inline-block;
-      padding: 0.4rem 1rem;
-      border: 1px solid var(--gold);
-      border-radius: 20px;
-      font-size: 0.8rem;
-      color: var(--gold);
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 1.5rem;
-    }
-    
-    .hero-image {
-      width: 260px;
-      height: 260px;
-      border-radius: 50%;
-      margin: 0 auto 2rem;
-      overflow: hidden;
-      border: 3px solid var(--gold);
-      box-shadow: 0 0 50px rgba(201,162,39,0.25);
-    }
-    
-    .hero-image img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    
-    .hero h1 {
-      font-size: 4rem;
-      font-weight: 700;
-      margin-bottom: 1.5rem;
-      line-height: 1.1;
-      letter-spacing: -1px;
-    }
-    
-    .hero h1 em {
-      font-style: normal;
-      color: var(--gold);
-    }
-    
-    .hero-sub {
-      font-size: 1.2rem;
-      color: var(--cream);
-      opacity: 0.7;
-      max-width: 550px;
-      margin: 0 auto 3rem;
-      font-weight: 300;
-    }
-    
-    .hero-actions {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    
-    .hero-note {
-      margin-top: 3rem;
-      font-size: 0.85rem;
-      color: var(--cream);
-      opacity: 0.5;
-    }
-    
-    /* Intro */
-    .intro {
-      padding: 5rem 5%;
-      max-width: 800px;
-      margin: 0 auto;
-      text-align: center;
-    }
-    
-    .intro h2 {
-      font-size: 2.5rem;
-      margin-bottom: 1.5rem;
-      color: var(--cream);
-    }
-    
-    .intro p {
-      font-size: 1.1rem;
-      opacity: 0.7;
-      line-height: 1.8;
-    }
-    
-    /* Features */
-    .features {
-      padding: 5rem 5%;
-      background: var(--navy-light);
-    }
-    
-    .section-header {
-      text-align: center;
-      margin-bottom: 4rem;
-    }
-    
-    .section-header h2 {
-      font-size: 2.5rem;
-      color: var(--cream);
-      margin-bottom: 0.75rem;
-    }
-    
-    .section-header p {
-      color: var(--gold);
-      font-size: 0.9rem;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-    
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1.5rem;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    
-    .feature-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(201,162,39,0.15);
-      border-radius: 8px;
-      padding: 2rem;
-      transition: all 0.3s;
-    }
-    
-    .feature-card:hover {
-      border-color: var(--gold);
-      transform: translateY(-4px);
-    }
-    
-    .feature-icon {
-      width: 48px;
-      height: 48px;
-      background: var(--gold);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.25rem;
-      margin-bottom: 1.25rem;
-      filter: grayscale(1) brightness(0);
-    }
-    
-    .feature-card h3 {
-      font-size: 1.3rem;
-      margin-bottom: 0.75rem;
-      color: var(--cream);
-      font-family: 'Cormorant Garamond', serif;
-    }
-    
-    .feature-card p {
-      color: var(--cream);
-      opacity: 0.6;
-      font-size: 0.95rem;
-      line-height: 1.6;
-    }
-    
-    /* How It Works */
-    .how {
-      padding: 5rem 5%;
-      background: var(--navy);
-    }
-    
-    .steps {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      flex-wrap: wrap;
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-    
-    .step {
-      text-align: center;
-      max-width: 200px;
-      padding: 2rem 1.5rem;
-      background: rgba(255,255,255,0.02);
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.05);
-    }
-    
-    .step-num {
-      width: 48px;
-      height: 48px;
-      border: 2px solid var(--gold);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--gold);
-      margin: 0 auto 1.25rem;
-    }
-    
-    .step h3 {
-      font-size: 1.1rem;
-      margin-bottom: 0.5rem;
-      color: var(--cream);
-    }
-    
-    .step p {
-      font-size: 0.85rem;
-      color: var(--cream);
-      opacity: 0.5;
-    }
-    
-    /* Pricing */
-    .pricing {
-      padding: 6rem 5%;
-      background: var(--navy-light);
-    }
-    
-    .pricing-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1.5rem;
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-    
-    .pricing-card {
-      background: var(--navy);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      padding: 2.5rem 2rem;
-      text-align: center;
-      position: relative;
-    }
-    
-    .pricing-card.featured {
-      border-color: var(--gold);
-    }
-    
-    .pricing-card.featured::before {
-      content: 'Most Popular';
-      position: absolute;
-      top: -12px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--gold);
-      color: var(--navy);
-      padding: 0.25rem 1rem;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 1px;
-    }
-    
-    .pricing-card h3 {
-      font-size: 1.4rem;
-      color: var(--cream);
-      margin-bottom: 0.25rem;
-      font-family: 'Cormorant Garamond', serif;
-    }
-    
-    .pricing-card .tagline {
-      font-size: 0.85rem;
-      color: var(--gold);
-      margin-bottom: 1.5rem;
-    }
-    
-    .price {
-      font-size: 3rem;
-      font-weight: 700;
-      color: var(--cream);
-      font-family: 'Cormorant Garamond', serif;
-    }
-    
-    .price span {
-      font-size: 1rem;
-      opacity: 0.5;
-      font-weight: 400;
-    }
-    
-    .pricing-features {
-      list-style: none;
-      margin: 2rem 0;
-      text-align: left;
-    }
-    
-    .pricing-features li {
-      padding: 0.6rem 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.9rem;
-      color: var(--cream);
-      opacity: 0.8;
-    }
-    
-    .pricing-features li::before {
-      content: '✓';
-      color: var(--gold);
-      margin-right: 0.75rem;
-      font-weight: 600;
-    }
-    
-    /* CTA */
-    .cta {
-      padding: 6rem 5%;
-      background: var(--navy);
-      text-align: center;
-      border-top: 1px solid rgba(201,162,39,0.2);
-    }
-    
-    .cta h2 {
-      font-size: 2.5rem;
-      margin-bottom: 1rem;
-    }
-    
-    .cta p {
-      opacity: 0.6;
-      margin-bottom: 2.5rem;
-      font-size: 1.05rem;
-    }
-    
-    /* Footer */
-    footer {
-      padding: 2.5rem 5%;
-      background: var(--navy-light);
-      border-top: 1px solid rgba(255,255,255,0.05);
-      text-align: center;
-    }
-    
-    footer .logo {
-      font-size: 1.5rem;
-      margin-bottom: 1rem;
-    }
-    
-    footer p {
-      font-size: 0.85rem;
-      color: var(--cream);
-      opacity: 0.4;
-    }
-    
-    footer .tagline {
-      color: var(--gold);
-      opacity: 0.6;
-      margin-top: 0.25rem;
-      font-size: 0.8rem;
-      letter-spacing: 1px;
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-      .hero h1 { font-size: 2.5rem; }
-      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
-      nav ul { display: none; }
-    }
-  </style>
+    :root{--black:#020302;--void:#050705;--panel:#070a08;--panel2:#0b100c;--gold:#d7a72f;--gold2:#ffd86b;--green:#41ff9f;--soft:#c9d3c5;--muted:#788374;--red:#ff5c7a;--line:rgba(215,167,47,.25);--gline:rgba(65,255,159,.25);--gdim:rgba(65,255,159,.10);--ydim:rgba(215,167,47,.08);--text:#f5f2df;--shadow:0 0 34px rgba(215,167,47,.13),0 0 46px rgba(65,255,159,.055),inset 0 0 28px rgba(255,255,255,.018)}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--black);color:var(--text);font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;overflow-x:hidden;background:radial-gradient(circle at 10% 0%,rgba(65,255,159,.075),transparent 28%),radial-gradient(circle at 90% 10%,rgba(215,167,47,.10),transparent 26%),linear-gradient(180deg,#020302,#050705 58%,#020302)}body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.18;background-image:linear-gradient(rgba(65,255,159,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(215,167,47,.038) 1px,transparent 1px);background-size:38px 38px;mask-image:radial-gradient(circle at center,#000,transparent 84%)}body:after{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(transparent 0 50%,rgba(65,255,159,.025) 51% 100%);background-size:100% 5px;opacity:.22}.app{position:relative;z-index:1;width:min(1480px,calc(100% - 32px));margin:0 auto;padding:18px 0 42px}.gold{color:var(--gold2)}.green{color:var(--green)}.muted{color:var(--muted)}.small{font-size:.79rem}a{color:inherit;text-decoration:none}button{font:inherit;color:inherit}.topbar{position:sticky;top:0;z-index:30;margin-bottom:18px;border:1px solid var(--line);border-radius:20px;background:rgba(2,3,2,.88);backdrop-filter:blur(18px);box-shadow:var(--shadow);overflow:hidden}.topbar:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(215,167,47,.12),transparent 30%,rgba(65,255,159,.07));pointer-events:none}.topbar-inner{position:relative;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px}.brand{display:flex;align-items:center;gap:14px}.brand img{width:156px;max-height:42px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(215,167,47,.30))}.divider{width:1px;height:40px;background:linear-gradient(transparent,var(--line),transparent)}.op-label{font-family:Orbitron,sans-serif;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;color:var(--gold2)}.version{display:inline-flex;margin-left:8px;border:1px solid var(--gline);border-radius:999px;padding:2px 7px;color:var(--green);background:var(--gdim);font-size:.62rem}.title{font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:clamp(1.18rem,2.7vw,2.55rem);line-height:1;color:var(--text);text-shadow:0 0 24px rgba(215,167,47,.18)}.telemetry{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}.pill,.button,.sig-btn{border:1px solid var(--line);background:rgba(215,167,47,.055);color:var(--soft);border-radius:999px;padding:8px 10px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;font-size:.68rem}.pill.green,.button{color:var(--green);border-color:var(--gline);background:var(--gdim);box-shadow:0 0 17px rgba(65,255,159,.10)}.button,.sig-btn,.nav-btn{cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px}.sig-btn{color:#021006;background:linear-gradient(135deg,var(--green),#1b9d62);border:0}.nav-btn{border:1px solid var(--gline);background:linear-gradient(135deg,rgba(65,255,159,.16),rgba(215,167,47,.11));color:var(--green);box-shadow:0 0 17px rgba(65,255,159,.10)}.led{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green),0 0 20px rgba(65,255,159,.55);margin-right:7px;animation:pulse 1.7s infinite}.hero{border:1px solid var(--line);border-radius:22px;padding:22px;background:linear-gradient(135deg,rgba(215,167,47,.075),rgba(65,255,159,.035),rgba(3,5,3,.94));box-shadow:var(--shadow);margin-bottom:18px}.hero h1{font-family:Orbitron,sans-serif;letter-spacing:.10em;text-transform:uppercase;font-size:clamp(2rem,6vw,5.2rem);line-height:.92;margin:10px 0 12px}.hero p{max-width:980px;color:var(--soft);line-height:1.7;margin:0}.section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:24px 0 14px}.section-head h2{margin:0;font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.16em;font-size:1rem;color:var(--gold2)}.grid{display:grid;gap:14px}.grid-4{grid-template-columns:repeat(4,1fr)}.grid-2{grid-template-columns:minmax(0,1.15fr) minmax(380px,.85fr)}.card,.panel,.agent-card,.modal-panel{border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(10,15,11,.94),rgba(3,5,3,.94));box-shadow:var(--shadow);position:relative;overflow:hidden}.card:before,.panel:before,.agent-card:before,.modal-panel:before{content:"";position:absolute;inset:0;background:linear-gradient(120deg,transparent,rgba(215,167,47,.055),transparent);pointer-events:none}.card>*,.panel>*,.agent-card>*,.modal-panel>*{position:relative}.card{padding:16px;display:block;text-align:left;width:100%;cursor:pointer}.card:hover{border-color:var(--gline);box-shadow:0 0 30px rgba(65,255,159,.10),var(--shadow)}.metric-label{text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-size:.65rem}.metric-value{font-family:Orbitron,sans-serif;color:var(--gold2);font-size:2.15rem;line-height:1;margin:9px 0}.metric-note{color:var(--soft);font-size:.76rem;line-height:1.45}.drill-hint{margin-top:13px;color:var(--green);text-transform:uppercase;letter-spacing:.1em;font-weight:800;font-size:.7rem}.panel{padding:18px}.agent-card{padding:16px;min-height:228px}.agent-top{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:start}.avatar{width:46px;height:46px;border-radius:14px;border:1px solid var(--gline);display:grid;place-items:center;color:var(--green);font-family:Orbitron,sans-serif;font-weight:900;background:radial-gradient(circle,rgba(65,255,159,.17),rgba(215,167,47,.06));box-shadow:0 0 22px rgba(65,255,159,.12)}.agent-name{font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.11em;color:#fff4bd;font-size:.88rem;font-weight:900}.agent-sub{margin-top:5px;color:var(--soft);font-size:.78rem;line-height:1.45}.waveform{height:42px;display:flex;align-items:center;gap:4px;margin:16px 0 13px;overflow:hidden;border-top:1px solid rgba(65,255,159,.10);border-bottom:1px solid rgba(215,167,47,.10)}.waveform span{width:4px;height:10px;border-radius:999px;background:linear-gradient(180deg,var(--green),var(--gold2));box-shadow:0 0 11px rgba(65,255,159,.28);animation:wave 1.12s ease-in-out infinite;opacity:.84}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.kpi{border:1px solid rgba(215,167,47,.16);border-radius:14px;padding:10px;background:rgba(215,167,47,.035)}.kpi b{display:block;font-family:Orbitron,sans-serif;color:var(--gold2);font-size:1.18rem}.kpi span{display:block;margin-top:4px;color:var(--muted);text-transform:uppercase;font-size:.61rem;letter-spacing:.08em}.kpi em{display:block;margin-top:5px;color:var(--green);font-style:normal;font-size:.65rem}.agent-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}.state{color:var(--green)}.state.idle{color:var(--muted)}.progress{height:8px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.06);overflow:hidden}.bar{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--gold2),var(--green));box-shadow:0 0 15px rgba(65,255,159,.25)}.badge{display:inline-flex;align-items:center;border:1px solid var(--line);background:rgba(215,167,47,.065);color:var(--gold2);border-radius:999px;padding:6px 9px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;font-size:.67rem}.badge.green{color:var(--green);border-color:var(--gline);background:var(--gdim)}.badge.red{color:var(--red);border-color:rgba(255,92,122,.25);background:rgba(255,92,122,.08)}table{width:100%;border-collapse:collapse}th{color:var(--gold2);font-size:.67rem;text-transform:uppercase;letter-spacing:.13em;text-align:left;padding:11px 9px;border-bottom:1px solid rgba(215,167,47,.22)}td{padding:12px 9px;border-bottom:1px solid rgba(255,255,255,.06);color:#eef4e8;vertical-align:top;font-size:.82rem}tr:hover td{background:rgba(65,255,159,.025)}.table-wrap{overflow:auto}.event{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07)}.event strong{color:#fff4bd}.event p{margin:6px 0 0;color:var(--soft);line-height:1.5}.notice,.empty-state{margin:14px 0;padding:12px 14px;border-radius:14px;border:1px solid var(--gline);background:rgba(65,255,159,.065);color:#d5ffe9}.notice.err{border-color:rgba(255,92,122,.28);background:rgba(255,92,122,.08);color:#ffd7de}.modal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.72);backdrop-filter:blur(12px);display:grid;place-items:center;padding:24px}.modal.hidden{display:none}.modal-panel{width:min(1180px,calc(100vw - 32px));max-height:88vh;overflow:auto;padding:18px}.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:12px;border-bottom:1px solid rgba(215,167,47,.18)}.modal-head h2{font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.12em;margin:0;color:var(--gold2)}.icon-button{border:1px solid var(--line);background:rgba(215,167,47,.06);border-radius:12px;color:var(--gold2);font-size:1.4rem;line-height:1;padding:8px 12px;cursor:pointer}.drill-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}.drill-stat{border:1px solid rgba(215,167,47,.18);border-radius:14px;padding:12px;background:rgba(215,167,47,.045)}.drill-stat strong{display:block;font-family:Orbitron,sans-serif;color:var(--gold2);font-size:1.5rem}.intel-tabs{display:flex;gap:8px;flex-wrap:wrap}.intel-tab{border:1px solid var(--line);background:rgba(215,167,47,.055);color:var(--soft);border-radius:999px;padding:8px 11px;text-transform:uppercase;letter-spacing:.1em;font-weight:900;font-size:.68rem;cursor:pointer}.intel-tab.active{color:var(--green);border-color:var(--gline);background:var(--gdim)}.intel-pane.hidden{display:none}.intel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-top:14px}.intel-card{border:1px solid rgba(215,167,47,.18);border-radius:16px;padding:14px;background:rgba(255,255,255,.025)}.intel-card h3{margin:0 0 8px;font-family:Orbitron,sans-serif;color:var(--gold2);letter-spacing:.08em;text-transform:uppercase;font-size:.82rem}.signal-chip{display:inline-flex;margin:4px 6px 0 0;border:1px solid var(--gline);border-radius:999px;padding:5px 8px;color:var(--green);background:var(--gdim);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em}.signal-source{margin-top:8px;color:#fff4c4;line-height:1.45}.signal-list{margin:8px 0 0;padding-left:18px;color:var(--soft);line-height:1.55}.stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.stage-card,.reply-card{border:1px solid rgba(215,167,47,.18);border-radius:16px;padding:14px;background:rgba(255,255,255,.025)}.stage-card h3{margin:0 0 8px;font-family:Orbitron,sans-serif;color:var(--gold2);letter-spacing:.08em;text-transform:uppercase;font-size:.82rem}.person-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid rgba(255,255,255,.07)}blockquote{margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--green);background:rgba(65,255,159,.055);color:#e4ffee}.workspace-tabs{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.workspace-tab{border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,rgba(215,167,47,.06),rgba(3,5,3,.86));box-shadow:var(--shadow);color:var(--soft);padding:14px 16px;cursor:pointer;text-align:left;transition:border-color .18s ease,transform .18s ease,background .18s ease}.workspace-tab:hover{border-color:var(--gline);transform:translateY(-1px);background:linear-gradient(180deg,rgba(65,255,159,.09),rgba(3,5,3,.92))}.workspace-tab.active{border-color:var(--gline);background:linear-gradient(135deg,rgba(65,255,159,.17),rgba(215,167,47,.11));box-shadow:0 0 0 2px rgba(65,255,159,.07),var(--shadow)}.workspace-tab strong{display:block;font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.12em;color:var(--gold2);font-size:.82rem}.workspace-tab.active strong{color:var(--green)}.workspace-tab span{display:block;margin-top:6px;color:var(--muted);font-size:.7rem;line-height:1.45}.tab-panel{display:none}.tab-panel.active{display:block}.queue-row{cursor:pointer}.queue-row:hover td{background:rgba(65,255,159,.055)}.queue-open-hint{display:inline-flex;margin-top:6px;color:var(--green);text-transform:uppercase;letter-spacing:.08em;font-size:.65rem;font-weight:900}.footer-note{text-align:center;color:var(--muted);margin-top:24px;text-transform:uppercase;letter-spacing:.11em;font-size:.72rem}@keyframes pulse{0%,100%{transform:scale(1);opacity:.82}50%{transform:scale(1.45);opacity:1}}@keyframes wave{0%,100%{height:8px;opacity:.42}50%{height:34px;opacity:1}}@media(max-width:1100px){.grid-4,.grid-2{grid-template-columns:1fr}.topbar-inner{align-items:flex-start;flex-direction:column}.telemetry{justify-content:flex-start}table{min-width:760px}}@media(max-width:720px){.brand{align-items:flex-start;flex-direction:column}.divider{display:none}.kpis,.drill-summary{grid-template-columns:1fr}}
+.sequence-editor-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.editor-nav{border-color:var(--gline);background:linear-gradient(135deg,rgba(65,255,159,.09),rgba(215,167,47,.08));color:var(--green)}#sequence-editor{scroll-margin-top:96px}.sequence-editor-shell{display:grid;gap:14px;margin-top:16px}.editor-status{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:5px 8px;text-transform:uppercase;letter-spacing:.08em;font-weight:900;font-size:.64rem;white-space:nowrap}.editor-status.queued{color:var(--gold2);border-color:rgba(215,167,47,.35);background:rgba(215,167,47,.07)}.editor-status.sent{color:var(--green);border-color:var(--gline);background:var(--gdim)}.editor-status.delivered{color:#9fffea;border-color:rgba(159,255,234,.32);background:rgba(159,255,234,.07)}.editor-status.opened{color:#b7c7ff;border-color:rgba(143,164,255,.32);background:rgba(143,164,255,.075)}.editor-status.replied{color:#69ffa7;border-color:rgba(105,255,167,.35);background:rgba(105,255,167,.08)}.editor-status.locked,.editor-status.missing{color:#b6b0a1;border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.045)}.compact-sequence-shell{display:grid;gap:14px}.step-tabs-card{border:1px solid rgba(215,167,47,.18);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.17));padding:13px;box-shadow:0 18px 48px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.035)}.step-tabs-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}.step-tabs-head h3,.people-list-card h3,.email-editor-card h3,.logic-card h4,.email-preview-card h4{margin:0;color:var(--gold2);font-family:Orbitron,sans-serif;text-transform:uppercase;letter-spacing:.11em;font-size:.78rem}.sequence-step-tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;padding:2px 2px 7px}.sequence-step-tab{flex:0 0 auto;border:1px solid rgba(215,167,47,.23);border-radius:14px;background:rgba(215,167,47,.045);color:#fff2bc;padding:10px 12px;min-width:92px;cursor:pointer;text-align:left;transition:border-color .18s ease,background .18s ease,transform .18s ease,box-shadow .18s ease}.sequence-step-tab:hover{border-color:var(--gline);background:rgba(65,255,159,.06);transform:translateY(-1px);box-shadow:0 0 0 3px rgba(65,255,159,.06)}.sequence-step-tab.active{border-color:var(--gline);background:linear-gradient(135deg,rgba(65,255,159,.16),rgba(215,167,47,.11));box-shadow:0 0 0 2px rgba(65,255,159,.07),0 0 26px rgba(65,255,159,.09)}.sequence-step-tab strong{display:block;font-family:Orbitron,sans-serif;color:var(--green);font-size:.84rem;letter-spacing:.05em}.sequence-step-tab span{display:block;margin-top:4px;color:var(--muted);font-size:.66rem;text-transform:uppercase;letter-spacing:.08em}.sequence-workspace{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(0,1.28fr);gap:14px;align-items:start}.people-list-card,.email-editor-card,.logic-card,.email-preview-card{border:1px solid rgba(215,167,47,.18);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.18));box-shadow:0 18px 48px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.035);overflow:hidden}.people-list-head,.email-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 15px;border-bottom:1px solid rgba(215,167,47,.14);background:linear-gradient(90deg,rgba(215,167,47,.07),rgba(65,255,159,.028),transparent)}.people-list{display:grid;gap:8px;max-height:590px;overflow:auto;padding:12px}.person-pick{width:100%;border:1px solid rgba(255,255,255,.085);border-radius:15px;background:rgba(0,0,0,.20);padding:11px;color:#f0fff5;cursor:pointer;text-align:left;display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center;transition:border-color .18s ease,background .18s ease,transform .18s ease}.person-pick:hover{border-color:rgba(215,167,47,.42);background:rgba(215,167,47,.06);transform:translateY(-1px)}.person-pick.active{border-color:var(--gline);background:rgba(65,255,159,.08);box-shadow:0 0 0 2px rgba(65,255,159,.055)}.person-name{display:block;color:#fff;font-weight:900;font-size:.84rem}.person-company{display:block;margin-top:4px;color:var(--muted);font-size:.72rem;line-height:1.35}.person-meta{display:block;margin-top:5px;color:var(--soft);font-size:.66rem;line-height:1.35}.email-editor-content{display:grid;gap:13px;padding:14px}.selected-contact-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border:1px solid rgba(65,255,159,.15);border-radius:16px;background:rgba(65,255,159,.045);padding:11px 12px}.selected-contact-strip strong{color:#fff4bd}.email-field{display:grid;gap:7px}.email-field label{color:var(--gold2);font-size:.64rem;text-transform:uppercase;letter-spacing:.14em;font-weight:900}.email-field input,.email-field textarea{width:100%;box-sizing:border-box;border:1px solid rgba(215,167,47,.22);border-radius:13px;background:rgba(0,0,0,.34);color:#f3fff7;padding:12px 13px;font:inherit;font-size:.82rem;line-height:1.5;outline:none}.email-field textarea{min-height:260px;resize:vertical}.email-field input:focus,.email-field textarea:focus{border-color:var(--gline);box-shadow:0 0 0 3px rgba(65,255,159,.09)}.email-field input[readonly],.email-field textarea[readonly],.email-field input:disabled,.email-field textarea:disabled{color:#bfc8bc;border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.035);cursor:not-allowed}.email-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.save-email-btn,.edit-focus-btn{border:1px solid var(--gline);background:linear-gradient(135deg,rgba(65,255,159,.20),rgba(215,167,47,.10));color:var(--green);border-radius:999px;padding:10px 15px;text-transform:uppercase;letter-spacing:.11em;font-weight:900;font-size:.68rem;cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}.save-email-btn:hover,.edit-focus-btn:hover{transform:translateY(-1px);box-shadow:0 0 0 3px rgba(65,255,159,.08);border-color:rgba(65,255,159,.7)}.save-email-btn.primary{color:#06120b;background:linear-gradient(135deg,var(--green),var(--gold2));border-color:rgba(255,255,255,.22)}.save-email-btn:disabled,.edit-focus-btn:disabled{opacity:.44;cursor:not-allowed;border-color:rgba(255,255,255,.12);color:var(--muted);background:rgba(255,255,255,.04);box-shadow:none;transform:none}.lock-note{color:var(--muted);font-size:.72rem;line-height:1.45}.logic-card,.email-preview-card{padding:13px}.logic-grid{display:grid;gap:9px;margin-top:10px}.logic-row{display:grid;grid-template-columns:112px 1fr;gap:10px;align-items:start;color:#eaffef;font-size:.76rem;line-height:1.45}.logic-row strong{color:var(--green);text-transform:uppercase;letter-spacing:.1em;font-size:.62rem}.token-strip{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.token-chip{border:1px solid rgba(215,167,47,.3);border-radius:999px;background:rgba(215,167,47,.08);color:var(--gold2);padding:5px 8px;font-weight:900;font-size:.66rem}.email-preview-card{background:linear-gradient(180deg,rgba(4,10,8,.82),rgba(0,0,0,.36));border-color:rgba(65,255,159,.17)}.preview-subject{margin-top:10px;padding:11px 12px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.24);color:#fff7d6;line-height:1.45}.preview-body{margin-top:9px;padding:13px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.20);color:#eaffef;font-size:.8rem;line-height:1.62}.preview-body p{margin:0 0 11px}.preview-body p:last-child{margin-bottom:0}.personalization-token{display:inline;color:#050807;background:linear-gradient(135deg,var(--gold2),#ffe8a0);border-radius:6px;padding:0 4px;font-weight:900;box-shadow:0 0 0 1px rgba(215,167,47,.2)}.editor-message{margin-top:12px}.editor-message .notice{margin:0}.empty-step-note{padding:18px;color:var(--muted);border:1px dashed rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.025)}@media(max-width:980px){.sequence-workspace{grid-template-columns:1fr}.people-list{max-height:360px}}@media(max-width:720px){.step-tabs-head,.people-list-head,.email-editor-head,.email-actions,.selected-contact-strip{flex-direction:column;align-items:flex-start}.logic-row{grid-template-columns:1fr}.sequence-editor-toolbar{align-items:flex-start}.person-pick{grid-template-columns:1fr}.sequence-step-tab{min-width:82px}}</style>
+
+<style id="agent-original-logo-style">
+  .agent-original-logo-link,
+  .site-logo {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    text-decoration: none !important;
+    min-width: max-content !important;
+  }
+  .agent-original-logo-img,
+  .site-logo img,
+  img[alt="A-Gent"] {
+    display: block !important;
+    width: auto !important;
+    height: clamp(34px, 4.2vw, 49px) !important;
+    max-width: 238px !important;
+    object-fit: contain !important;
+    filter: drop-shadow(0 0 7px rgba(212, 175, 55, 0.28)) !important;
+  }
+  @media (max-width: 640px) {
+    .agent-original-logo-img,
+    .site-logo img,
+    img[alt="A-Gent"] { height: 36px !important; max-width: 192px !important; }
+  }
+</style>
 </head>
-<body>
+<body><div id="app" class="app"></div><script>
+const SUPABASE_URL='https://byospmliiokgrdjjxsde.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3NwbWxpaW9rZ3Jkamp4c2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjQ0NzUsImV4cCI6MjA5NTQwMDQ3NX0.KvzaEuEH9nRlBBSUOyg7kTKHvLFfR6CvmZbjVHZQ83I';
+const CRM_URL='https://a-gent-crm.netlify.app';
+const headers={apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,'Content-Type':'application/json',Accept:'application/json'};
+const $=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); const fmt=v=>v?new Date(v).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'; const pct=(a,b)=>b?Math.round(a/b*100):0; const uniq=list=>new Set(list.filter(Boolean)).size;
+async function api(path,opt={}){const r=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{...opt,headers:{...headers,...(opt.headers||{})}}); if(!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.status===204?null:await r.json();}
+let state={contacts:[],sequences:[],steps:[],activity:[],metrics:[],error:null};
+function clock(){const tick=()=>{const c=$('clock'); if(c)c.textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});}; tick(); setInterval(tick,1000);} function timeAgo(v){if(!v)return '—';const d=Math.max(0,Date.now()-new Date(v).getTime()),s=Math.floor(d/1000); if(s<60)return `${s}s ago`;const m=Math.floor(s/60); if(m<60)return `${m}m ago`;const h=Math.floor(m/60); if(h<48)return `${h}h ago`;return `${Math.floor(h/24)}d ago`;} function latest(vals){const t=vals.filter(Boolean).map(v=>new Date(v).getTime()).filter(Number.isFinite);return t.length?new Date(Math.max(...t)).toISOString():null;}
+function statusBadge(st){const s=String(st||'').toLowerCase();const cls=['active','sent','delivered','opened','replied','queued'].includes(s)?'green':(s==='alert'?'red':''); return `<span class="badge ${cls}">${esc(st||'unknown')}</span>`;} function waveform(n=22){return `<div class="waveform">${Array.from({length:n},(_,i)=>`<span style="animation-delay:${(i*.045).toFixed(2)}s;animation-duration:${(.86+(i%6)*.08).toFixed(2)}s"></span>`).join('')}</div>`;}
+function counts(){const by=state.steps.reduce((a,s)=>{const k=String(s.status||'unknown').toLowerCase();a[k]=(a[k]||0)+1;return a;},{});const total=state.steps.length;return{total,queued:by.queued||0,sent:by.sent||0,delivered:by.delivered||0,opened:by.opened||0,replied:by.replied||0,nonQueued:total-(by.queued||0),by};}
+function shell(){ $('app').innerHTML=`<header class="topbar"><div class="topbar-inner"><div class="brand"><img src="assets/a-gent-wordmark.png" alt="A-Gent"><div class="divider"></div><div><div class="op-label">OPERATIONAL CORE <span class="version">SDR LIVE</span></div><div class="title">A-Gent AI SDR</div></div></div><div class="telemetry"><div class="pill green"><span class="led"></span>SAT-LINK: CONNECTED</div><div class="pill">SYS_TIME: <span id="clock">--:--:--</span></div><div class="pill green">DEF_GRID: ACTIVE</div><div id="sysState" class="pill green">SYS_STATE: NOMINAL</div><a class="nav-btn" href="https://magenta-kleicha-c9a1e6.netlify.app" target="_blank" rel="noopener">Command Center ↗</a><a class="nav-btn editor-nav" href="index.html#sequence-editor" onclick="switchTab('editor')">Email Editor</a><button class="sig-btn" onclick="load()">SIG_ALERT</button></div></div></header><div id="message"></div><nav class="workspace-tabs" aria-label="AI SDR workspace tabs"><button type="button" id="tabBtnEditor" class="workspace-tab active" onclick="switchTab('editor')"><strong>Email Sequence Editor</strong><span>Compact 12-step editor with people list and individual queued email editing.</span></button><button type="button" id="tabBtnPipeline" class="workspace-tab" onclick="switchTab('pipeline')"><strong>SDR Pipeline Actions</strong><span>Metrics, AI fleet deployment, and real activity log from Supabase.</span></button><button type="button" id="tabBtnQueue" class="workspace-tab" onclick="switchTab('queue')"><strong>Email Setup Queue</strong><span>Queued and scheduled email-step ledger; click a row to edit it.</span></button></nav><section id="tabPanelEditor" class="tab-panel active"><section id="sequence-editor" class="panel"><div class="section-head" style="margin-top:0"><div><h2>Email Sequence Editor</h2><p class="muted small" style="margin:8px 0 0">Compact step navigation for the 12-email cadence: choose Step 1-12, select a queued contact, then edit the individual subject and body. Sent or engaged emails remain visible but read-only.</p></div><div class="sequence-editor-toolbar"><span id="sequenceEditorBadge" class="badge green">Loading</span><button type="button" class="sig-btn" onclick="load()">Reload</button></div></div><div id="sequenceEditorMessage" class="editor-message"></div><div id="sequenceEditor" class="sequence-editor-shell"></div></section></section><section id="tabPanelPipeline" class="tab-panel"><div class="section-head"><h2>SDR Pipeline Actions</h2><div><span id="activeBadge" class="badge green">Loading</span> <button class="button" onclick="load()">Live Telemetry</button></div></div><section class="grid grid-4"><a class="card" href="https://a-gent-ai-sdr.netlify.app/${CRM_URL}" target="_blank" rel="noopener"><div class="metric-label">Prospects</div><div id="contactsMetric" class="metric-value">0</div><div class="metric-note">Live contacts rows in Supabase.</div><div class="drill-hint">Launch CRM ↗</div></a><button type="button" class="card" onclick="openDrilldown('sent')"><div class="metric-label">Sent</div><div id="sentMetric" class="metric-value">0</div><div class="metric-note">Supabase steps not currently queued.</div><div class="drill-hint">View sent ledger</div></button><button type="button" class="card" onclick="openDrilldown('queued')"><div class="metric-label">Queued</div><div id="queuedMetric" class="metric-value">0</div><div class="metric-note">Upcoming email_steps by sequence stage.</div><div class="drill-hint">Inspect stages</div></button><button type="button" class="card" onclick="openDrilldown('replies')"><div class="metric-label">Replies</div><div id="replyMetric" class="metric-value">0</div><div class="metric-note">Only email_steps marked replied in Supabase.</div><div class="drill-hint">View reply rows</div></button></section><section class="grid grid-2" style="margin-top:18px"><div class="panel"><div class="section-head" style="margin-top:0"><h2>AI Fleet Deployment</h2><span id="fleetBadge" class="badge green">Loading</span></div><div id="sequenceCards" class="grid"></div></div><div class="panel"><div class="section-head" style="margin-top:0"><h2>Real Activity Log</h2><span id="activityBadge" class="badge">0 Rows</span></div><div id="activity"></div></div></section></section><section id="tabPanelQueue" class="tab-panel"><section class="panel"><div class="section-head" style="margin-top:0"><div><h2>Email Step Queue</h2><p class="muted small" style="margin:8px 0 0">Click any scheduled row to open that contact and step inside the Email Sequence Editor tab.</p></div><span id="statusText" class="badge green">Loading</span></div><div class="table-wrap"><table><thead><tr><th>Contact</th><th>Step</th><th>Week</th><th>Subject</th><th>Status</th><th>Schedule</th></tr></thead><tbody id="stepsTable"></tbody></table></div></section></section><div id="drilldown" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="drillTitle"><div class="modal-panel"><div class="modal-head"><div><h2 id="drillTitle">Pipeline Detail</h2><p id="drillSubtitle" class="muted small" style="margin:8px 0 0"></p></div><button class="icon-button" onclick="closeDrilldown()" aria-label="Close detail panel">×</button></div><div id="drillBody"></div></div></div><div class="footer-note">All displayed values are computed from live Supabase rows only.</div>`; clock();}
+function model(){const contactsById=Object.fromEntries(state.contacts.map(c=>[c.id,c]));const sequencesById=Object.fromEntries(state.sequences.map(s=>[s.id,s]));const stepsBySeq=state.steps.reduce((a,s)=>((a[s.sequence_id]??=[]).push(s),a),{});Object.values(stepsBySeq).forEach(l=>l.sort((a,b)=>(a.step_number||0)-(b.step_number||0)));const rowForStep=s=>{const seq=sequencesById[s.sequence_id]||{};const contact=contactsById[seq.contact_id]||{};return{step:s,seq,contact};};return{contactsById,sequencesById,stepsBySeq,rowForStep};}
+async function load(){try{const [contacts,sequences,steps,activity,metrics]=await Promise.all([api('contacts?select=*&order=created_at.asc'),api('sequences?select=*&order=created_at.asc'),api('email_steps?select=*&order=scheduled_at.asc'),api('activity_log?select=*&order=timestamp.desc&limit=40'),api('metrics?select=*&order=metric_name.asc')]);state={contacts,sequences,steps,activity,metrics,error:null};render();}catch(e){state.error=e;const m=$('message');if(m)m.innerHTML=`<div class="notice err">AI SDR cannot read live Supabase data. ${esc(e.message)}</div>`;const sys=$('sysState');if(sys){sys.textContent='SYS_STATE: ALERT';sys.className='pill';}}}
+function switchTab(tab){const key=['editor','pipeline','queue'].includes(tab)?tab:'editor';['editor','pipeline','queue'].forEach(name=>{const panel=$('tabPanel'+name.charAt(0).toUpperCase()+name.slice(1));const btn=$('tabBtn'+name.charAt(0).toUpperCase()+name.slice(1));if(panel)panel.classList.toggle('active',name===key);if(btn)btn.classList.toggle('active',name===key);});if(key==='editor'){setTimeout(()=>{const el=$('sequence-editor');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},20);}}function openQueueEmail(stepId){const step=state.steps.find(s=>String(s.id)===String(stepId));if(!step){showSequenceEditorMessage('Could not find that queued email step in the current Supabase state.','err');switchTab('editor');return;}window.sequenceEditorActiveStep=Number(step.step_number)||1;window.sequenceEditorSelectedStepId=String(step.id);switchTab('editor');renderSequenceEditor();setTimeout(()=>{const el=$(stepFieldId(step.id,'subject'))||$('sequence-editor');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});if(el&&el.focus&&!el.readOnly&&!el.disabled)el.focus();},80);}function agentCard(seq){const {contactsById,stepsBySeq}=model();const c=contactsById[seq.contact_id]||{};const steps=stepsBySeq[seq.id]||[];const done=steps.filter(s=>String(s.status||'').toLowerCase()!=='queued').length;const next=steps.find(s=>String(s.status||'').toLowerCase()==='queued');const last=latest(steps.map(s=>s.sent_at||s.scheduled_at||s.created_at));return `<article class="agent-card"><div class="agent-top"><div class="avatar">SDR</div><div><div class="agent-name">${esc((c.name||'Unknown').toUpperCase())}</div><div class="agent-sub">${esc(c.company_name||'—')} · ${esc(c.email||'')}</div></div><span class="led"></span></div>${waveform(22)}<div class="kpis"><div class="kpi"><b>${done}</b><span>Sent</span><em>${pct(done,steps.length)}% complete</em></div><div class="kpi"><b>${steps.length-done}</b><span>Queued</span><em>${pct(steps.length-done,steps.length)}% remaining</em></div><div class="kpi"><b>${steps.filter(s=>String(s.status||'').toLowerCase()==='replied').length}</b><span>Replies</span><em>${pct(steps.filter(s=>String(s.status||'').toLowerCase()==='replied').length,Math.max(done,1))}% reply rate</em></div></div><div class="progress" style="margin-top:13px"><div class="bar" style="width:${pct(done,steps.length)}%"></div></div><div class="metric-note" style="margin-top:10px">Next queued: ${next?`Step ${esc(next.step_number)} · ${esc(next.subject)}`:'No queued step in Supabase'}</div><div class="agent-foot"><span>LAST_ACT: ${esc(timeAgo(last))}</span><span class="state">STATE: ${esc(seq.status||'ACTIVE')}</span></div></article>`;}
+function render(){const c=counts();$('contactsMetric').textContent=state.contacts.length;$('sentMetric').textContent=c.nonQueued;$('queuedMetric').textContent=c.queued;$('replyMetric').textContent=c.replied;$('activeBadge').textContent=`${state.sequences.length} SEQUENCES · ${state.steps.length} STEPS`;$('fleetBadge').textContent=`ACTIVE ${state.sequences.filter(s=>String(s.status||'').toLowerCase()==='active').length} · IDLE ${state.sequences.filter(s=>String(s.status||'').toLowerCase()!=='active').length}`;$('activityBadge').textContent=`${state.activity.length} Rows`;$('statusText').textContent=`Queued ${c.queued} · Sent ${c.sent} · Delivered ${c.delivered} · Opened ${c.opened} · Replied ${c.replied}`;$('sysState').textContent='SYS_STATE: NOMINAL';$('sysState').className='pill green';$('message').innerHTML='';const {rowForStep}=model();$('sequenceCards').innerHTML=state.sequences.map(agentCard).join('')||'<p class="muted">No Supabase sequence rows found.</p>';const queuedEmailSteps=state.steps.filter(s=>String(s.status||'').toLowerCase()==='queued').sort((a,b)=>String(a.scheduled_at||'').localeCompare(String(b.scheduled_at||''))||Number(a.step_number||0)-Number(b.step_number||0)).slice(0,90);$('stepsTable').innerHTML=queuedEmailSteps.map(s=>{const {contact}=rowForStep(s);return `<tr class="queue-row" onclick="openQueueEmail('${esc(s.id)}')"><td><strong>${esc(contact.name||'Unknown')}</strong><br><span class="muted small">${esc(contact.company_name||'')}</span><span class="queue-open-hint">Open in editor</span></td><td>#${esc(s.step_number)}</td><td>${esc(s.week)}</td><td>${esc(s.subject)}</td><td>${statusBadge(s.status)}</td><td>${fmt(s.scheduled_at||s.sent_at)}</td></tr>`;}).join('')||'<tr><td colspan="6" class="muted">No queued scheduled email_steps rows found.</td></tr>';$('activity').innerHTML=state.activity.map(a=>`<div class="event"><strong>${esc(a.agent_name)} · ${esc(a.action)}</strong><div class="muted small">${fmt(a.timestamp)}</div><p>${esc(a.details||'')}</p></div>`).join('')||'<p class="muted">No Supabase activity_log rows found.</p>';renderSequenceEditor();}
+function closeDrilldown(){const d=$('drilldown');if(d)d.classList.add('hidden');} 
 
-<nav>
-  <div class="logo">A-<span>Gent</span></div>
-  <ul>
-    <li><a href="#features">Services</a></li>
-    <li><a href="#how">How It Works</a></li>
-    <li><a href="#pricing">Membership</a></li>
-    <li><a href="/dashboard">Dashboard</a></li>
-  </ul>
-  <a href="#pricing" class="btn btn-primary">Become a Member</a>
-</nav>
+function stepFieldId(stepId,field){return `${field}-${String(stepId).replace(/[^a-zA-Z0-9_-]/g,'_')}`;}
+window.sequenceEditorActiveStep=window.sequenceEditorActiveStep||1;window.sequenceEditorSelectedStepId=window.sequenceEditorSelectedStepId||null;
+function isEmailStepLocked(step){return ['sent','delivered','opened','replied'].includes(String(step&&step.status||'').toLowerCase());}
+function sequenceStatusBadge(status){const st=String(status||'queued').toLowerCase();const allowed=['queued','sent','delivered','opened','replied','missing'];const cls=allowed.includes(st)?st:'locked';return `<span class="editor-status ${cls}">${esc(st||'unknown')}</span>`;}
+function firstName(contact){return String(contact&&contact.name||'').trim().split(/\s+/)[0]||'first_name';}
+function signalTitle(step){const raw=String(step&&step.signal_used||'');if(!raw)return 'No signal recorded';const colon=raw.indexOf(':');let v=colon>=0?raw.slice(colon+1).trim():raw;const paren=v.indexOf('(');if(paren>0)v=v.slice(0,paren).trim();return v||raw;}
+function signalType(step){const raw=String(step&&step.signal_used||'');const colon=raw.indexOf(':');return colon>0?raw.slice(0,colon).replace(/_/g,' '):'public signal';}
+function stepContext(){const contactsById={};state.contacts.forEach(c=>contactsById[String(c.id)]=c);const seqsById={};state.sequences.forEach(s=>seqsById[String(s.id)]=s);const rowsByStep={};state.steps.forEach(step=>{const n=Number(step.step_number)||0;(rowsByStep[n]=rowsByStep[n]||[]).push(step);});Object.values(rowsByStep).forEach(rows=>rows.sort((a,b)=>{const ca=contactsById[String((seqsById[String(a.sequence_id)]||{}).contact_id)]||{};const cb=contactsById[String((seqsById[String(b.sequence_id)]||{}).contact_id)]||{};return String(ca.company_name||ca.name||'').localeCompare(String(cb.company_name||cb.name||''))||String(a.scheduled_at||'').localeCompare(String(b.scheduled_at||''));}));return{contactsById,seqsById,rowsByStep};}
+function contactForStep(step,ctx){const seq=ctx.seqsById[String(step&&step.sequence_id||'')]||{};return ctx.contactsById[String(seq.contact_id||'')]||{};}
+function sequenceDayForStep(step){if(!step||!step.scheduled_at)return '';const seqRows=state.steps.filter(s=>String(s.sequence_id)===String(step.sequence_id)&&s.scheduled_at).sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at));const first=seqRows[0];if(!first)return '';const day=Math.max(1,Math.round((new Date(step.scheduled_at)-new Date(first.scheduled_at))/86400000)+1);return `Day ${day}`;}
+function stepTimingLabel(step){if(!step)return 'Timing unavailable';const parts=[];if(step.week)parts.push(`Week ${step.week}`);const day=sequenceDayForStep(step);if(day)parts.push(day);if(step.scheduled_at)parts.push(`Scheduled ${fmt(step.scheduled_at)}`);return parts.join(' · ')||'Timing unavailable';}
+function safeSplitMark(html,term){const safe=esc(term||'').trim();if(!safe||safe.length<2)return html;return html.split(safe).join(`<mark class="personalization-token">${safe}</mark>`);}
+function highlightPersonalization(value,contact,step,withBreaks=true){let html=esc(value||'');html=html.replace(/(\{\{[^}]+\}\})/g,'<mark class="personalization-token">$1</mark>');const terms=[firstName(contact),contact&&contact.company_name,signalTitle(step)].filter(Boolean).sort((a,b)=>String(b).length-String(a).length);terms.forEach(t=>{html=safeSplitMark(html,t);});return withBreaks?html.replace(/\n\n+/g,'</p><p>').replace(/\n/g,'<br>'):html;}
+const FLEET_CTA_TEXT='To deploy A-Gent Fleet click here';const FLEET_CTA_URL='https://a-gent.co';function ensureFleetCtaText(value){const raw=String(value||'').trimEnd();if(!raw)return raw;if(raw.includes(FLEET_CTA_TEXT)||raw.includes(FLEET_CTA_URL))return raw;const cta=`${FLEET_CTA_TEXT}: ${FLEET_CTA_URL}`;if(/(^|\n)Signal source:/i.test(raw))return raw.replace(/\n(?=Signal source:)/i,`\n${cta}\n`);if(/(^|\n)— A-Gent Fleet\b/.test(raw))return raw.replace(/(^|\n)(— A-Gent Fleet\b[^\n]*)/,`$1$2\n${cta}`);if(/(^|\n)A-Gent Fleet\b/.test(raw))return raw.replace(/(^|\n)(A-Gent Fleet\b[^\n]*)/,`$1$2\n${cta}`);return `${raw}\n${cta}`;}function compactPreview(step,contact){if(!step)return '';const subject=highlightPersonalization(step.subject||'',contact,step,false);const body=`<p>${highlightPersonalization(ensureFleetCtaText(step.body||''),contact,step,true)}</p>`;return `<div class="email-preview-card"><h4>Preview with personalization highlights</h4><div class="preview-subject"><strong>Subject:</strong> ${subject}</div><div class="preview-body">${body}</div></div>`;}
+function renderPersonalizationLogic(step,contact){if(!step)return '';return `<div class="logic-card"><h4>Signal & Personalization Logic</h4><div class="logic-grid"><div class="logic-row"><strong>Signal</strong><span>${esc(step.signal_used||'No signal recorded')}</span></div><div class="logic-row"><strong>Relevancy</strong><span>Uses the ${esc(signalType(step))} context, ${esc(contact.company_name||'company')} relevance, and ${esc(firstName(contact))}'s contact-level greeting for this specific email.</span></div></div><div class="token-strip"><span class="token-chip">{{first_name}} → ${esc(firstName(contact))}</span><span class="token-chip">{{company_name}} → ${esc(contact.company_name||'company')}</span><span class="token-chip">{{signal}} → ${esc(signalTitle(step))}</span></div></div>`;}
+function selectSequenceStep(stepNumber){window.sequenceEditorActiveStep=Number(stepNumber)||1;window.sequenceEditorSelectedStepId=null;showSequenceEditorMessage('',null,true);renderSequenceEditor();}
+function selectSequencePerson(stepId){window.sequenceEditorSelectedStepId=String(stepId);showSequenceEditorMessage('',null,true);renderSequenceEditor();setTimeout(()=>{const el=$(stepFieldId(stepId,'subject'));if(el&&!el.readOnly&&!el.disabled){el.focus();}},40);}
+function focusSequenceBody(stepId){const body=$(stepFieldId(stepId,'body'));if(body&&!body.readOnly&&!body.disabled){body.focus();body.scrollIntoView({behavior:'smooth',block:'center'});}}
+function showSequenceEditorMessage(text,type='ok',silent=false){const box=$('sequenceEditorMessage');if(!box)return;if(silent||!text){box.innerHTML='';return;}box.innerHTML=`<div class="notice ${type==='err'?'err':''}">${esc(text)}</div>`;}
+function renderStepTabs(ctx,activeStep){return `<div class="step-tabs-card"><div class="step-tabs-head"><div><h3>Step Tabs</h3><div class="muted small" style="margin-top:6px">Click a step, then choose a person to open that exact email.</div></div><span class="badge green">Step ${activeStep} Active</span></div><div class="sequence-step-tabs" role="tablist" aria-label="Email sequence steps">${Array.from({length:12},(_,i)=>i+1).map(n=>{const rows=ctx.rowsByStep[n]||[];const active=n===activeStep;return `<button type="button" class="sequence-step-tab ${active?'active':''}" role="tab" aria-selected="${active?'true':'false'}" onclick="selectSequenceStep(${n})"><strong>Step ${n}</strong><span>${rows.length} people</span></button>`;}).join('')}</div></div>`;}
+function renderPeopleList(rows,activeStep,selectedId,ctx){return `<aside class="people-list-card"><div class="people-list-head"><div><h3>People in Step ${activeStep}</h3><div class="muted small" style="margin-top:6px">Compact queue list by contact and company.</div></div><span class="badge">${rows.length} Rows</span></div><div class="people-list">${rows.length?rows.map(row=>{const c=contactForStep(row,ctx);const active=String(row.id)===String(selectedId);return `<button type="button" class="person-pick ${active?'active':''}" onclick="selectSequencePerson('${esc(row.id)}')"><span><span class="person-name">${esc(c.name||'Unknown Contact')}</span><span class="person-company">${esc(c.company_name||'No company')}</span><span class="person-meta">${esc(stepTimingLabel(row))}</span></span>${sequenceStatusBadge(row.status)}</button>`;}).join(''):'<div class="empty-step-note">No people are currently assigned to this step in Supabase.</div>'}</div></aside>`;}
+function renderIndividualEmailEditor(step,contact){if(!step)return `<section class="email-editor-card"><div class="email-editor-content"><div class="empty-step-note">Choose a step with people to open an email editor.</div></div></section>`;const locked=isEmailStepLocked(step);const readonly=locked?' readonly disabled':'';const lockCopy=locked?'This email has already been sent or engaged and is read-only.':'Queued email: edit the subject and body, then click Save to update Supabase.';return `<section class="email-editor-card"><div class="email-editor-head"><div><h3>Individual Email Editor</h3><div class="muted small" style="margin-top:6px">Step ${esc(step.step_number)} · ${esc(stepTimingLabel(step))}</div></div>${sequenceStatusBadge(step.status)}</div><div class="email-editor-content"><div class="selected-contact-strip"><div><strong>${esc(contact.name||'Unknown Contact')}</strong><div class="muted small">${esc(contact.company_name||'No company')} · ${esc(contact.email||'No email')}</div></div><button type="button" class="edit-focus-btn" ${locked?'disabled':''} onclick="focusSequenceBody('${esc(step.id)}')">Edit This Email</button></div><div class="email-field"><label for="${stepFieldId(step.id,'subject')}">Subject</label><input id="${stepFieldId(step.id,'subject')}" value="${esc(step.subject||'')}" ${readonly} /></div><div class="email-field"><label for="${stepFieldId(step.id,'body')}">Body</label><textarea id="${stepFieldId(step.id,'body')}" ${readonly}>${esc(ensureFleetCtaText(step.body||''))}</textarea></div>${renderPersonalizationLogic(step,contact)}${compactPreview(step,contact)}<div class="email-actions"><div class="lock-note">${esc(lockCopy)}</div><button type="button" class="save-email-btn primary" data-save-step="${esc(step.id)}" ${locked?'disabled':''} onclick="saveSequenceStep('${esc(step.id)}')">Save Email</button></div></div></section>`;}
+function renderSequenceEditor(){const badge=$('sequenceEditorBadge');const mount=$('sequenceEditor');if(!mount)return;const ctx=stepContext();let activeStep=Number(window.sequenceEditorActiveStep)||1;if(activeStep<1||activeStep>12)activeStep=1;window.sequenceEditorActiveStep=activeStep;const rows=ctx.rowsByStep[activeStep]||[];let selectedId=window.sequenceEditorSelectedStepId;if(!rows.some(r=>String(r.id)===String(selectedId)))selectedId=rows[0]?String(rows[0].id):null;window.sequenceEditorSelectedStepId=selectedId;const selected=rows.find(r=>String(r.id)===String(selectedId));const contact=selected?contactForStep(selected,ctx):{};if(badge)badge.textContent=`${state.steps.length} STEPS · ${rows.length} IN STEP ${activeStep}`;mount.innerHTML=`<div class="compact-sequence-shell">${renderStepTabs(ctx,activeStep)}<div class="sequence-workspace">${renderPeopleList(rows,activeStep,selectedId,ctx)}${renderIndividualEmailEditor(selected,contact)}</div></div>`;}
+async function saveSequenceStep(stepId){const step=state.steps.find(s=>String(s.id)===String(stepId));if(!step){showSequenceEditorMessage('Could not find that email step in the current Supabase state.','err');return;}if(isEmailStepLocked(step)){showSequenceEditorMessage('This email has already been sent or engaged and is read-only.','err');return;}const subjectEl=$(stepFieldId(stepId,'subject'));const bodyEl=$(stepFieldId(stepId,'body'));const subject=(subjectEl&&subjectEl.value||'').trim();const body=ensureFleetCtaText((bodyEl&&bodyEl.value||'').trim());if(!subject||!body){showSequenceEditorMessage('Subject and body are required before saving.','err');return;}const btn=document.querySelector(`[data-save-step="${String(stepId).replace(/"/g,'\\"')}"]`);if(btn){btn.disabled=true;btn.textContent='Saving';}try{const rows=await api(`email_steps?id=eq.${encodeURIComponent(stepId)}`,{method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify({subject,body})});const updated=Array.isArray(rows)&&rows[0]?rows[0]:{...step,subject,body};Object.assign(step,updated);showSequenceEditorMessage(`Saved Step ${step.step_number} email for ${subject}.`);render();}catch(err){showSequenceEditorMessage(`Save failed: ${err.message}`,'err');}finally{const fresh=document.querySelector(`[data-save-step="${String(stepId).replace(/"/g,'\\"')}"]`);if(fresh&&!isEmailStepLocked(step)){fresh.disabled=false;fresh.textContent='Save Email';}}}
+function openDrilldown(kind){const views={queued:renderQueuedDetail,replies:renderRepliesDetail,sent:renderSentDetail};const r=views[kind]?.();if(!r)return;$('drillTitle').textContent=r.title;$('drillSubtitle').textContent=r.subtitle;$('drillBody').innerHTML=r.html;$('drilldown').classList.remove('hidden');}
+function renderQueuedDetail(){const {rowForStep}=model();const queued=state.steps.filter(s=>String(s.status||'').toLowerCase()==='queued').sort((a,b)=>(a.step_number-b.step_number)||String(a.scheduled_at||'').localeCompare(String(b.scheduled_at||'')));const by=queued.reduce((a,s)=>((a[s.step_number]??=[]).push(rowForStep(s)),a),{});const stages=Object.keys(by).sort((a,b)=>Number(a)-Number(b));const html=`<div class="drill-summary"><div class="drill-stat"><strong>${queued.length}</strong><span class="muted small">Queued rows</span></div><div class="drill-stat"><strong>${stages.length}</strong><span class="muted small">Stages with rows</span></div><div class="drill-stat"><strong>${uniq(queued.map(s=>rowForStep(s).contact.id))}</strong><span class="muted small">Contacts queued</span></div><div class="drill-stat"><strong>${state.steps.length?Math.max(...state.steps.map(s=>Number(s.step_number)||0)):0}</strong><span class="muted small">Max step in Supabase</span></div></div>`+(queued.length?`<div class="stage-grid">${stages.map(stage=>`<section class="stage-card"><h3>Stage ${esc(stage)} · Step ${esc(stage)}</h3><div class="muted small" style="margin-bottom:8px">${by[stage].length} live Supabase row${by[stage].length===1?'':'s'} queued at this step.</div>${by[stage].map(({step,contact})=>`<div class="person-row"><div><strong>${esc(contact.name||'Unknown')}</strong><div class="muted small">${esc(contact.email||'')} · ${esc(contact.company_name||'')}</div><div class="small" style="margin-top:6px;color:#fff4c4">Next: ${esc(step.subject)}</div></div><div style="text-align:right">${statusBadge(step.status)}<div class="muted small" style="margin-top:7px">${fmt(step.scheduled_at)}</div></div></div>`).join('')}</section>`).join('')}</div>`:`<div class="empty-state">No Supabase email_steps rows are currently queued.</div>`);return{title:'Queued Sequence Stages',subtitle:'Live Supabase email_steps grouped by actual step_number values.',html};}
+function replyBody(step){return step.reply_content||step.reply_body||step.response_text||step.inbound_reply||step.reply||'';}
+function renderRepliesDetail(){const {rowForStep}=model();const replied=state.steps.filter(s=>String(s.status||'').toLowerCase()==='replied').sort((a,b)=>String(b.sent_at||b.scheduled_at||'').localeCompare(String(a.sent_at||a.scheduled_at||''))).map(rowForStep);const html=`<div class="drill-summary"><div class="drill-stat"><strong>${replied.length}</strong><span class="muted small">Replied rows</span></div><div class="drill-stat"><strong>${uniq(replied.map(r=>r.contact.id))}</strong><span class="muted small">Contacts replied</span></div><div class="drill-stat"><strong>${replied.filter(r=>replyBody(r.step)).length}</strong><span class="muted small">Rows with body fields</span></div><div class="drill-stat"><strong>${pct(replied.length,Math.max(counts().nonQueued,1))}%</strong><span class="muted small">Reply rate</span></div></div>`+(replied.length?replied.map(({step,contact})=>`<article class="reply-card"><div class="agent-top"><div class="avatar">R</div><div><strong>${esc(contact.name||'Unknown')}</strong><div class="muted small">${esc(contact.email||'')} · ${esc(contact.company_name||'')}</div></div><div style="text-align:right">${statusBadge(step.status)}<div class="muted small" style="margin-top:7px">${fmt(step.sent_at||step.scheduled_at)}</div></div></div><div class="small" style="margin-top:10px;color:#fff4c4">Replied to: ${esc(step.subject)}</div><blockquote>${replyBody(step)?esc(replyBody(step)):'No reply body field is stored in Supabase for this replied row yet.'}</blockquote></article>`).join(''):`<div class="empty-state">No Supabase email_steps rows are currently marked replied.</div>`);return{title:'Reply Signals',subtitle:'Only real Supabase rows with status replied are shown. Missing reply bodies are labeled as missing when no reply body exists in Supabase.',html};}
+function renderSentDetail(){const {rowForStep}=model();const sent=state.steps.filter(s=>String(s.status||'').toLowerCase()!=='queued').sort((a,b)=>String(b.sent_at||b.scheduled_at||'').localeCompare(String(a.sent_at||a.scheduled_at||''))).map(rowForStep);const html=`<div class="drill-summary"><div class="drill-stat"><strong>${sent.length}</strong><span class="muted small">Non-queued rows</span></div><div class="drill-stat"><strong>${uniq(sent.map(r=>r.contact.id))}</strong><span class="muted small">Recipients</span></div><div class="drill-stat"><strong>${counts().sent}</strong><span class="muted small">Status sent</span></div><div class="drill-stat"><strong>${counts().opened}</strong><span class="muted small">Status opened</span></div></div><div class="table-wrap"><table><thead><tr><th>Recipient</th><th>Email</th><th>Step</th><th>Subject</th><th>Status</th><th>Sent At</th></tr></thead><tbody>${sent.map(({step,contact})=>`<tr><td><strong>${esc(contact.name||'Unknown')}</strong><br><span class="muted small">${esc(contact.company_name||'')}</span></td><td>${esc(contact.email||'')}</td><td>#${esc(step.step_number)}<br><span class="muted small">Week ${esc(step.week)}</span></td><td>${esc(step.subject)}</td><td>${statusBadge(step.status)}</td><td>${fmt(step.sent_at||step.scheduled_at)}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">No Supabase email_steps rows are currently non-queued.</td></tr>'}</tbody></table></div>`;return{title:'Sent Email Ledger',subtitle:'Who received which live Supabase email step and when it was sent.',html};}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrilldown();});shell();load();
+</script><script id="agent-original-logo-runtime">
+(function () {
+  var LOGO_SRC = '/assets/brand/agent-logo-master.svg';
+  var HOME_URL = 'https://a-gent.co/';
+  var PATCH_ATTR = 'data-agent-original-logo';
+  var LAUNCH_URL = 'https://fleet.a-gent.co/login';
+  var OLD_LAUNCH_URL = 'https://' + 'a-gent-fleet-app.netlify.app' + '/login';
 
-<section class="hero">
-  <div class="hero-badge">The Sales Butler, Reborn</div>
-  <div class="hero-image">
-    <img src="icons/extension_v4.png" alt="A-Gent Agent">
-  </div>
-  <h1>Your AI Sales Agent<br><em>Awaits Your Command</em></h1>
-  <p class="hero-sub">A-Gent tracks your workflows, learns your patterns, and executes automations — all with the precision of a gentleman's personal assistant.</p>
-  <div class="hero-actions">
-    <a href="/dashboard" class="btn btn-primary">Install Extension — Free</a>
-    <a href="#how" class="btn btn-outline">Learn the Process</a>
-  </div>
-  <p class="hero-note">Installs in 30 seconds. No credit card required.</p>
-</section>
+  function looksLikeLaunchText(el) {
+    var text = textOf(el);
+    return /launch\s+console/i.test(text);
+  }
 
-<section class="intro">
-  <h2>"A-Gent: A gentleman who never rests."</h2>
-  <p>Sales professionals spend hours on repetitive tasks — logging to CRM, sending follow-ups, researching accounts. A-Gent handles the tedious work so you can focus on closing deals. Think of it as your personal butler for the digital age.</p>
-</section>
+  function patchLaunchLinks() {
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('a, button, [role="button"]'));
+    var found = false;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var href = el.getAttribute && (el.getAttribute('href') || '');
+      if (href === OLD_LAUNCH_URL || href.indexOf('a-gent-fleet-app.netlify.app/login') !== -1 || href === LAUNCH_URL || looksLikeLaunchText(el)) {
+        if (el.tagName && el.tagName.toLowerCase() === 'a') {
+          el.setAttribute('href', LAUNCH_URL);
+          el.setAttribute('target', '_self');
+        } else {
+          el.addEventListener('click', function(evt) { evt.preventDefault(); window.location.href = LAUNCH_URL; });
+        }
+        found = true;
+      }
+    }
+    return found;
+  }
 
-<section class="features" id="features">
-  <div class="section-header">
-    <p>Services</p>
-    <h2>What Your Butler Handles</h2>
-  </div>
-  
-  <div class="features-grid">
-    <div class="feature-card">
-      <div class="feature-icon">⏱</div>
-      <h3>Time Tracking</h3>
-      <p>Tracks time across Email, CRM, Chat, Docs, and more — automatically categorizing your day.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🖱</div>
-      <h3>Click Intelligence</h3>
-      <p>Counts repetitive actions. "You send 40 follow-ups per week" — that's automation gold.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🤖</div>
-      <h3>Automation Execution</h3>
-      <p>Turn on automations one at a time. CRM sync, email sequences, contact enrichment.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">📊</div>
-      <h3>Insight Reports</h3>
-      <p>Weekly dashboard shows where your hours go, with pattern analysis and optimization tips.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🔍</div>
-      <h3>Account Research</h3>
-      <p>Butler-level research on every account. Company intel, contact details, signal detection.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">✉</div>
-      <h3>Email Sequences</h3>
-      <p>Multi-step outreach campaigns managed by your Butler. Just approve the strategy.</p>
-    </div>
-  </div>
-</section>
+  function ensureLaunchLink() {
+    if (document.querySelector('a[href="' + LAUNCH_URL + '"]')) return true;
+    var a = document.createElement('a');
+    a.href = LAUNCH_URL;
+    a.textContent = 'Launch Console';
+    a.className = 'agent-launch-console-link';
+    a.setAttribute('aria-label', 'Launch A-Gent Fleet Console');
+    a.style.cssText = 'position:fixed;top:18px;right:18px;z-index:2147483647;background:#d4af37;color:#050505;border:1px solid rgba(212,175,55,.65);border-radius:999px;padding:10px 16px;font:700 12px/1 IBM Plex Mono, ui-monospace, monospace;text-transform:uppercase;letter-spacing:.08em;text-decoration:none;box-shadow:0 10px 30px rgba(0,0,0,.28);';
+    document.body.appendChild(a);
+    return true;
+  }
 
-<section class="how" id="how">
-  <div class="section-header">
-    <p>Process</p>
-    <h2>How It Works</h2>
-  </div>
-  
-  <div class="steps">
-    <div class="step">
-      <div class="step-num">I</div>
-      <h3>Engage A-Gent</h3>
-      <p>Install the Chrome extension with one click</p>
-    </div>
-    <div class="step">
-      <div class="step-num">II</div>
-      <h3>Observe</h3>
-      <p>A-Gent quietly tracks your workflows</p>
-    </div>
-    <div class="step">
-      <div class="step-num">III</div>
-      <h3>Analyze</h3>
-      <p>Dashboard reveals patterns and opportunities</p>
-    </div>
-    <div class="step">
-      <div class="step-num">IV</div>
-      <h3>Command</h3>
-      <p>Turn on automations as you see fit</p>
-    </div>
-  </div>
-</section>
 
-<section class="pricing" id="pricing">
-  <div class="section-header">
-    <p>Membership</p>
-    <h2>Choose Your Station</h2>
-  </div>
-  
-  <div class="pricing-grid">
-    <div class="pricing-card">
-      <h3>Associate</h3>
-      <div class="tagline">For the discerning professional</div>
-      <div class="price">$0<span>/mo</span></div>
-      <ul class="pricing-features">
-        <li>Workflow tracking</li>
-        <li>Click counting</li>
-        <li>Daily popup summary</li>
-        <li>Weekly insight report</li>
-        <li>1 automation included</li>
-      </ul>
-      <a href="/dashboard" class="btn btn-outline">Install Free</a>
-    </div>
-    
-    <div class="pricing-card featured">
-      <h3>Butler</h3>
-      <div class="tagline">Full service for serious sales</div>
-      <div class="price">$29<span>/mo</span></div>
-      <ul class="pricing-features">
-        <li>Everything in Associate</li>
-        <li>All 6 automations</li>
-        <li>CRM Auto-Sync</li>
-        <li>Email Sequences</li>
-        <li>Contact Enrichment</li>
-        <li>Account Research</li>
-        <li>Signal Detection</li>
-      </ul>
-      <a href="#" class="btn btn-primary">Begin Trial</a>
-    </div>
-    
-    <div class="pricing-card">
-      <h3>Estate Manager</h3>
-      <div class="tagline">Complete AI autonomy</div>
-      <div class="price">$99<span>/mo</span></div>
-      <ul class="pricing-features">
-        <li>Everything in Butler</li>
-        <li>Proactive AI agent</li>
-        <li>Signal-triggered outreach</li>
-        <li>Unlimited accounts</li>
-        <li>Priority response</li>
-      </ul>
-      <a href="#" class="btn btn-outline">Inquire</a>
-    </div>
-  </div>
-</section>
+  function textOf(el) {
+    return (el && (el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim();
+  }
 
-<section class="cta">
-  <h2>Ready to elevate your workflow?</h2>
-  <p>Your butler is standing by. Install free and begin tracking in 30 seconds.</p>
-  <a href="/dashboard" class="btn btn-primary" style="font-size: 1rem; padding: 1rem 2rem;">
-    Install A-Gent — Free
-  </a>
-</section>
+  function inHeader(el) {
+    return !!(el && el.closest && (el.closest('header') || el.closest('nav') || el.closest('[class*="header" i]') || el.closest('[class*="nav" i]') || el.closest('[class*="topbar" i]')));
+  }
 
-<footer>
-  <div class="logo">A-<span>Gent</span></div>
-  <p>Your Personal AI Butler</p>
-  <p class="tagline">Part of the GTM Revolution ecosystem</p>
-</footer>
+  function looksLikeBrand(el) {
+    if (!el || el.getAttribute(PATCH_ATTR) === 'true') return false;
+    var text = textOf(el);
+    if (!text) return false;
+    var clean = text.replace(/\s+/g, ' ').trim();
+    var exactBrand = /^(A-GENT|A-Gent|A Gent|A-gent|AGENT)$/i.test(clean);
+    var compactBrand = /^A-?GENT$/i.test(clean.replace(/\s+/g, ''));
+    if (!(exactBrand || compactBrand)) return false;
+    if (clean.length > 18) return false;
+    if (!inHeader(el)) return false;
+    if (el.matches && el.matches('button, [role="button"], .btn, [class*="button" i], [class*="cta" i]')) return false;
+    return true;
+  }
 
-</body>
-</html>
+  function makeLogoLink(existing) {
+    var a = (existing && existing.tagName && existing.tagName.toLowerCase() === 'a') ? existing : document.createElement('a');
+    a.href = HOME_URL;
+    a.setAttribute('aria-label', 'A-Gent home');
+    a.setAttribute(PATCH_ATTR, 'true');
+    a.classList.add('agent-original-logo-link');
+    a.innerHTML = '<img class="agent-original-logo-img" src="' + LOGO_SRC + '" alt="A-Gent" decoding="async" />';
+    return a;
+  }
+
+  function patchOnce() {
+    var selectors = [
+      'header a', 'nav a', 'header [class*="logo" i]', 'nav [class*="logo" i]',
+      'header [class*="brand" i]', 'nav [class*="brand" i]', '[class*="wordmark" i]'
+    ].join(',');
+    var candidates = Array.prototype.slice.call(document.querySelectorAll(selectors));
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (!looksLikeBrand(el)) continue;
+      var logo = makeLogoLink(el);
+      if (logo !== el && el.parentNode) el.parentNode.replaceChild(logo, el);
+      return true;
+    }
+    return false;
+  }
+
+  function run() {
+    patchOnce();
+    patchLaunchLinks();
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      var logoDone = patchOnce();
+      var launchDone = patchLaunchLinks();
+      if (tries > 6) ensureLaunchLink();
+      if ((logoDone && launchDone) || tries > 20) clearInterval(timer);
+    }, 250);
+    try {
+      var observer = new MutationObserver(function () { patchOnce(); patchLaunchLinks(); });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
+
+</script>
+</body></html>
