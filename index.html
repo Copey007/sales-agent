@@ -187,7 +187,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrilldown();});
       tries += 1;
       var logoDone = patchOnce();
       var launchDone = patchLaunchLinks();
-      if (tries > 6) ensureLaunchLink();
+      // if (tries > 6) ensureLaunchLink();
       if ((logoDone && launchDone) || tries > 20) clearInterval(timer);
     }, 250);
     try {
