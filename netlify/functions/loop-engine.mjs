@@ -1,0 +1,567 @@
+/**
+ * Loop Engine — Self-Optimizing Outbound Email Loop
+ * 
+ * Inspired by Karpathy's autoresearch keep-or-revert pattern.
+ * Iterates on the email-generation prompt/template, scores variants
+ * via an LLM-judge, keeps improvements, reverts regressions.
+ * 
+ * Endpoints:
+ *   POST /api/loop-engine  { action: "run" | "status" | "history" }
+ * 
+ * Storage: Netlify Blobs (serverless KV)
+ */
+
+// ─── LLM Configuration ──────────────────────────────────────────────────────────
+
+function getLLMConfig() {
+  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
+    ? Netlify.env.get('OPENAI_API_KEY')
+    : (process.env.OPENAI_API_KEY || 'sk-iVJWw2GcvmPsr7AceUSTcf');
+  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
+    ? Netlify.env.get('OPENAI_API_BASE')
+    : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
+  const model = (typeof Netlify !== 'undefined' && Netlify.env.get('LLM_MODEL'))
+    ? Netlify.env.get('LLM_MODEL')
+    : (process.env.LLM_MODEL || 'gpt-5-mini');
+  return { apiKey, apiBase, model };
+}
+
+async function callLLM(messages, temperature = 0.7, maxTokens = 4000) {
+  const { apiKey, apiBase, model } = getLLMConfig();
+  const response = await fetch(`${apiBase}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`LLM API error ${response.status}: ${errText}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+// ─── Experiment Storage (in-memory + response-based for serverless) ──────────────
+
+// Since Netlify Blobs requires @netlify/blobs package which may not be available,
+// we use a simpler approach: store experiments in a JSON structure that the function
+// manages via the Supabase-compatible REST pattern (using the existing anon key).
+// Actually, we'll use a self-contained approach: the function stores state in a
+// global variable per invocation and returns full history in responses.
+// For persistence across invocations, we'll use Netlify's built-in Blobs API.
+
+let BLOB_STORE = null;
+
+async function getStore() {
+  if (BLOB_STORE) return BLOB_STORE;
+  try {
+    // Netlify Blobs v2 - available in Netlify Functions runtime
+    const { getStore } = await import('@netlify/blobs');
+    BLOB_STORE = getStore('loop-engine');
+    return BLOB_STORE;
+  } catch (e) {
+    // Fallback: use in-memory store (resets on cold start)
+    BLOB_STORE = {
+      _data: {},
+      async get(key) { return this._data[key] || null; },
+      async set(key, value) { this._data[key] = value; },
+      async getWithMetadata(key) { return { data: this._data[key] || null }; }
+    };
+    return BLOB_STORE;
+  }
+}
+
+async function loadExperiments() {
+  const store = await getStore();
+  const raw = await store.get('experiments');
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+async function saveExperiments(experiments) {
+  const store = await getStore();
+  await store.set('experiments', JSON.stringify(experiments));
+}
+
+async function loadBaseline() {
+  const store = await getStore();
+  const raw = await store.get('baseline');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+async function saveBaseline(baseline) {
+  const store = await getStore();
+  await store.set('baseline', JSON.stringify(baseline));
+}
+
+// ─── LOCKED Guardrails (the "prepare.py" — cannot be modified by the loop) ──────
+
+const LOCKED_GUARDRAILS = `
+## LOCKED GUARDRAILS — These rules are IMMUTABLE and must ALWAYS be followed:
+
+1. **GAP Methodology Structure** (in this exact order):
+   - Signal Opener (1 sentence): Reference a REAL signal with source
+   - Current State / Problem (1-2 sentences): Map signal to business PAIN
+   - Credibility / Future State (1 sentence): How you solve this
+   - CTA (1 sentence): ONE low-friction, problem-centric question
+
+2. **Signal Integrity**: 
+   - NEVER fabricate or hallucinate signals
+   - Every signal must be real and source-linked (URL provided)
+   - If no signal available, use generic industry catalyst and disclose
+
+3. **Brevity**: UNDER 100 WORDS total (excluding signature)
+
+4. **Single CTA**: Exactly ONE call-to-action, phrased as a question
+
+5. **Signature**: Always end with "[Sender Name] | A-Gent Fleet"
+
+6. **Forbidden phrases**: "I hope this email finds you well", "My name is X", 
+   "synergy", "leverage", "circle back", "15 minutes on your calendar",
+   "I'd love to show you", "Quick question", feature dumps, multiple CTAs
+`;
+
+// ─── Default Baseline Template ──────────────────────────────────────────────────
+
+const DEFAULT_BASELINE = {
+  id: 'baseline_v0',
+  version: 0,
+  description: 'Original GAP Prospecting template — standard signal opener + problem mapping + credibility + CTA',
+  template: `You are an expert cold email writer trained in the GAP Prospecting methodology. Write short, problem-centric outbound emails that trigger curiosity and secure meetings.
+
+${LOCKED_GUARDRAILS}
+
+### Editable Strategy (what the Loop Engine can optimize):
+- Signal selection priority: Choose the signal most likely to map to a business pain
+- Problem framing angle: How to connect the signal to a specific cost/risk
+- Credibility positioning: How to reference peer results without feature-dumping
+- CTA style: The specific question format that creates curiosity
+- Tone calibration: Level of directness vs. warmth
+- Subject line approach: How to distill the core problem into 2-4 words
+
+### Output Format:
+Return ONLY valid JSON:
+{
+  "subject": "2-4 word subject line in sentence case",
+  "body": "Full email body (plain text, newlines for paragraphs). End with signature: [Sender Name] | A-Gent Fleet",
+  "signals_used": [{"type": "...", "source_url": "...", "why": "reason"}],
+  "gap_analysis": {"current_state": "...", "future_state": "...", "cost_of_gap": "..."}
+}`,
+  score: null,
+  created_at: new Date().toISOString()
+};
+
+// ─── Sample Prospect Set (fixed evaluation harness) ─────────────────────────────
+
+const SAMPLE_PROSPECTS = [
+  {
+    contact_name: "Sarah Chen",
+    company_name: "Datadog",
+    role: "VP of Sales",
+    industry: "DevOps / Monitoring SaaS",
+    signals: [
+      { type: "company_news", title: "Datadog Q1 2026 Revenue Hits $750M ARR", detail: "Datadog reported strong Q1 results with ARR growing 28% YoY", source_url: "https://investors.datadoghq.com/news-releases", source_name: "investors.datadoghq.com" },
+      { type: "hiring", title: "Datadog hiring 50+ enterprise AEs", detail: "Major expansion of enterprise sales team across EMEA and NA", source_url: "https://careers.datadoghq.com/sales", source_name: "careers.datadoghq.com" }
+    ]
+  },
+  {
+    contact_name: "Marcus Johnson",
+    company_name: "Gong",
+    role: "CRO",
+    industry: "Revenue Intelligence SaaS",
+    signals: [
+      { type: "product_launch", title: "Gong launches AI-powered deal coaching", detail: "New feature uses conversation intelligence to provide real-time coaching during calls", source_url: "https://www.gong.io/blog/ai-coaching", source_name: "gong.io" },
+      { type: "linkedin_activity", title: "Marcus posted about scaling from 50 to 200 reps", detail: "Shared lessons on maintaining quality while rapidly growing the sales org", source_url: "https://linkedin.com/in/marcusjohnson/posts", source_name: "LinkedIn" }
+    ]
+  },
+  {
+    contact_name: "Emily Rodriguez",
+    company_name: "Notion",
+    role: "Head of Growth",
+    industry: "Productivity / Collaboration SaaS",
+    signals: [
+      { type: "funding", title: "Notion raises $150M at $15B valuation", detail: "Series D funding to accelerate enterprise adoption and AI features", source_url: "https://techcrunch.com/2026/notion-series-d", source_name: "TechCrunch" },
+      { type: "prospect_content", title: "Emily on the SaaStr podcast discussing PLG to enterprise motion", detail: "Discussed challenges of transitioning from product-led growth to enterprise sales", source_url: "https://www.saastr.com/podcast/notion-emily-rodriguez", source_name: "SaaStr" }
+    ]
+  }
+];
+
+// ─── LLM Judge — Email Quality Scoring ──────────────────────────────────────────
+
+const JUDGE_SYSTEM_PROMPT = `You are an expert email quality judge evaluating cold outbound emails against the GAP Prospecting methodology. Score each email on a 0-100 scale across these dimensions:
+
+1. **GAP Structure** (0-20): Does it follow Signal Opener → Current State/Problem → Credibility → CTA?
+2. **Signal Specificity** (0-15): Are real, specific signals referenced (not generic)?
+3. **Signal Integrity** (0-15): Are signals verifiable with source URLs? No fabrication?
+4. **Clarity** (0-15): Is the message clear, direct, and free of jargon/fluff?
+5. **CTA Strength** (0-15): Is there exactly ONE problem-centric question that creates curiosity?
+6. **Brevity** (0-10): Is it under 100 words? Concise without losing meaning?
+7. **Personalization** (0-10): Does it feel tailored to THIS specific person/company?
+
+Return ONLY valid JSON:
+{
+  "total_score": <0-100>,
+  "dimensions": {
+    "gap_structure": <0-20>,
+    "signal_specificity": <0-15>,
+    "signal_integrity": <0-15>,
+    "clarity": <0-15>,
+    "cta_strength": <0-15>,
+    "brevity": <0-10>,
+    "personalization": <0-10>
+  },
+  "feedback": "One sentence of constructive feedback for improvement"
+}`;
+
+async function scoreEmail(email, prospect, signals) {
+  const userPrompt = `## Email to Score:
+Subject: ${email.subject}
+Body: ${email.body}
+
+## Context:
+- Prospect: ${prospect.contact_name}, ${prospect.role} at ${prospect.company_name}
+- Industry: ${prospect.industry}
+- Signals provided: ${signals.map(s => `[${s.type}] ${s.title} (${s.source_url})`).join('; ')}
+
+Score this email against the GAP Prospecting methodology criteria. Return JSON only.`;
+
+  const content = await callLLM([
+    { role: 'system', content: JUDGE_SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt }
+  ], 0.2, 1000);
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch (e) { /* fall through */ }
+  
+  return { total_score: 50, dimensions: {}, feedback: 'Could not parse judge response' };
+}
+
+// ─── Variant Proposer ───────────────────────────────────────────────────────────
+
+const PROPOSER_SYSTEM_PROMPT = `You are an email optimization strategist. Given the current email template/prompt and its performance scores, propose a SPECIFIC improvement to the editable strategy section.
+
+You CANNOT change the locked guardrails (GAP structure, signal integrity, brevity, single CTA, signature, forbidden phrases). You CAN optimize:
+- Signal selection priority (which signal to lead with and why)
+- Problem framing angle (how to connect signal → pain → business cost)
+- Credibility positioning (how to hint at capability without feature-dumping)
+- CTA question style (curiosity-driven, assumption-based, or challenge-based)
+- Tone calibration (more direct, more empathetic, more provocative)
+- Subject line approach (problem-focused, signal-focused, or curiosity-gap)
+
+Return ONLY valid JSON:
+{
+  "variant_description": "One sentence describing what this variant changes",
+  "optimization_hypothesis": "Why this change should improve scores",
+  "updated_strategy_section": "The full replacement text for the ### Editable Strategy section"
+}`;
+
+async function proposeVariant(currentTemplate, scores, feedback) {
+  const userPrompt = `## Current Template Performance:
+- Average Score: ${scores.avg.toFixed(1)}/100
+- GAP Structure: ${scores.gap_structure.toFixed(1)}/20
+- Signal Specificity: ${scores.signal_specificity.toFixed(1)}/15
+- Clarity: ${scores.clarity.toFixed(1)}/15
+- CTA Strength: ${scores.cta_strength.toFixed(1)}/15
+- Brevity: ${scores.brevity.toFixed(1)}/10
+- Personalization: ${scores.personalization.toFixed(1)}/10
+
+## Judge Feedback:
+${feedback.join('\n')}
+
+## Current Editable Strategy Section:
+${currentTemplate.match(/### Editable Strategy[\s\S]*?(?=###|$)/)?.[0] || 'Default strategy'}
+
+Propose ONE specific optimization. Focus on the weakest dimension. Return JSON only.`;
+
+  const content = await callLLM([
+    { role: 'system', content: PROPOSER_SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt }
+  ], 0.8, 2000);
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch (e) { /* fall through */ }
+  
+  return null;
+}
+
+// ─── Email Generator (uses template) ────────────────────────────────────────────
+
+async function generateEmailWithTemplate(template, prospect, signals) {
+  const userPrompt = `## Prospect Information
+- **Name:** ${prospect.contact_name}
+- **Company:** ${prospect.company_name}
+- **Role:** ${prospect.role}
+- **Industry:** ${prospect.industry}
+
+## Signals (${signals.length} total)
+${signals.map(s => `- [${s.type}] ${s.title} — Source: ${s.source_url} (${s.source_name})\n  Detail: ${s.detail}`).join('\n')}
+
+## Sender Context
+- Sender Name: Mark
+- Sender Company: A-Gent Fleet
+- Signature: Mark | A-Gent Fleet
+
+Write a GAP Prospecting email. Return valid JSON only.`;
+
+  const content = await callLLM([
+    { role: 'system', content: template },
+    { role: 'user', content: userPrompt }
+  ], 0.7, 2000);
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch (e) { /* fall through */ }
+  
+  return { subject: 'test', body: content, signals_used: [], gap_analysis: {} };
+}
+
+// ─── The Loop Engine Core ───────────────────────────────────────────────────────
+
+async function runOptimizationLoop(iterations = 3) {
+  const experiments = await loadExperiments();
+  let baseline = await loadBaseline();
+  
+  if (!baseline) {
+    baseline = { ...DEFAULT_BASELINE };
+    await saveBaseline(baseline);
+  }
+
+  const results = [];
+
+  for (let i = 0; i < iterations; i++) {
+    const experimentId = `exp_${Date.now()}_${i}`;
+    
+    // Step 1: Score the current baseline across sample prospects
+    const baselineScores = [];
+    const baselineEmails = [];
+    
+    for (const prospect of SAMPLE_PROSPECTS) {
+      const email = await generateEmailWithTemplate(baseline.template, prospect, prospect.signals);
+      const score = await scoreEmail(email, prospect, prospect.signals);
+      baselineScores.push(score);
+      baselineEmails.push({ prospect: prospect.contact_name, email, score });
+    }
+
+    const baselineAvg = computeAverageScores(baselineScores);
+    
+    // Update baseline score if not set
+    if (baseline.score === null) {
+      baseline.score = baselineAvg.avg;
+      await saveBaseline(baseline);
+    }
+
+    // Step 2: Propose a variant
+    const feedback = baselineScores.map(s => s.feedback).filter(Boolean);
+    const variant = await proposeVariant(baseline.template, baselineAvg, feedback);
+    
+    if (!variant) {
+      results.push({
+        id: experimentId,
+        iteration: i + 1,
+        status: 'skipped',
+        reason: 'Could not generate variant proposal',
+        timestamp: new Date().toISOString()
+      });
+      continue;
+    }
+
+    // Step 3: Build the variant template
+    const variantTemplate = baseline.template.replace(
+      /### Editable Strategy[\s\S]*?(?=### Output Format)/,
+      `### Editable Strategy (what the Loop Engine can optimize):\n${variant.updated_strategy_section}\n\n`
+    );
+
+    // Step 4: Score the variant across the same sample set
+    const variantScores = [];
+    const variantEmails = [];
+    
+    for (const prospect of SAMPLE_PROSPECTS) {
+      const email = await generateEmailWithTemplate(variantTemplate, prospect, prospect.signals);
+      const score = await scoreEmail(email, prospect, prospect.signals);
+      variantScores.push(score);
+      variantEmails.push({ prospect: prospect.contact_name, email, score });
+    }
+
+    const variantAvg = computeAverageScores(variantScores);
+
+    // Step 5: Keep or Revert
+    const improved = variantAvg.avg > baselineAvg.avg;
+    const decision = improved ? 'kept' : 'reverted';
+
+    const experiment = {
+      id: experimentId,
+      iteration: i + 1,
+      variant_description: variant.variant_description,
+      optimization_hypothesis: variant.optimization_hypothesis,
+      baseline_score: baselineAvg.avg,
+      variant_score: variantAvg.avg,
+      score_delta: variantAvg.avg - baselineAvg.avg,
+      decision,
+      baseline_dimensions: baselineAvg,
+      variant_dimensions: variantAvg,
+      sample_emails: {
+        baseline: baselineEmails,
+        variant: variantEmails
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    if (improved) {
+      baseline = {
+        id: `baseline_v${baseline.version + 1}`,
+        version: baseline.version + 1,
+        description: variant.variant_description,
+        template: variantTemplate,
+        score: variantAvg.avg,
+        created_at: new Date().toISOString(),
+        parent_id: baseline.id
+      };
+      await saveBaseline(baseline);
+    }
+
+    experiments.push(experiment);
+    results.push(experiment);
+  }
+
+  await saveExperiments(experiments);
+
+  return {
+    experiments_run: results.length,
+    results,
+    current_baseline: {
+      id: baseline.id,
+      version: baseline.version,
+      description: baseline.description,
+      score: baseline.score,
+      created_at: baseline.created_at
+    }
+  };
+}
+
+function computeAverageScores(scores) {
+  const n = scores.length || 1;
+  const sum = (key) => scores.reduce((acc, s) => acc + (s.dimensions?.[key] || 0), 0) / n;
+  const avg = scores.reduce((acc, s) => acc + (s.total_score || 0), 0) / n;
+  return {
+    avg,
+    gap_structure: sum('gap_structure'),
+    signal_specificity: sum('signal_specificity'),
+    signal_integrity: sum('signal_integrity'),
+    clarity: sum('clarity'),
+    cta_strength: sum('cta_strength'),
+    brevity: sum('brevity'),
+    personalization: sum('personalization')
+  };
+}
+
+// ─── Netlify Function Handler ────────────────────────────────────────────────────
+
+export default async (req, context) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
+  };
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  try {
+    let action = 'status';
+    let iterations = 3;
+
+    if (req.method === 'POST') {
+      const body = await req.json();
+      action = body.action || 'status';
+      iterations = body.iterations || 3;
+    }
+
+    if (action === 'run') {
+      // Run the optimization loop
+      const result = await runOptimizationLoop(Math.min(iterations, 5));
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'run',
+        ...result
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (action === 'history') {
+      const experiments = await loadExperiments();
+      const baseline = await loadBaseline();
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'history',
+        total_experiments: experiments.length,
+        experiments,
+        current_baseline: baseline ? {
+          id: baseline.id,
+          version: baseline.version,
+          description: baseline.description,
+          score: baseline.score,
+          created_at: baseline.created_at
+        } : null
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Default: status
+    const baseline = await loadBaseline();
+    const experiments = await loadExperiments();
+    return new Response(JSON.stringify({
+      success: true,
+      action: 'status',
+      loop_engine: {
+        name: 'Loop Engine',
+        description: 'Self-optimizing outbound email loop using keep-or-revert pattern',
+        total_experiments: experiments.length,
+        kept_count: experiments.filter(e => e.decision === 'kept').length,
+        reverted_count: experiments.filter(e => e.decision === 'reverted').length,
+        current_baseline: baseline ? {
+          id: baseline.id,
+          version: baseline.version,
+          description: baseline.description,
+          score: baseline.score
+        } : { id: 'baseline_v0', version: 0, description: 'Default', score: null },
+        locked_guardrails: [
+          'GAP methodology (current state → future state → cost of gap)',
+          'Never fabricate signals — must be real and source-linked',
+          '~100 word brevity constraint',
+          'Single CTA only',
+          'A-Gent Fleet signature'
+        ]
+      }
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (e) {
+    return new Response(JSON.stringify({
+      error: e.message,
+      stack: e.stack?.split('\n').slice(0, 3)
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+};
+
+export const config = {
+  path: "/api/loop-engine"
+};
