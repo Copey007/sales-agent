@@ -19,9 +19,9 @@ import {
   putCampaign, putPersona, putTerritory, putSignalConfig, putSequence,
   listCampaigns, getCampaign, getCampaignPersona, getCampaignTerritory,
   getCampaignSignalConfig, getCampaignSequence,
-  listCampaignProspects, putCampaignProspect, putProspect,
+  listCampaignProspects, getCampaignProspect, putCampaignProspect, getProspect, putProspect, findProspectByEmail,
   listQueuedSends, countSentToday, putEmailSend,
-  logActivity, setFeatureFlag,
+  isEmailSuppressed, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
 
@@ -275,94 +275,306 @@ async function handleDetail(campaignId) {
 
 // ─── Agent Researcher ───────────────────────────────────────────────────────
 
+// Safety cap: never source more than this many prospects per campaign launch
+const RESEARCHER_MAX_PROSPECTS = 20;
+
 async function runResearcherAgent(campaignId, parsedICP, targetRole) {
   const campaign = await getCampaign(campaignId);
   if (!campaign) return;
 
   const now = new Date().toISOString();
-
-  // Update agent status
-  campaign.agent_status.researcher = {
-    state: "ACTIVE",
-    last_action: "Querying Hunter.io for ICP-fit prospects",
-    updated_at: now
-  };
-  await putCampaign(campaign);
-
-  // Use Hunter.io to find prospects matching the ICP
   const HUNTER_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
     ? Netlify.env.get('HUNTER_API_KEY')
     : (process.env.HUNTER_API_KEY || '');
 
-  let prospects = [];
+  // Update agent status
+  campaign.agent_status.researcher = {
+    state: "ACTIVE",
+    last_action: "Querying Hunter.io Discover for ICP-fit companies",
+    updated_at: now
+  };
+  await putCampaign(campaign);
 
-  if (HUNTER_KEY) {
+  // ── Step 1: Hunter Discover — find companies matching the ICP ──────────────
+  let rawProspects = [];
+  let discoverStats = { companies_found: 0, emails_found: 0, verified: 0, suppressed: 0, deduped: 0 };
+
+  if (!HUNTER_KEY) {
+    console.warn("[researcher] HUNTER_API_KEY not set — falling back to demo prospects");
+    rawProspects = generateDemoProspects(campaignId, parsedICP, targetRole, 5);
+  } else {
     try {
-      // Use Hunter Domain Search for relevant domains
-      const searchTerms = (parsedICP.vertical || 'saas').toLowerCase().replace(/\s+/g, '+');
-      const discoverUrl = `https://api.hunter.io/v2/domain-search?api_key=${HUNTER_KEY}&type=personal&seniority=executive,senior&department=executive,sales&limit=10`;
+      // Build Discover query from ICP
+      const vertical = (parsedICP.vertical || 'B2B SaaS').replace(/\s+/g, ' ').trim();
+      const seniority = mapRoleToSeniority(targetRole);
+      const department = mapRoleToDepartment(targetRole);
 
-      // For now, use a broader approach — search for companies in the vertical
-      // In production, this would iterate through a list of target domains
-      const response = await fetch(
-        `https://api.hunter.io/v2/domain-search?api_key=${HUNTER_KEY}&company=${encodeURIComponent(parsedICP.vertical || 'software')}&type=personal&seniority=executive,senior&limit=10`
-      ).catch(() => null);
-
-      if (response?.ok) {
-        const data = await response.json();
-        const emails = data?.data?.emails || [];
-        prospects = emails.map(e => ({
-          id: crypto.randomUUID(),
-          tenant_id: DEFAULTS.TENANT_ID,
-          email: e.value,
-          name: [e.first_name, e.last_name].filter(Boolean).join(' ') || null,
-          company_name: data?.data?.organization || null,
-          title: e.position || targetRole,
-          source: "hunter_domain_search",
-          sourced_at: now
-        }));
+      // Hunter Discover: find companies in the vertical
+      const discoverParams = new URLSearchParams({
+        api_key: HUNTER_KEY,
+        keywords: vertical,
+        employees_min: parsedICP.employee_min || 15,
+        employees_max: parsedICP.employee_max || 500,
+        limit: 10
+      });
+      // Add country filter if geography is specific
+      if (parsedICP.geography?.length === 1 && parsedICP.geography[0] !== 'US') {
+        discoverParams.set('country', parsedICP.geography[0]);
       }
+
+      console.log(`[researcher] Hunter Discover: ${discoverParams.toString().replace(HUNTER_KEY, '***')}`);
+      const discoverRes = await fetch(`https://api.hunter.io/v2/companies/search?${discoverParams}`);
+      let domains = [];
+
+      if (discoverRes.ok) {
+        const discoverData = await discoverRes.json();
+        const companies = discoverData?.data?.companies || [];
+        discoverStats.companies_found = companies.length;
+        domains = companies
+          .filter(c => c.domain)
+          .slice(0, 8) // cap at 8 companies to stay within quota
+          .map(c => ({ domain: c.domain, company_name: c.name, employee_count: c.size }));
+        console.log(`[researcher] Discover returned ${companies.length} companies, using ${domains.length} domains`);
+      } else {
+        const errText = await discoverRes.text();
+        console.warn(`[researcher] Discover failed ${discoverRes.status}: ${errText.slice(0, 200)}`);
+      }
+
+      // ── Step 2: Hunter Domain Search — get contacts per company ─────────────
+      for (const { domain, company_name, employee_count } of domains) {
+        if (rawProspects.length >= RESEARCHER_MAX_PROSPECTS) break;
+
+        const domainParams = new URLSearchParams({
+          api_key: HUNTER_KEY,
+          domain,
+          type: 'personal',
+          seniority: seniority,
+          department: department,
+          limit: 5
+        });
+
+        console.log(`[researcher] Domain Search: ${domain}`);
+        const domainRes = await fetch(`https://api.hunter.io/v2/domain-search?${domainParams}`);
+        if (!domainRes.ok) {
+          console.warn(`[researcher] Domain search failed for ${domain}: ${domainRes.status}`);
+          continue;
+        }
+
+        const domainData = await domainRes.json();
+        const emails = domainData?.data?.emails || [];
+        const org = domainData?.data?.organization || company_name;
+
+        for (const e of emails) {
+          if (!e.value) continue;
+          rawProspects.push({
+            email: e.value,
+            name: [e.first_name, e.last_name].filter(Boolean).join(' ') || null,
+            first_name: e.first_name || null,
+            last_name: e.last_name || null,
+            company_name: org,
+            company_domain: domain,
+            title: e.position || targetRole,
+            linkedin_url: e.linkedin || null,
+            employee_count: employee_count || null,
+            hunter_confidence: e.confidence || null,
+            source: 'hunter_domain_search'
+          });
+          discoverStats.emails_found++;
+        }
+      }
+
+      // ── Step 3: Email Verification ─────────────────────────────────────────
+      // Only verify emails with confidence < 90 to preserve quota
+      // High-confidence emails (>=90) are treated as verified
+      const toVerify = rawProspects.filter(p => (p.hunter_confidence || 0) < 90);
+      const highConfidence = rawProspects.filter(p => (p.hunter_confidence || 0) >= 90);
+
+      const verifiedProspects = [...highConfidence.map(p => ({ ...p, verified: true, verification_status: 'high_confidence' }))];
+
+      for (const p of toVerify) {
+        try {
+          const verifyRes = await fetch(
+            `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(p.email)}&api_key=${HUNTER_KEY}`
+          );
+          if (verifyRes.ok) {
+            const vData = await verifyRes.json();
+            const status = vData?.data?.status;
+            const score = vData?.data?.score || 0;
+            // Accept: valid, accept_all, webmail. Reject: invalid, disposable, unknown with low score
+            if (status === 'valid' || status === 'accept_all' || (status === 'webmail' && score > 50)) {
+              verifiedProspects.push({ ...p, verified: true, verification_status: status, verification_score: score });
+              discoverStats.verified++;
+            } else {
+              console.log(`[researcher] Rejected ${p.email}: status=${status} score=${score}`);
+            }
+          }
+        } catch (verifyErr) {
+          // On verify error, include the prospect anyway (fail open)
+          verifiedProspects.push({ ...p, verified: false, verification_status: 'error' });
+        }
+      }
+
+      rawProspects = verifiedProspects.slice(0, RESEARCHER_MAX_PROSPECTS);
+      console.log(`[researcher] After verification: ${rawProspects.length} prospects`);
+
     } catch (err) {
-      console.error("[researcher] Hunter.io error:", err.message);
+      console.error("[researcher] Hunter.io pipeline error:", err.message, err.stack);
+      // Fall back to demo prospects so the campaign doesn't stall
+      if (rawProspects.length === 0) {
+        rawProspects = generateDemoProspects(campaignId, parsedICP, targetRole, 5);
+        discoverStats.fallback = true;
+      }
     }
   }
 
-  // If Hunter didn't return results, create placeholder prospects for demo
-  if (prospects.length === 0) {
-    prospects = generateDemoProspects(campaignId, parsedICP, targetRole, 5);
+  // ── Step 4: Dedup + Suppression + Cross-Campaign Check ────────────────────
+  // Build a set of all prospect IDs already enrolled in OTHER active campaigns
+  const allCampaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+  const otherActiveCampaignIds = allCampaigns
+    .filter(c => c.status === 'active' && c.id !== campaignId)
+    .map(c => c.id);
+
+  // Collect all emails already in other active campaigns
+  // listCampaignProspects returns junction records with prospect_id
+  // We build the cross-campaign email set from the prospects store
+  const crossCampaignEmails = new Set();
+  for (const otherCampaignId of otherActiveCampaignIds) {
+    const otherJunctions = await listCampaignProspects(otherCampaignId);
+    for (const cp of otherJunctions) {
+      // Look up the prospect record by its UUID to get the email
+      const existingProspect = await getProspect(cp.prospect_id).catch(() => null);
+      if (existingProspect?.email) crossCampaignEmails.add(existingProspect.email.toLowerCase());
+    }
   }
 
-  // Save prospects and enroll them in the campaign
-  for (const prospect of prospects) {
-    await putProspect(prospect);
+  const enrolledProspects = [];
+  const seenEmails = new Set();
+
+  for (const p of rawProspects) {
+    const emailLower = (p.email || '').toLowerCase();
+    if (!emailLower) continue;
+
+    // 1. Skip duplicates within this batch
+    if (seenEmails.has(emailLower)) {
+      discoverStats.deduped++;
+      continue;
+    }
+    seenEmails.add(emailLower);
+
+    // 2. Suppression check (tenant-wide unsubscribes/bounces)
+    if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) {
+      discoverStats.suppressed++;
+      continue;
+    }
+
+    // 3. Cross-campaign dedup — don't enroll in two active campaigns simultaneously
+    if (crossCampaignEmails.has(emailLower)) {
+      discoverStats.deduped++;
+      console.log(`[researcher] Cross-campaign dedup: ${emailLower} already in another active campaign`);
+      continue;
+    }
+
+    // 4. Within-campaign dedup — check if already enrolled in THIS campaign
+    const existingProspect = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    if (existingProspect) {
+      const existingJunction = await getCampaignProspect(campaignId, existingProspect.id).catch(() => null);
+      if (existingJunction) {
+        discoverStats.deduped++;
+        continue;
+      }
+    }
+
+    enrolledProspects.push(p);
+  }
+
+  // ── Step 5: Persist prospects and enroll in campaign ──────────────────────
+  const enrolledNow = [];
+  for (const p of enrolledProspects) {
+    const emailLower = p.email.toLowerCase();
+    let prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    if (!prospect) {
+      prospect = {
+        id: crypto.randomUUID(),
+        tenant_id: DEFAULTS.TENANT_ID,
+        email: emailLower,
+        name: p.name || null,
+        first_name: p.first_name || null,
+        last_name: p.last_name || null,
+        company_name: p.company_name || null,
+        company_domain: p.company_domain || null,
+        title: p.title || targetRole,
+        linkedin_url: p.linkedin_url || null,
+        employee_count: p.employee_count || null,
+        hunter_confidence: p.hunter_confidence || null,
+        verified: p.verified || false,
+        verification_status: p.verification_status || null,
+        source: p.source || 'hunter',
+        sourced_at: now,
+        created_at: now
+      };
+      await putProspect(prospect);
+    }
+
     await putCampaignProspect({
       campaign_id: campaignId,
       prospect_id: prospect.id,
       enrolled_at: now,
-      status: "active"
+      status: 'active'
     });
+
+    enrolledNow.push(prospect);
   }
 
-  // Update researcher status
+  // ── Step 6: Update researcher agent status ────────────────────────────────
+  const sourceLabel = discoverStats.fallback ? 'demo (Hunter quota/error)' : 'Hunter.io live';
+  const actionMsg = `Sourced ${enrolledNow.length} real prospects via ${sourceLabel} · ${discoverStats.suppressed} suppressed · ${discoverStats.deduped} deduped`;
+
   campaign.agent_status.researcher = {
     state: "COMPLETE",
-    last_action: `Sourced ${prospects.length} prospects matching ICP`,
+    last_action: actionMsg,
     updated_at: new Date().toISOString(),
-    prospects_found: prospects.length
+    prospects_found: enrolledNow.length,
+    stats: discoverStats
   };
-
-  // Activate Agent Ops (queue scheduling)
   campaign.agent_status.ops = {
     state: "ACTIVE",
-    last_action: `Scheduling ${prospects.length} prospects into send queue`,
+    last_action: `Scheduling ${enrolledNow.length} prospects into send queue`,
     updated_at: new Date().toISOString()
   };
   await putCampaign(campaign);
 
-  // Run Agent Ops: create queued sends for each prospect
-  await runOpsAgent(campaignId, prospects);
+  await logActivity({
+    type: "researcher_complete",
+    campaign_id: campaignId,
+    campaign_name: campaign.name,
+    message: actionMsg,
+    stats: discoverStats,
+    timestamp: new Date().toISOString()
+  });
 
-  return { prospects_enrolled: prospects.length };
+  // Run Agent Ops: schedule the verified, deduped prospects
+  await runOpsAgent(campaignId, enrolledNow);
+
+  return { prospects_enrolled: enrolledNow.length, stats: discoverStats };
+}
+
+// ─── Hunter.io Role Mapping Helpers ─────────────────────────────────────────
+
+function mapRoleToSeniority(role) {
+  const r = (role || '').toLowerCase();
+  if (r.includes('ceo') || r.includes('cto') || r.includes('cfo') || r.includes('founder') || r.includes('president') || r.includes('owner')) return 'executive';
+  if (r.includes('vp') || r.includes('vice president') || r.includes('director') || r.includes('head of')) return 'senior,executive';
+  if (r.includes('manager') || r.includes('lead')) return 'senior';
+  return 'senior,executive';
+}
+
+function mapRoleToDepartment(role) {
+  const r = (role || '').toLowerCase();
+  if (r.includes('sales') || r.includes('revenue') || r.includes('sdr') || r.includes('ae') || r.includes('account')) return 'sales';
+  if (r.includes('marketing') || r.includes('growth') || r.includes('demand')) return 'marketing';
+  if (r.includes('engineer') || r.includes('tech') || r.includes('cto') || r.includes('product')) return 'it';
+  if (r.includes('ceo') || r.includes('founder') || r.includes('president') || r.includes('coo')) return 'executive';
+  return 'executive,sales';
 }
 
 // ─── Agent Ops ──────────────────────────────────────────────────────────────
