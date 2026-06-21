@@ -23,8 +23,14 @@ function getLLMConfig() {
     : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
   const model = (typeof Netlify !== 'undefined' && Netlify.env?.get('LLM_MODEL'))
     ? Netlify.env.get('LLM_MODEL')
-    : (process.env.LLM_MODEL || 'gpt-5-mini');
+    : (process.env.LLM_MODEL || 'claude-haiku-4-5');
   return { apiKey, apiBase, model };
+}
+
+function cleanLLMJson(content) {
+  // Strip markdown code fences that Claude sometimes adds
+  let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+  return cleaned;
 }
 
 async function callLLM(messages, temperature = 0.7, maxTokens = 2000) {
@@ -227,7 +233,8 @@ Score this email against the GAP Prospecting methodology criteria. Return JSON o
   ], 0.2, 800);
 
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const cleaned = cleanLLMJson(content);
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
   } catch (e) { /* fall through */ }
   
@@ -277,7 +284,8 @@ Propose ONE specific optimization. Focus on the weakest dimension. Return JSON o
   ], 0.8, 1500);
 
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const cleaned = cleanLLMJson(content);
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
   } catch (e) { /* fall through */ }
   
@@ -309,7 +317,8 @@ Write a GAP Prospecting email. Return valid JSON only.`;
   ], 0.7, 1500);
 
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const cleaned = cleanLLMJson(content);
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
   } catch (e) { /* fall through */ }
   
