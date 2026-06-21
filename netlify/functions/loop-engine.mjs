@@ -2,11 +2,12 @@
  * Loop Engine — Self-Optimizing Outbound Email Loop
  * 
  * Inspired by Karpathy's autoresearch keep-or-revert pattern.
- * Iterates on the email-generation prompt/template, scores variants
- * via an LLM-judge, keeps improvements, reverts regressions.
+ * Each invocation runs ONE iteration (1 prospect evaluation) to stay within
+ * Netlify's function timeout. State persists via Netlify Blobs between calls.
+ * The UI chains iterations by calling repeatedly.
  * 
  * Endpoints:
- *   POST /api/loop-engine  { action: "run" | "status" | "history" }
+ *   POST /api/loop-engine  { action: "run" | "status" | "history" | "run-sequence" }
  * 
  * Storage: Netlify Blobs (serverless KV)
  */
@@ -14,19 +15,19 @@
 // ─── LLM Configuration ──────────────────────────────────────────────────────────
 
 function getLLMConfig() {
-  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
+  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_KEY'))
     ? Netlify.env.get('OPENAI_API_KEY')
     : (process.env.OPENAI_API_KEY || 'sk-iVJWw2GcvmPsr7AceUSTcf');
-  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
+  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_BASE'))
     ? Netlify.env.get('OPENAI_API_BASE')
     : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
-  const model = (typeof Netlify !== 'undefined' && Netlify.env.get('LLM_MODEL'))
+  const model = (typeof Netlify !== 'undefined' && Netlify.env?.get('LLM_MODEL'))
     ? Netlify.env.get('LLM_MODEL')
     : (process.env.LLM_MODEL || 'gpt-5-mini');
   return { apiKey, apiBase, model };
 }
 
-async function callLLM(messages, temperature = 0.7, maxTokens = 4000) {
+async function callLLM(messages, temperature = 0.7, maxTokens = 2000) {
   const { apiKey, apiBase, model } = getLLMConfig();
   const response = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
@@ -44,31 +45,22 @@ async function callLLM(messages, temperature = 0.7, maxTokens = 4000) {
   return data.choices?.[0]?.message?.content || '';
 }
 
-// ─── Experiment Storage (in-memory + response-based for serverless) ──────────────
-
-// Since Netlify Blobs requires @netlify/blobs package which may not be available,
-// we use a simpler approach: store experiments in a JSON structure that the function
-// manages via the Supabase-compatible REST pattern (using the existing anon key).
-// Actually, we'll use a self-contained approach: the function stores state in a
-// global variable per invocation and returns full history in responses.
-// For persistence across invocations, we'll use Netlify's built-in Blobs API.
+// ─── Experiment Storage via Netlify Blobs ────────────────────────────────────────
 
 let BLOB_STORE = null;
 
 async function getStore() {
   if (BLOB_STORE) return BLOB_STORE;
   try {
-    // Netlify Blobs v2 - available in Netlify Functions runtime
-    const { getStore } = await import('@netlify/blobs');
-    BLOB_STORE = getStore('loop-engine');
+    const { getStore: getBlobStore } = await import('@netlify/blobs');
+    BLOB_STORE = getBlobStore('loop-engine');
     return BLOB_STORE;
   } catch (e) {
-    // Fallback: use in-memory store (resets on cold start)
+    // Fallback: in-memory (resets on cold start but allows function to work)
     BLOB_STORE = {
       _data: {},
       async get(key) { return this._data[key] || null; },
       async set(key, value) { this._data[key] = value; },
-      async getWithMetadata(key) { return { data: this._data[key] || null }; }
     };
     return BLOB_STORE;
   }
@@ -98,7 +90,7 @@ async function saveBaseline(baseline) {
   await store.set('baseline', JSON.stringify(baseline));
 }
 
-// ─── LOCKED Guardrails (the "prepare.py" — cannot be modified by the loop) ──────
+// ─── LOCKED Guardrails (cannot be modified by the loop) ──────────────────────────
 
 const LOCKED_GUARDRAILS = `
 ## LOCKED GUARDRAILS — These rules are IMMUTABLE and must ALWAYS be followed:
@@ -155,7 +147,7 @@ Return ONLY valid JSON:
   created_at: new Date().toISOString()
 };
 
-// ─── Sample Prospect Set (fixed evaluation harness) ─────────────────────────────
+// ─── Sample Prospect Pool (rotates through for evaluation) ──────────────────────
 
 const SAMPLE_PROSPECTS = [
   {
@@ -232,7 +224,7 @@ Score this email against the GAP Prospecting methodology criteria. Return JSON o
   const content = await callLLM([
     { role: 'system', content: JUDGE_SYSTEM_PROMPT },
     { role: 'user', content: userPrompt }
-  ], 0.2, 1000);
+  ], 0.2, 800);
 
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -272,7 +264,7 @@ async function proposeVariant(currentTemplate, scores, feedback) {
 - Personalization: ${scores.personalization.toFixed(1)}/10
 
 ## Judge Feedback:
-${feedback.join('\n')}
+${feedback}
 
 ## Current Editable Strategy Section:
 ${currentTemplate.match(/### Editable Strategy[\s\S]*?(?=###|$)/)?.[0] || 'Default strategy'}
@@ -282,7 +274,7 @@ Propose ONE specific optimization. Focus on the weakest dimension. Return JSON o
   const content = await callLLM([
     { role: 'system', content: PROPOSER_SYSTEM_PROMPT },
     { role: 'user', content: userPrompt }
-  ], 0.8, 2000);
+  ], 0.8, 1500);
 
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -314,7 +306,7 @@ Write a GAP Prospecting email. Return valid JSON only.`;
   const content = await callLLM([
     { role: 'system', content: template },
     { role: 'user', content: userPrompt }
-  ], 0.7, 2000);
+  ], 0.7, 1500);
 
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -324,10 +316,10 @@ Write a GAP Prospecting email. Return valid JSON only.`;
   return { subject: 'test', body: content, signals_used: [], gap_analysis: {} };
 }
 
-// ─── The Loop Engine Core ───────────────────────────────────────────────────────
+// ─── Single Iteration (fits within Netlify timeout) ──────────────────────────────
 
-async function runOptimizationLoop(iterations = 3) {
-  const experiments = await loadExperiments();
+async function runSingleIteration() {
+  let experiments = await loadExperiments();
   let baseline = await loadBaseline();
   
   if (!baseline) {
@@ -335,131 +327,116 @@ async function runOptimizationLoop(iterations = 3) {
     await saveBaseline(baseline);
   }
 
-  const results = [];
+  // Pick ONE prospect (rotate through pool based on experiment count)
+  const prospectIndex = experiments.length % SAMPLE_PROSPECTS.length;
+  const prospect = SAMPLE_PROSPECTS[prospectIndex];
 
-  for (let i = 0; i < iterations; i++) {
-    const experimentId = `exp_${Date.now()}_${i}`;
-    
-    // Step 1: Score the current baseline across sample prospects
-    const baselineScores = [];
-    const baselineEmails = [];
-    
-    for (const prospect of SAMPLE_PROSPECTS) {
-      const email = await generateEmailWithTemplate(baseline.template, prospect, prospect.signals);
-      const score = await scoreEmail(email, prospect, prospect.signals);
-      baselineScores.push(score);
-      baselineEmails.push({ prospect: prospect.contact_name, email, score });
-    }
+  // Step 1: Generate + score baseline email for this prospect
+  const baselineEmail = await generateEmailWithTemplate(baseline.template, prospect, prospect.signals);
+  const baselineScore = await scoreEmail(baselineEmail, prospect, prospect.signals);
+  
+  const baselineAvg = {
+    avg: baselineScore.total_score || 50,
+    gap_structure: baselineScore.dimensions?.gap_structure || 10,
+    signal_specificity: baselineScore.dimensions?.signal_specificity || 8,
+    signal_integrity: baselineScore.dimensions?.signal_integrity || 8,
+    clarity: baselineScore.dimensions?.clarity || 8,
+    cta_strength: baselineScore.dimensions?.cta_strength || 8,
+    brevity: baselineScore.dimensions?.brevity || 5,
+    personalization: baselineScore.dimensions?.personalization || 5
+  };
 
-    const baselineAvg = computeAverageScores(baselineScores);
-    
-    // Update baseline score if not set
-    if (baseline.score === null) {
-      baseline.score = baselineAvg.avg;
-      await saveBaseline(baseline);
-    }
-
-    // Step 2: Propose a variant
-    const feedback = baselineScores.map(s => s.feedback).filter(Boolean);
-    const variant = await proposeVariant(baseline.template, baselineAvg, feedback);
-    
-    if (!variant) {
-      results.push({
-        id: experimentId,
-        iteration: i + 1,
-        status: 'skipped',
-        reason: 'Could not generate variant proposal',
-        timestamp: new Date().toISOString()
-      });
-      continue;
-    }
-
-    // Step 3: Build the variant template
-    const variantTemplate = baseline.template.replace(
-      /### Editable Strategy[\s\S]*?(?=### Output Format)/,
-      `### Editable Strategy (what the Loop Engine can optimize):\n${variant.updated_strategy_section}\n\n`
-    );
-
-    // Step 4: Score the variant across the same sample set
-    const variantScores = [];
-    const variantEmails = [];
-    
-    for (const prospect of SAMPLE_PROSPECTS) {
-      const email = await generateEmailWithTemplate(variantTemplate, prospect, prospect.signals);
-      const score = await scoreEmail(email, prospect, prospect.signals);
-      variantScores.push(score);
-      variantEmails.push({ prospect: prospect.contact_name, email, score });
-    }
-
-    const variantAvg = computeAverageScores(variantScores);
-
-    // Step 5: Keep or Revert
-    const improved = variantAvg.avg > baselineAvg.avg;
-    const decision = improved ? 'kept' : 'reverted';
-
-    const experiment = {
-      id: experimentId,
-      iteration: i + 1,
-      variant_description: variant.variant_description,
-      optimization_hypothesis: variant.optimization_hypothesis,
-      baseline_score: baselineAvg.avg,
-      variant_score: variantAvg.avg,
-      score_delta: variantAvg.avg - baselineAvg.avg,
-      decision,
-      baseline_dimensions: baselineAvg,
-      variant_dimensions: variantAvg,
-      sample_emails: {
-        baseline: baselineEmails,
-        variant: variantEmails
-      },
-      timestamp: new Date().toISOString()
-    };
-
-    if (improved) {
-      baseline = {
-        id: `baseline_v${baseline.version + 1}`,
-        version: baseline.version + 1,
-        description: variant.variant_description,
-        template: variantTemplate,
-        score: variantAvg.avg,
-        created_at: new Date().toISOString(),
-        parent_id: baseline.id
-      };
-      await saveBaseline(baseline);
-    }
-
-    experiments.push(experiment);
-    results.push(experiment);
+  // Update baseline score if not set
+  if (baseline.score === null) {
+    baseline.score = baselineAvg.avg;
+    await saveBaseline(baseline);
   }
 
+  // Step 2: Propose a variant
+  const feedback = baselineScore.feedback || 'No specific feedback';
+  const variant = await proposeVariant(baseline.template, baselineAvg, feedback);
+  
+  if (!variant) {
+    const skipped = {
+      id: `exp_${Date.now()}`,
+      iteration: experiments.length + 1,
+      status: 'skipped',
+      reason: 'Could not generate variant proposal',
+      baseline_score: baselineAvg.avg,
+      variant_score: null,
+      score_delta: 0,
+      decision: 'skipped',
+      timestamp: new Date().toISOString()
+    };
+    experiments.push(skipped);
+    await saveExperiments(experiments);
+    return { experiment: skipped, current_baseline: summarizeBaseline(baseline) };
+  }
+
+  // Step 3: Build the variant template
+  const variantTemplate = baseline.template.replace(
+    /### Editable Strategy[\s\S]*?(?=### Output Format)/,
+    `### Editable Strategy (what the Loop Engine can optimize):\n${variant.updated_strategy_section}\n\n`
+  );
+
+  // Step 4: Generate + score variant email for same prospect
+  const variantEmail = await generateEmailWithTemplate(variantTemplate, prospect, prospect.signals);
+  const variantScore = await scoreEmail(variantEmail, prospect, prospect.signals);
+  
+  const variantAvg = variantScore.total_score || 50;
+
+  // Step 5: Keep or Revert
+  const improved = variantAvg > baselineAvg.avg;
+  const decision = improved ? 'kept' : 'reverted';
+
+  const experiment = {
+    id: `exp_${Date.now()}`,
+    iteration: experiments.length + 1,
+    prospect_name: prospect.contact_name,
+    prospect_company: prospect.company_name,
+    variant_description: variant.variant_description,
+    optimization_hypothesis: variant.optimization_hypothesis,
+    baseline_score: baselineAvg.avg,
+    variant_score: variantAvg,
+    score_delta: variantAvg - baselineAvg.avg,
+    decision,
+    baseline_dimensions: baselineAvg,
+    variant_dimensions: variantScore.dimensions || {},
+    baseline_email: { subject: baselineEmail.subject, body: baselineEmail.body },
+    variant_email: { subject: variantEmail.subject, body: variantEmail.body },
+    judge_feedback: {
+      baseline: baselineScore.feedback,
+      variant: variantScore.feedback
+    },
+    timestamp: new Date().toISOString()
+  };
+
+  if (improved) {
+    baseline = {
+      id: `baseline_v${baseline.version + 1}`,
+      version: baseline.version + 1,
+      description: variant.variant_description,
+      template: variantTemplate,
+      score: variantAvg,
+      created_at: new Date().toISOString(),
+      parent_id: baseline.id
+    };
+    await saveBaseline(baseline);
+  }
+
+  experiments.push(experiment);
   await saveExperiments(experiments);
 
-  return {
-    experiments_run: results.length,
-    results,
-    current_baseline: {
-      id: baseline.id,
-      version: baseline.version,
-      description: baseline.description,
-      score: baseline.score,
-      created_at: baseline.created_at
-    }
-  };
+  return { experiment, current_baseline: summarizeBaseline(baseline) };
 }
 
-function computeAverageScores(scores) {
-  const n = scores.length || 1;
-  const sum = (key) => scores.reduce((acc, s) => acc + (s.dimensions?.[key] || 0), 0) / n;
-  const avg = scores.reduce((acc, s) => acc + (s.total_score || 0), 0) / n;
+function summarizeBaseline(baseline) {
   return {
-    avg,
-    gap_structure: sum('gap_structure'),
-    signal_specificity: sum('signal_specificity'),
-    signal_integrity: sum('signal_integrity'),
-    clarity: sum('clarity'),
-    cta_strength: sum('cta_strength'),
-    brevity: sum('brevity'),
-    personalization: sum('personalization')
+    id: baseline.id,
+    version: baseline.version,
+    description: baseline.description,
+    score: baseline.score,
+    created_at: baseline.created_at
   };
 }
 
@@ -478,21 +455,21 @@ export default async (req, context) => {
 
   try {
     let action = 'status';
-    let iterations = 3;
 
     if (req.method === 'POST') {
       const body = await req.json();
       action = body.action || 'status';
-      iterations = body.iterations || 3;
     }
 
     if (action === 'run') {
-      // Run the optimization loop
-      const result = await runOptimizationLoop(Math.min(iterations, 5));
+      // Run ONE iteration (fits within timeout)
+      const result = await runSingleIteration();
       return new Response(JSON.stringify({
         success: true,
         action: 'run',
-        ...result
+        experiments_run: 1,
+        results: [result.experiment],
+        current_baseline: result.current_baseline
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -507,13 +484,21 @@ export default async (req, context) => {
         action: 'history',
         total_experiments: experiments.length,
         experiments,
-        current_baseline: baseline ? {
-          id: baseline.id,
-          version: baseline.version,
-          description: baseline.description,
-          score: baseline.score,
-          created_at: baseline.created_at
-        } : null
+        current_baseline: baseline ? summarizeBaseline(baseline) : null
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (action === 'reset') {
+      // Reset experiments (for testing)
+      await saveExperiments([]);
+      await saveBaseline(null);
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'reset',
+        message: 'Loop Engine state cleared'
       }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -532,12 +517,7 @@ export default async (req, context) => {
         total_experiments: experiments.length,
         kept_count: experiments.filter(e => e.decision === 'kept').length,
         reverted_count: experiments.filter(e => e.decision === 'reverted').length,
-        current_baseline: baseline ? {
-          id: baseline.id,
-          version: baseline.version,
-          description: baseline.description,
-          score: baseline.score
-        } : { id: 'baseline_v0', version: 0, description: 'Default', score: null },
+        current_baseline: baseline ? summarizeBaseline(baseline) : { id: 'baseline_v0', version: 0, description: 'Default', score: null },
         locked_guardrails: [
           'GAP methodology (current state → future state → cost of gap)',
           'Never fabricate signals — must be real and source-linked',
@@ -553,6 +533,7 @@ export default async (req, context) => {
 
   } catch (e) {
     return new Response(JSON.stringify({
+      success: false,
       error: e.message,
       stack: e.stack?.split('\n').slice(0, 3)
     }), {

@@ -210,26 +210,46 @@ async function runLoopEngine() {
   loopEngineState.running = true;
   const badge = $('loopEngineBadge');
   const msg = $('loopEngineMessage');
-  if (badge) { badge.textContent = 'RUNNING...'; badge.className = 'badge'; }
-  if (msg) msg.innerHTML = '<div class="notice">Loop Engine is running optimization iterations. This may take 30-60 seconds...</div>';
+  const ITERATIONS = 3;
+  let completed = 0;
+  let lastError = null;
   
-  try {
-    const res = await fetch('/api/loop-engine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'run', iterations: 3 })
-    });
-    const data = await res.json();
-    if (data.success) {
-      loopEngineState.experiments = data.results || [];
-      loopEngineState.baseline = data.current_baseline;
-      renderLoopEngine();
-      if (msg) msg.innerHTML = '<div class="notice">Loop completed! ' + data.experiments_run + ' experiments processed.</div>';
-    } else {
-      if (msg) msg.innerHTML = '<div class="notice err">Error: ' + (data.error || 'Unknown error') + '</div>';
+  if (badge) { badge.textContent = 'RUNNING...'; badge.className = 'badge'; }
+  if (msg) msg.innerHTML = '<div class="notice">Loop Engine: running iteration 1/' + ITERATIONS + '...</div>';
+  
+  for (let i = 0; i < ITERATIONS; i++) {
+    try {
+      if (msg) msg.innerHTML = '<div class="notice">Loop Engine: running iteration ' + (i+1) + '/' + ITERATIONS + '...</div>';
+      const res = await fetch('/api/loop-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        completed++;
+        loopEngineState.baseline = data.current_baseline;
+        if (data.results && data.results.length > 0) {
+          loopEngineState.experiments.push(data.results[0]);
+        }
+        renderLoopEngine();
+      } else {
+        lastError = data.error || 'Unknown error';
+      }
+    } catch (e) {
+      lastError = e.message;
     }
-  } catch (e) {
-    if (msg) msg.innerHTML = '<div class="notice err">Failed to reach Loop Engine API: ' + e.message + '</div>';
+  }
+  
+  // Reload full history to sync with server state
+  await loadLoopHistory();
+  
+  if (msg) {
+    if (completed > 0) {
+      msg.innerHTML = '<div class="notice">Loop completed! ' + completed + '/' + ITERATIONS + ' iterations processed.' + (lastError ? ' (Last error: ' + esc(lastError) + ')' : '') + '</div>';
+    } else {
+      msg.innerHTML = '<div class="notice err">All iterations failed: ' + esc(lastError || 'Unknown') + '</div>';
+    }
   }
   
   loopEngineState.running = false;
