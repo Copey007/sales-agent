@@ -18,7 +18,7 @@ import {
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
   listActivityLog, countSentToday, listQueuedSends
-} from "./_lib/campaign-store.mjs";
+} from "../../shared/campaign-store.mjs";
 
 export default async (req, context) => {
   // CORS

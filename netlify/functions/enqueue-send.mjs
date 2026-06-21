@@ -18,7 +18,7 @@ import {
   getCampaign, putProspect, putCampaignProspect, putEmailSend,
   findProspectByEmail, isEmailSuppressed, getFeatureFlag,
   logActivity, DEFAULTS
-} from "./_lib/campaign-store.mjs";
+} from "../../shared/campaign-store.mjs";
 
 export default async (req, context) => {
   const corsHeaders = {
@@ -118,7 +118,7 @@ export default async (req, context) => {
 
         // Create campaign_prospect junction (dedup check)
         const junctionKey = `${campaignId}:${prospect.id}`;
-        const existingJunction = await import("./_lib/campaign-store.mjs")
+        const existingJunction = await import("../../shared/campaign-store.mjs")
           .then(m => m.getCampaignProspect(campaignId, prospect.id));
         
         if (existingJunction && existingJunction.status !== 'new') {
