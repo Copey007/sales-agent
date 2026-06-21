@@ -1,13 +1,13 @@
 /**
- * Inbound Webhook — Reply Capture
- * 
- * Receives inbound email events from Resend (email.received),
- * forwards the reply to mark.cope.roarr@gmail.com via Resend,
- * and logs it to the multi-campaign replies store (Netlify Blobs).
+ * Inbound Webhook — Reply Capture & Forward
+ *
+ * Receives inbound email.received events from Resend,
+ * forwards a polished notification to mark.cope.roarr@gmail.com
+ * (with Reply-To set to the PROSPECT so hitting reply goes directly to them),
+ * and logs each reply to the Netlify Blobs 'replies' store for Loop Engine Phase 2.
  */
 
 export default async (req, context) => {
-  // Only accept POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -18,44 +18,101 @@ export default async (req, context) => {
   try {
     const payload = await req.json();
 
-    // Resend sends { type: "email.received", data: { ... } }
     const eventType = payload.type || 'unknown';
     const data = payload.data || payload;
 
-    // Extract reply fields from Resend inbound payload
-    const from = data.from || data.sender || 'unknown@unknown.com';
-    const to = data.to || data.recipient || '';
-    const subject = data.subject || '(no subject)';
-    const textBody = data.text || data.body || '';
-    const htmlBody = data.html || '';
-    const messageId = data.message_id || data.id || '';
-    const inReplyTo = data.in_reply_to || data.headers?.['in-reply-to'] || '';
-    const receivedAt = new Date().toISOString();
+    // --- Extract all relevant fields from the Resend inbound payload ---
+    const from        = data.from        || data.sender     || 'unknown@unknown.com';
+    const to          = data.to          || data.recipient  || '';
+    const subject     = data.subject     || '(no subject)';
+    const textBody    = data.text        || data.body       || '';
+    const htmlBody    = data.html        || '';
+    const messageId   = data.message_id  || data.id         || '';
+    const inReplyTo   = data.in_reply_to || data.headers?.['in-reply-to'] || '';
+    const receivedAt  = new Date().toISOString();
 
-    // --- 1. Forward the reply to mark.cope.roarr@gmail.com via Resend ---
+    // Parse display name + email from the From field (e.g. "Jane Smith <jane@acme.com>")
+    const fromMatch   = from.match(/^(.*?)\s*<([^>]+)>$/);
+    const prospectName  = fromMatch ? fromMatch[1].trim() : from.split('@')[0];
+    const prospectEmail = fromMatch ? fromMatch[2].trim() : from;
+
     const RESEND_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('RESEND_API_KEY'))
       ? Netlify.env.get('RESEND_API_KEY')
       : (process.env.RESEND_API_KEY || '');
-    
+
+    // --- 1. Build the polished forwarded email ---
     let forwarded = false;
     if (RESEND_KEY) {
-      const forwardSubject = `[Reply Received] ${subject}`;
-      const forwardBody = [
-        '--- Inbound Reply Captured by A-Gent Fleet ---',
+      // Prefer the prospect's own HTML if available; otherwise convert plain text to HTML
+      const replyHtml = htmlBody
+        ? htmlBody
+        : textBody
+          .split('\n')
+          .map(line => line.trim() === '' ? '<br>' : `<p style="margin:0 0 8px 0">${escHtml(line)}</p>`)
+          .join('\n');
+
+      // Plain-text version: always use the text body if available, else strip HTML tags
+      const replyText = textBody || stripHtml(htmlBody);
+
+      const forwardHtml = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f4f5;margin:0;padding:24px">
+  <div style="max-width:600px;margin:0 auto">
+
+    <!-- Header banner -->
+    <div style="background:#1a1a2e;border-radius:8px 8px 0 0;padding:16px 24px;display:flex;align-items:center;gap:12px">
+      <div style="background:#d4af37;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#1a1a2e;font-size:14px;flex-shrink:0">SDR</div>
+      <div>
+        <div style="color:#d4af37;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase">A-Gent Fleet · Reply Received</div>
+        <div style="color:#aaa;font-size:11px;margin-top:2px">${receivedAt.replace('T', ' ').replace(/\.\d+Z$/, ' UTC')}</div>
+      </div>
+    </div>
+
+    <!-- Prospect meta -->
+    <div style="background:#fff;border-left:4px solid #d4af37;padding:16px 24px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr><td style="color:#888;padding:3px 0;width:100px">From</td><td style="color:#111;font-weight:600">${escHtml(from)}</td></tr>
+        <tr><td style="color:#888;padding:3px 0">To</td><td style="color:#555">${escHtml(to)}</td></tr>
+        <tr><td style="color:#888;padding:3px 0">Subject</td><td style="color:#111">${escHtml(subject)}</td></tr>
+        ${messageId ? `<tr><td style="color:#888;padding:3px 0">Message-ID</td><td style="color:#555;font-size:11px;font-family:monospace">${escHtml(messageId)}</td></tr>` : ''}
+        ${inReplyTo ? `<tr><td style="color:#888;padding:3px 0">In-Reply-To</td><td style="color:#555;font-size:11px;font-family:monospace">${escHtml(inReplyTo)}</td></tr>` : ''}
+      </table>
+    </div>
+
+    <!-- Reply body -->
+    <div style="background:#fff;padding:20px 24px;border-top:1px solid #eee">
+      <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Reply Content</div>
+      <div style="font-size:14px;color:#222;line-height:1.65;border-left:3px solid #e0e0e0;padding-left:16px">
+        ${replyHtml}
+      </div>
+    </div>
+
+    <!-- CTA footer -->
+    <div style="background:#f9f9f9;border-top:1px solid #eee;border-radius:0 0 8px 8px;padding:14px 24px;font-size:12px;color:#888;text-align:center">
+      Hit <strong>Reply</strong> to respond directly to <strong>${escHtml(prospectName)}</strong> at <strong>${escHtml(prospectEmail)}</strong>.
+      This reply has been logged to the Fleet reply store for Loop Engine metrics.
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+      const forwardText = [
+        '=== A-Gent Fleet — Reply Received ===',
         '',
-        `From: ${from}`,
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        `Received: ${receivedAt}`,
-        `Message-ID: ${messageId}`,
-        `In-Reply-To: ${inReplyTo}`,
+        `From:        ${from}`,
+        `To:          ${to}`,
+        `Subject:     ${subject}`,
+        `Received:    ${receivedAt}`,
+        messageId  ? `Message-ID:  ${messageId}`  : '',
+        inReplyTo  ? `In-Reply-To: ${inReplyTo}`  : '',
         '',
-        '--- Reply Body ---',
-        textBody || '(no text body — check HTML below)',
+        '--- Reply ---',
+        replyText || '(no plain-text body)',
         '',
-        '--- HTML Body ---',
-        htmlBody || '(none)'
-      ].join('\n');
+        `Hit Reply to respond directly to ${prospectName} <${prospectEmail}>.`
+      ].filter(l => l !== undefined).join('\n');
 
       try {
         const sendRes = await fetch('https://api.resend.com/emails', {
@@ -65,10 +122,17 @@ export default async (req, context) => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            from: 'A-Gent Fleet <fleet@a-gent.co>',
+            from: `A-Gent Fleet <fleet@a-gent.co>`,
             to: ['mark.cope.roarr@gmail.com'],
-            subject: forwardSubject,
-            text: forwardBody
+            reply_to: prospectEmail,          // ← hitting Reply goes to the PROSPECT
+            subject: `[Reply] ${subject}`,
+            text: forwardText,
+            html: forwardHtml,
+            headers: {
+              // Carry the original Message-ID and In-Reply-To so Gmail threads correctly
+              ...(messageId  ? { 'X-Original-Message-ID': messageId }  : {}),
+              ...(inReplyTo  ? { 'X-Original-In-Reply-To': inReplyTo } : {})
+            }
           })
         });
         const sendResult = await sendRes.json();
@@ -83,15 +147,16 @@ export default async (req, context) => {
 
     // --- 2. Log the reply to Netlify Blobs (replies store) ---
     let blobsLogged = false;
+    let replyId = `reply_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     try {
       const { getStore } = await import('@netlify/blobs');
       const repliesStore = getStore('replies');
 
-      // Try to attribute this reply to a campaign/email_send
-      // We look for the In-Reply-To header which should match the original Message-ID
       const replyRecord = {
-        id: `reply_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: replyId,
         from: from,
+        from_name: prospectName,
+        from_email: prospectEmail,
         to: to,
         subject: subject,
         text_body: textBody,
@@ -99,23 +164,24 @@ export default async (req, context) => {
         message_id: messageId,
         in_reply_to: inReplyTo,
         received_at: receivedAt,
-        sentiment: 'unclassified', // Phase 2: LLM classification
-        campaign_id: null, // Will be attributed in Phase 2 via in_reply_to matching
-        email_send_id: null, // Will be attributed in Phase 2
+        sentiment: 'unclassified',   // Phase 2: LLM classification
+        campaign_id: null,           // Phase 2: attributed via in_reply_to → email_send lookup
+        email_send_id: null,
         forwarded_to: 'mark.cope.roarr@gmail.com',
         forwarded: forwarded,
         event_type: eventType
       };
 
-      await repliesStore.setJSON(replyRecord.id, replyRecord);
+      await repliesStore.setJSON(replyId, replyRecord);
       blobsLogged = true;
-      console.log('[inbound-webhook] Reply logged:', replyRecord.id);
+      console.log('[inbound-webhook] Reply logged:', replyId);
     } catch (blobErr) {
       console.error('[inbound-webhook] Blobs logging failed:', blobErr.message);
     }
 
     return new Response(JSON.stringify({
       success: true,
+      reply_id: replyId,
       reply_from: from,
       subject: subject,
       forwarded: forwarded,
@@ -138,3 +204,25 @@ export default async (req, context) => {
 export const config = {
   path: "/api/inbound-webhook"
 };
+
+// --- Helpers ---
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
