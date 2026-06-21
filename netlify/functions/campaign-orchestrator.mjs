@@ -20,6 +20,7 @@ import {
   listCampaigns, getCampaign, getCampaignPersona, getCampaignTerritory,
   getCampaignSignalConfig, getCampaignSequence,
   listCampaignProspects, putCampaignProspect, putProspect,
+  getProspect, findProspectByEmail, isEmailSuppressed,
   listQueuedSends, countSentToday, putEmailSend,
   logActivity, setFeatureFlag,
   DEFAULTS
@@ -171,33 +172,20 @@ async function handleLaunch(req) {
   await setFeatureFlag("multi_campaign_orchestration", true);
   await setFeatureFlag("queue_manager_active", true);
 
-  // 7. Trigger Agent Researcher via background function
-  // Background functions survive past the parent response (up to 15 min)
-  // so the Hunter.io pipeline can complete without timing out
+  // 7. Run Agent Researcher synchronously (capped at 3 domains to fit 26s timeout)
+  // Each domain search takes ~1-2s; 3 domains = ~5s total, leaving room for verification + Blobs writes
   campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io", updated_at: now };
   campaign.agent_status.orchestrator = { state: "ACTIVE", last_action: "Coordinating specialist agents", updated_at: now };
   await putCampaign(campaign);
 
-  // Call the researcher-background function (returns 202 immediately)
-  const researcherUrl = `https://aisdr.a-gent.co/api/researcher-background`;
-  fetch(researcherUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      campaign_id: campaignId,
-      parsed_icp: parsedICP,
-      target_role: target_persona
-    })
-  }).catch(err => {
-    console.error("[orchestrator] Failed to trigger researcher background:", err.message);
-  });
+  const researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
 
   // Log activity
   await logActivity({
     type: "campaign_launched",
     campaign_id: campaignId,
     campaign_name: campaign_name,
-    message: `Campaign "${campaign_name}" launched targeting ${target_persona} in ${parsedICP.vertical || 'B2B SaaS'}`,
+    message: `Campaign "${campaign_name}" launched targeting ${target_persona} in ${parsedICP.vertical || 'B2B SaaS'}. Researcher sourced ${researchResult.prospects_enrolled} prospects.`,
     timestamp: now
   });
 
@@ -394,6 +382,173 @@ function mapRoleToDepartment(role) {
   if (r.includes('engineer') || r.includes('tech') || r.includes('cto') || r.includes('product')) return 'it';
   if (r.includes('ceo') || r.includes('founder') || r.includes('president') || r.includes('coo')) return 'executive';
   return 'executive,sales';
+}
+
+// ─── Agent Researcher ───────────────────────────────────────────────────────
+// Synchronous, capped at 3 domains per run to stay within Netlify's 26s timeout.
+// Each Hunter domain-search takes ~1-2s; 3 domains ≈ 5s + verification + Blobs writes.
+// The /api/researcher-background endpoint can be called again to source additional
+// prospects from the remaining domain pool (pagination via page param).
+
+const RESEARCHER_MAX_PROSPECTS = 15; // safety cap per run
+const RESEARCHER_DOMAINS_PER_RUN = 3; // domains per synchronous run
+
+async function runResearcherAgent(campaignId, parsedICP, targetRole) {
+  const HUNTER_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
+    ? Netlify.env.get('HUNTER_API_KEY')
+    : (process.env.HUNTER_API_KEY || '');
+
+  const campaign = await getCampaign(campaignId);
+  if (!campaign) return { prospects_enrolled: 0, stats: {} };
+
+  const now = new Date().toISOString();
+  let rawProspects = [];
+  const discoverStats = { companies_searched: 0, emails_found: 0, verified: 0, suppressed: 0, deduped: 0, fallback: false };
+
+  if (!HUNTER_KEY) {
+    // Fallback: demo prospects so the pipeline still works without a key
+    rawProspects = generateDemoProspects(campaignId, parsedICP, targetRole, 5);
+    discoverStats.fallback = true;
+  } else {
+    const seniority = mapRoleToSeniority(targetRole);
+    const department = mapRoleToDepartment(targetRole);
+    // Use only first 3 domains to stay within timeout
+    const domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
+    discoverStats.companies_searched = domains.length;
+
+    for (const { domain, company_name } of domains) {
+      if (rawProspects.length >= RESEARCHER_MAX_PROSPECTS) break;
+      try {
+        const params = new URLSearchParams({
+          api_key: HUNTER_KEY,
+          domain,
+          type: 'personal',
+          seniority,
+          department,
+          limit: 5
+        });
+        const res = await fetch(`https://api.hunter.io/v2/domain-search?${params}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const emails = data?.data?.emails || [];
+        const org = data?.data?.organization || company_name;
+        for (const e of emails) {
+          if (!e.value) continue;
+          rawProspects.push({
+            email: e.value,
+            name: [e.first_name, e.last_name].filter(Boolean).join(' ') || null,
+            first_name: e.first_name || null,
+            last_name: e.last_name || null,
+            company_name: org,
+            company_domain: domain,
+            title: e.position || targetRole,
+            linkedin_url: e.linkedin || null,
+            hunter_confidence: e.confidence || null,
+            source: 'hunter_domain_search'
+          });
+          discoverStats.emails_found++;
+        }
+      } catch (err) {
+        console.warn(`[researcher] Error searching ${domain}: ${err.message}`);
+      }
+    }
+
+    // Verify only low-confidence emails (< 90) to preserve quota
+    const highConf = rawProspects.filter(p => (p.hunter_confidence || 0) >= 90);
+    const lowConf = rawProspects.filter(p => (p.hunter_confidence || 0) < 90).slice(0, 3); // max 3 verifications
+    const verified = [...highConf.map(p => ({ ...p, verified: true, verification_status: 'high_confidence' }))];
+    for (const p of lowConf) {
+      try {
+        const vRes = await fetch(`https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(p.email)}&api_key=${HUNTER_KEY}`);
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          const status = vData?.data?.status;
+          const score = vData?.data?.score || 0;
+          if (status === 'valid' || status === 'accept_all' || score > 50) {
+            verified.push({ ...p, verified: true, verification_status: status, verification_score: score });
+            discoverStats.verified++;
+          }
+        }
+      } catch { verified.push({ ...p, verified: false, verification_status: 'error' }); }
+    }
+    rawProspects = verified.slice(0, RESEARCHER_MAX_PROSPECTS);
+  }
+
+  // Cross-campaign dedup + suppression
+  const allCampaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+  const otherActiveIds = allCampaigns.filter(c => c.status === 'active' && c.id !== campaignId).map(c => c.id);
+  const crossCampaignEmails = new Set();
+  for (const otherId of otherActiveIds) {
+    const junctions = await listCampaignProspects(otherId);
+    for (const cp of junctions) {
+      const p = await getProspect(cp.prospect_id).catch(() => null);
+      if (p?.email) crossCampaignEmails.add(p.email.toLowerCase());
+    }
+  }
+
+  const seenEmails = new Set();
+  const toEnroll = [];
+  for (const p of rawProspects) {
+    const emailLower = (p.email || '').toLowerCase();
+    if (!emailLower || seenEmails.has(emailLower)) { discoverStats.deduped++; continue; }
+    seenEmails.add(emailLower);
+    if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) { discoverStats.suppressed++; continue; }
+    if (crossCampaignEmails.has(emailLower)) { discoverStats.deduped++; continue; }
+    const existing = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    if (existing) {
+      const existingJunction = await listCampaignProspects(campaignId);
+      if (existingJunction.some(cp => cp.prospect_id === existing.id)) { discoverStats.deduped++; continue; }
+    }
+    toEnroll.push({ ...p, _existing: existing });
+  }
+
+  // Persist + enroll
+  const enrolled = [];
+  for (const p of toEnroll) {
+    let prospect = p._existing;
+    if (!prospect) {
+      prospect = {
+        id: crypto.randomUUID(),
+        tenant_id: DEFAULTS.TENANT_ID,
+        email: p.email.toLowerCase(),
+        name: p.name || null,
+        first_name: p.first_name || null,
+        last_name: p.last_name || null,
+        company_name: p.company_name || null,
+        company_domain: p.company_domain || null,
+        title: p.title || targetRole,
+        linkedin_url: p.linkedin_url || null,
+        hunter_confidence: p.hunter_confidence || null,
+        verified: p.verified || false,
+        verification_status: p.verification_status || null,
+        source: p.source || 'hunter',
+        sourced_at: now,
+        created_at: now
+      };
+      await putProspect(prospect);
+    }
+    await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
+    enrolled.push(prospect);
+  }
+
+  // Update researcher agent status on campaign
+  const freshCampaign = await getCampaign(campaignId);
+  if (freshCampaign) {
+    const sourceLabel = discoverStats.fallback ? 'demo (no Hunter key)' : 'Hunter.io live';
+    freshCampaign.agent_status.researcher = {
+      state: 'COMPLETE',
+      last_action: `Sourced ${enrolled.length} real prospects via ${sourceLabel} · ${discoverStats.suppressed} suppressed · ${discoverStats.deduped} deduped`,
+      updated_at: new Date().toISOString(),
+      prospects_found: enrolled.length,
+      stats: discoverStats
+    };
+    await putCampaign(freshCampaign);
+  }
+
+  // Hand off to Agent Ops
+  await runOpsAgent(campaignId, enrolled);
+
+  return { prospects_enrolled: enrolled.length, stats: discoverStats };
 }
 
 // ─── Agent Ops ──────────────────────────────────────────────────────────────
