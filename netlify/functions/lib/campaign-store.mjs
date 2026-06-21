@@ -22,18 +22,22 @@
  *   feature_flags    — feature flag state
  */
 
-import { getStore } from "@netlify/blobs";
+// @netlify/blobs is loaded dynamically at runtime (not bundled by esbuild)
+let _getStore = null;
+async function ensureBlobs() {
+  if (!_getStore) {
+    const mod = await import('@netlify/blobs');
+    _getStore = mod.getStore;
+  }
+  return _getStore;
+}
 
 // ─── Store Accessors ────────────────────────────────────────────────────────
-
-function store(name, siteID, token) {
-  // In Netlify Functions runtime, siteID and token are auto-injected
-  return getStore({ name, siteID, token });
-}
 
 // ─── Generic CRUD helpers ───────────────────────────────────────────────────
 
 async function getRecord(storeName, key) {
+  const getStore = await ensureBlobs();
   const s = getStore(storeName);
   const raw = await s.get(key);
   if (!raw) return null;
@@ -41,17 +45,20 @@ async function getRecord(storeName, key) {
 }
 
 async function putRecord(storeName, key, data) {
+  const getStore = await ensureBlobs();
   const s = getStore(storeName);
   await s.set(key, JSON.stringify(data));
   return data;
 }
 
 async function deleteRecord(storeName, key) {
+  const getStore = await ensureBlobs();
   const s = getStore(storeName);
   await s.delete(key);
 }
 
 async function listRecords(storeName, prefix = "") {
+  const getStore = await ensureBlobs();
   const s = getStore(storeName);
   const { blobs } = await s.list({ prefix });
   const results = [];

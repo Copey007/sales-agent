@@ -9,7 +9,6 @@
  * "queue_manager_active" flags are both enabled.
  */
 
-import { getStore } from "@netlify/blobs";
 import {
   getFeatureFlag, listActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
