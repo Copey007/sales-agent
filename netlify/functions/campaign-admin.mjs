@@ -18,7 +18,7 @@ import {
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
   listActivityLog, countSentToday, listQueuedSends
-} from "../../shared/campaign-store.mjs";
+} from "./_campaign-store.mjs";
 
 export default async (req, context) => {
   // CORS
@@ -195,6 +195,32 @@ export default async (req, context) => {
       case "activity_log": {
         const log = await listActivityLog(50);
         result = { entries: log };
+        break;
+      }
+
+      case "list_queued_sends": {
+        const sends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        result = { sends };
+        break;
+      }
+
+      case "trigger_queue": {
+        // Manual trigger for queue-manager logic (for testing)
+        const allSends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        const batch = allSends.slice(0, 5);
+        if (batch.length === 0) {
+          result = { message: "No queued sends found" };
+        } else {
+          // Call send-worker directly
+          const sendIds = batch.map(s => s.id);
+          const campaignId = batch[0].campaign_id;
+          const workerResp = await fetch(`https://aisdr.a-gent.co/api/send-worker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaign_id: campaignId, send_ids: sendIds, batch_index: 0, dry_run: url.searchParams.get("dry_run") === "true" })
+          });
+          result = { dispatched: sendIds.length, send_ids: sendIds, worker_status: workerResp.status, worker_response: await workerResp.json() };
+        }
         break;
       }
 

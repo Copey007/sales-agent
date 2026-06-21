@@ -13,7 +13,7 @@ import {
   getFeatureFlag, listActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
   getProspect, putEmailSend, logActivity, DEFAULTS
-} from "../../shared/campaign-store.mjs";
+} from "./_campaign-store.mjs";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -244,6 +244,5 @@ export default async (req, context) => {
 };
 
 export const config = {
-  path: "/api/queue-manager",
   schedule: "@every 5m"
 };
