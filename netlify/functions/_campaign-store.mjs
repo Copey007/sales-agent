@@ -277,7 +277,8 @@ export async function seedDefaults() {
     name: "Default Campaign",
     status: "active",
     daily_send_limit: 50,
-    sending_domain: null, // To be configured
+    sending_domain: 'a-gent.co',
+    sender_name: 'Mark',
     created_at: new Date().toISOString()
   });
 

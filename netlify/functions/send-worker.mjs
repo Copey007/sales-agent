@@ -178,12 +178,9 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "RESEND_API_KEY not configured", simulated: true };
   }
 
-  const sendingDomain = campaign?.sending_domain;
-  if (!sendingDomain) {
-    return { sent: false, reason: "No sending_domain configured for campaign", simulated: true };
-  }
-
-  const fromEmail = `${campaign.sender_name || 'mark'}@${sendingDomain}`;
+  const sendingDomain = campaign?.sending_domain || 'a-gent.co';
+  const senderName = campaign?.sender_name || 'Mark';
+  const fromEmail = `A-Gent Fleet <fleet@${sendingDomain}>`;
   const toEmail = prospect.email;
 
   if (!toEmail) {
@@ -202,7 +199,7 @@ async function sendViaResend(emailData, prospect, campaign) {
         to: [toEmail],
         subject: emailData.subject,
         text: emailData.body,
-        reply_to: `mark.cope.roarr@gmail.com`
+        reply_to: 'fleet@a-gent.co'
       })
     });
 
