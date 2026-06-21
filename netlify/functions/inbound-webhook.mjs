@@ -6,7 +6,7 @@
  * and logs it to the multi-campaign replies store (Netlify Blobs).
  */
 
-export default async function handler(req) {
+export default async (req, context) => {
   // Only accept POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -33,28 +33,27 @@ export default async function handler(req) {
     const receivedAt = new Date().toISOString();
 
     // --- 1. Forward the reply to mark.cope.roarr@gmail.com via Resend ---
-    const RESEND_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('RESEND_API_KEY'))
-      ? Netlify.env.get('RESEND_API_KEY')
-      : (process.env.RESEND_API_KEY || '');
+    const RESEND_KEY = Netlify.env.get('RESEND_API_KEY') || '';
     
+    let forwarded = false;
     if (RESEND_KEY) {
       const forwardSubject = `[Reply Received] ${subject}`;
-      const forwardBody = `
---- Inbound Reply Captured by A-Gent Fleet ---
-
-From: ${from}
-To: ${to}
-Subject: ${subject}
-Received: ${receivedAt}
-Message-ID: ${messageId}
-In-Reply-To: ${inReplyTo}
-
---- Reply Body ---
-${textBody || '(no text body — check HTML below)'}
-
---- HTML Body ---
-${htmlBody || '(none)'}
-`.trim();
+      const forwardBody = [
+        '--- Inbound Reply Captured by A-Gent Fleet ---',
+        '',
+        `From: ${from}`,
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        `Received: ${receivedAt}`,
+        `Message-ID: ${messageId}`,
+        `In-Reply-To: ${inReplyTo}`,
+        '',
+        '--- Reply Body ---',
+        textBody || '(no text body — check HTML below)',
+        '',
+        '--- HTML Body ---',
+        htmlBody || '(none)'
+      ].join('\n');
 
       try {
         const sendRes = await fetch('https://api.resend.com/emails', {
@@ -71,6 +70,7 @@ ${htmlBody || '(none)'}
           })
         });
         const sendResult = await sendRes.json();
+        forwarded = sendRes.ok;
         console.log('[inbound-webhook] Forward result:', JSON.stringify(sendResult));
       } catch (fwdErr) {
         console.error('[inbound-webhook] Forward failed:', fwdErr.message);
@@ -101,6 +101,7 @@ ${htmlBody || '(none)'}
         campaign_id: null, // Will be attributed in Phase 2 via in_reply_to matching
         email_send_id: null, // Will be attributed in Phase 2
         forwarded_to: 'mark.cope.roarr@gmail.com',
+        forwarded: forwarded,
         event_type: eventType
       };
 
@@ -115,7 +116,7 @@ ${htmlBody || '(none)'}
       success: true,
       reply_from: from,
       subject: subject,
-      forwarded: !!RESEND_KEY,
+      forwarded: forwarded,
       logged: blobsLogged,
       received_at: receivedAt
     }), {
@@ -130,4 +131,8 @@ ${htmlBody || '(none)'}
       headers: { 'Content-Type': 'application/json' }
     });
   }
-}
+};
+
+export const config = {
+  path: "/api/inbound-webhook"
+};
