@@ -33,7 +33,9 @@ export default async (req, context) => {
     const receivedAt = new Date().toISOString();
 
     // --- 1. Forward the reply to mark.cope.roarr@gmail.com via Resend ---
-    const RESEND_KEY = Netlify.env.get('RESEND_API_KEY') || '';
+    const RESEND_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('RESEND_API_KEY'))
+      ? Netlify.env.get('RESEND_API_KEY')
+      : (process.env.RESEND_API_KEY || '');
     
     let forwarded = false;
     if (RESEND_KEY) {
