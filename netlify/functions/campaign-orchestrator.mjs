@@ -191,7 +191,8 @@ async function handleLaunch(req) {
   });
 
   // Wait briefly for researcher to start (but don't block on full completion)
-  await Promise.race([researchPromise, new Promise(r => setTimeout(r, 8000))]);
+  // Keep this short (2s) — researcher does multiple Hunter API calls and runs async
+  await Promise.race([researchPromise, new Promise(r => setTimeout(r, 2000))]);
 
   // Refresh campaign status
   const updated = await getCampaign(campaignId);
@@ -212,26 +213,23 @@ async function handleStatus() {
   const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
   const activeCampaigns = campaigns.filter(c => c.status === "active");
 
-  const campaignSummaries = await Promise.all(activeCampaigns.map(async (c) => {
-    const prospects = await listCampaignProspects(c.id);
-    const queued = await listQueuedSends(c.id);
-    const sentToday = await countSentToday(c.id);
-
-    return {
-      id: c.id,
-      name: c.name,
-      status: c.status,
-      created_at: c.created_at,
-      launched_at: c.launched_at,
-      daily_send_limit: c.daily_send_limit,
-      brief: c.brief || {},
-      agent_status: c.agent_status || defaultAgentStatus(),
-      metrics: {
-        prospects_enrolled: prospects.length,
-        queued_sends: queued.length,
-        sent_today: sentToday
-      }
-    };
+  // Use cached metrics from the campaign record to avoid N*3 Blobs list calls
+  // (which would timeout with 5+ campaigns). Metrics are updated by the researcher
+  // and ops agents when they write back to the campaign record.
+  const campaignSummaries = activeCampaigns.map(c => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    created_at: c.created_at,
+    launched_at: c.launched_at,
+    daily_send_limit: c.daily_send_limit,
+    brief: c.brief || {},
+    agent_status: c.agent_status || defaultAgentStatus(),
+    metrics: c.metrics || {
+      prospects_enrolled: c.agent_status?.researcher?.prospects_found || 0,
+      queued_sends: c.agent_status?.ops?.sends_queued || 0,
+      sent_today: 0
+    }
   }));
 
   return {
@@ -679,21 +677,26 @@ async function runOpsAgent(campaignId, prospects) {
     scheduledCount++;
   }
 
-  // Update ops status
+    // Update ops status + cache metrics on the campaign record for fast status reads
   campaign.agent_status.ops = {
     state: "ACTIVE",
     last_action: `Queued ${scheduledCount} sends (warmup throttle: 2min spacing)`,
     updated_at: new Date().toISOString(),
     sends_queued: scheduledCount
   };
-
   // Activate Agent SDR
   campaign.agent_status.sdr = {
     state: "ACTIVE",
     last_action: `Ready to generate GAP emails for ${scheduledCount} queued sends`,
     updated_at: new Date().toISOString()
   };
-
+  // Cache metrics on the campaign record to avoid expensive Blobs list calls in status handler
+  campaign.metrics = {
+    prospects_enrolled: prospects.length,
+    queued_sends: scheduledCount,
+    sent_today: 0,
+    updated_at: new Date().toISOString()
+  };
   await putCampaign(campaign);
 
   await logActivity({
