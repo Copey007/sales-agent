@@ -13,7 +13,7 @@ import {
   getFeatureFlag, listActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
   getProspect, putEmailSend, logActivity, DEFAULTS
-} from "./lib/campaign-store.mjs";
+} from "./_lib/campaign-store.mjs";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 

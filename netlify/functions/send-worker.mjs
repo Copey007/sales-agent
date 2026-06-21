@@ -20,8 +20,8 @@ import {
   getCampaign, getCampaignPersona, getCampaignSignalConfig,
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
   logActivity, getFeatureFlag, DEFAULTS
-} from "./lib/campaign-store.mjs";
-import { callLLM, parseLLMJson, getLLMConfig } from "./lib/llm.mjs";
+} from "./_lib/campaign-store.mjs";
+import { callLLM, parseLLMJson, getLLMConfig } from "./_lib/llm.mjs";
 
 // ─── Signal Gathering (campaign-aware) ──────────────────────────────────────
 
