@@ -475,16 +475,26 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
   }
 
   // Cross-campaign dedup + suppression
-  const allCampaigns = await listCampaigns(DEFAULTS.TENANT_ID);
-  const otherActiveIds = allCampaigns.filter(c => c.status === 'active' && c.id !== campaignId).map(c => c.id);
-  const crossCampaignEmails = new Set();
-  for (const otherId of otherActiveIds) {
-    const junctions = await listCampaignProspects(otherId);
-    for (const cp of junctions) {
-      const p = await getProspect(cp.prospect_id).catch(() => null);
-      if (p?.email) crossCampaignEmails.add(p.email.toLowerCase());
-    }
-  }
+  // Load ALL prospects once (single Blobs list call) to build email index
+  // This avoids N+1 getProspect calls per junction record
+  const allProspects = await (async () => {
+    try {
+      // Use findProspectByEmail's underlying approach but bulk
+      const { getStore } = await import('@netlify/blobs');
+      const s = getStore('prospects');
+      const list = await s.list();
+      const records = await Promise.all(list.blobs.map(b => s.get(b.key, { type: 'json' })));
+      return records.filter(Boolean);
+    } catch { return []; }
+  })();
+  const allProspectEmailSet = new Set(allProspects.map(p => (p.email || '').toLowerCase()));
+
+  // Also load this campaign's existing junctions to detect re-enrollment
+  const existingJunctions = await listCampaignProspects(campaignId);
+  const existingProspectIds = new Set(existingJunctions.map(cp => cp.prospect_id));
+  const existingProspectEmails = new Set(
+    allProspects.filter(p => existingProspectIds.has(p.id)).map(p => (p.email || '').toLowerCase())
+  );
 
   const seenEmails = new Set();
   const toEnroll = [];
@@ -493,13 +503,9 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
     if (!emailLower || seenEmails.has(emailLower)) { discoverStats.deduped++; continue; }
     seenEmails.add(emailLower);
     if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) { discoverStats.suppressed++; continue; }
-    if (crossCampaignEmails.has(emailLower)) { discoverStats.deduped++; continue; }
-    const existing = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
-    if (existing) {
-      const existingJunction = await listCampaignProspects(campaignId);
-      if (existingJunction.some(cp => cp.prospect_id === existing.id)) { discoverStats.deduped++; continue; }
-    }
-    toEnroll.push({ ...p, _existing: existing });
+    if (existingProspectEmails.has(emailLower)) { discoverStats.deduped++; continue; }
+    const existingProspect = allProspects.find(pr => pr.email === emailLower) || null;
+    toEnroll.push({ ...p, _existing: existingProspect });
   }
 
   // Persist + enroll
