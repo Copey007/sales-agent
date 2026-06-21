@@ -198,7 +198,9 @@ async function handleLaunch(req) {
     campaign_name: campaign_name,
     status: "active",
     agent_status: updated?.agent_status || campaign.agent_status,
-    message: `Campaign "${campaign_name}" is live. Agent Researcher is sourcing prospects, Agent Ops is scheduling sends, Agent SDR will begin outreach once prospects are queued.`
+    metrics: updated?.metrics || {},
+    research_result: researchResult,
+    message: `Campaign "${campaign_name}" is live. Agent Researcher sourced ${researchResult.prospects_enrolled} real prospects, Agent Ops queued ${researchResult.prospects_enrolled} sends, Agent SDR is ready.`
   };
 }
 
