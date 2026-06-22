@@ -32,20 +32,27 @@ export default async (req, context) => {
   }
 
   const url = new URL(req.url);
-  const action = url.searchParams.get("action") || "status";
+  // Support action from URL params OR JSON body
+  let bodyData = {};
+  if (req.method === 'POST') {
+    try { const text = await req.text(); bodyData = text ? JSON.parse(text) : {}; } catch { bodyData = {}; }
+  }
+  const action = url.searchParams.get("action") || bodyData.action || "status";
+  // Wrap body data so handleLaunch can read it without re-parsing
+  const reqWithBody = { method: req.method, url: req.url, _body: bodyData, json: async () => bodyData };
 
   try {
     let result;
 
     switch (action) {
       case "launch":
-        result = await handleLaunch(req);
+        result = await handleLaunch(reqWithBody);
         break;
       case "status":
         result = await handleStatus();
         break;
       case "detail":
-        result = await handleDetail(url.searchParams.get("campaign_id"));
+        result = await handleDetail(url.searchParams.get("campaign_id") || bodyData.campaign_id);
         break;
       default:
         result = { error: `Unknown action: ${action}` };
@@ -72,10 +79,14 @@ export const config = {
 
 async function handleLaunch(req) {
   const body = await req.json();
-  const { campaign_name, target_persona, icp, problem_we_solve } = body;
+  // Support both field name conventions (UI sends persona/problem, API docs say target_persona/problem_we_solve)
+  const campaign_name = body.campaign_name;
+  const target_persona = body.target_persona || body.persona;
+  const icp = body.icp;
+  const problem_we_solve = body.problem_we_solve || body.problem;
 
   if (!campaign_name || !target_persona || !icp || !problem_we_solve) {
-    return { error: "Missing required fields: campaign_name, target_persona, icp, problem_we_solve" };
+    return { error: "Missing required fields: campaign_name, target_persona (or persona), icp, problem_we_solve (or problem)" };
   }
 
   const campaignId = crypto.randomUUID();
