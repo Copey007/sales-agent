@@ -145,12 +145,45 @@ export default async (req, context) => {
       console.warn('[inbound-webhook] No RESEND_API_KEY — cannot forward reply');
     }
 
-    // --- 2. Log the reply to Netlify Blobs (replies store) ---
+    // --- 2. Log the reply to Netlify Blobs (replies store) with campaign attribution ---
     let blobsLogged = false;
     let replyId = `reply_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    let attributedCampaignId = null;
+    let attributedSendId = null;
     try {
       const { getStore } = await import('@netlify/blobs');
       const repliesStore = getStore('replies');
+      const sendsStore = getStore('email_sends');
+
+      // Campaign attribution: find the originating email_send by scanning sends store
+      // Match by in_reply_to header or by prospect email address
+      try {
+        const sendsList = await sendsStore.list();
+        const sendBlobs = sendsList.blobs || [];
+        // Check up to 100 recent sends for attribution (newest first by key)
+        const recentSends = sendBlobs.slice(-100).reverse();
+        for (const blob of recentSends) {
+          if (attributedCampaignId) break;
+          try {
+            const send = await sendsStore.get(blob.key, { type: 'json' });
+            if (!send) continue;
+            // Match by message_id (if in_reply_to matches the send's message_id)
+            if (inReplyTo && send.message_id && inReplyTo.includes(send.message_id)) {
+              attributedCampaignId = send.campaign_id;
+              attributedSendId = send.id;
+              break;
+            }
+            // Fallback: match by prospect email on the send record
+            if (prospectEmail && send.prospect_email && send.prospect_email.toLowerCase() === prospectEmail.toLowerCase()) {
+              attributedCampaignId = send.campaign_id;
+              attributedSendId = send.id;
+              // Don't break — keep looking for a message_id match (stronger signal)
+            }
+          } catch { /* skip unreadable send */ }
+        }
+      } catch (attrErr) {
+        console.warn('[inbound-webhook] Attribution lookup failed:', attrErr.message);
+      }
 
       const replyRecord = {
         id: replyId,
@@ -164,9 +197,9 @@ export default async (req, context) => {
         message_id: messageId,
         in_reply_to: inReplyTo,
         received_at: receivedAt,
-        sentiment: 'unclassified',   // Phase 2: LLM classification
-        campaign_id: null,           // Phase 2: attributed via in_reply_to → email_send lookup
-        email_send_id: null,
+        sentiment: 'unclassified',
+        campaign_id: attributedCampaignId,
+        email_send_id: attributedSendId,
         forwarded_to: 'mark.cope.roarr@gmail.com',
         forwarded: forwarded,
         event_type: eventType
@@ -174,7 +207,7 @@ export default async (req, context) => {
 
       await repliesStore.setJSON(replyId, replyRecord);
       blobsLogged = true;
-      console.log('[inbound-webhook] Reply logged:', replyId);
+      console.log('[inbound-webhook] Reply logged:', replyId, 'campaign:', attributedCampaignId);
     } catch (blobErr) {
       console.error('[inbound-webhook] Blobs logging failed:', blobErr.message);
     }

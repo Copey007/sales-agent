@@ -211,6 +211,19 @@ export async function getReply(replyId) {
 export async function putReply(reply) {
   return putRecord("replies", reply.id, reply);
 }
+export async function listCampaignReplies(campaignId) {
+  const all = await listRecords("replies");
+  return all.filter(r => r.campaign_id === campaignId);
+}
+export async function listAllReplies() {
+  return listRecords("replies");
+}
+
+// EMAIL SENDS — campaign-scoped (all statuses)
+export async function listCampaignSends(campaignId) {
+  const all = await listRecords("email_sends");
+  return all.filter(s => s.campaign_id === campaignId);
+}
 
 // SUPPRESSION LIST
 export async function isEmailSuppressed(tenantId, email) {

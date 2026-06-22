@@ -44,6 +44,8 @@ export default async (req, context) => {
   try {
     let result;
 
+    const cid = url.searchParams.get("campaign_id") || bodyData.campaign_id;
+
     switch (action) {
       case "launch":
         result = await handleLaunch(reqWithBody);
@@ -52,7 +54,22 @@ export default async (req, context) => {
         result = await handleStatus();
         break;
       case "detail":
-        result = await handleDetail(url.searchParams.get("campaign_id") || bodyData.campaign_id);
+        result = await handleDetail(cid);
+        break;
+      case "funnel":
+        result = await handleFunnel(cid);
+        break;
+      case "replies":
+        result = await handleReplies(cid);
+        break;
+      case "loop":
+        result = await handleLoopState(cid);
+        break;
+      case "prospects":
+        result = await handleProspects(cid);
+        break;
+      case "sends":
+        result = await handleSends(cid);
         break;
       default:
         result = { error: `Unknown action: ${action}` };
@@ -248,22 +265,29 @@ async function handleStatus() {
 }
 
 // ─── Detail Handler ─────────────────────────────────────────────────────────
+// Hardened: uses cached metrics from campaign record to avoid expensive Blobs scans.
+// Only fetches persona/territory/sequence (3 reads) plus the campaign record itself.
+// Funnel, replies, loop state, and sends are fetched lazily via sub-actions.
 
 async function handleDetail(campaignId) {
   if (!campaignId) return { error: "campaign_id required" };
   const campaign = await getCampaign(campaignId);
   if (!campaign) return { error: "Campaign not found" };
 
-  const [persona, territory, signalConfig, sequence, prospects, queued] = await Promise.all([
+  // Fast parallel reads: persona, territory, signal_config, sequence (4 list scans but small stores)
+  const [persona, territory, signalConfig, sequence] = await Promise.all([
     getCampaignPersona(campaignId),
     getCampaignTerritory(campaignId),
     getCampaignSignalConfig(campaignId),
-    getCampaignSequence(campaignId),
-    listCampaignProspects(campaignId),
-    listQueuedSends(campaignId)
+    getCampaignSequence(campaignId)
   ]);
 
-  const sentToday = await countSentToday(campaignId);
+  // Use cached metrics from the campaign record (written by runOpsAgent)
+  const metrics = campaign.metrics || {
+    prospects_enrolled: campaign.agent_status?.researcher?.prospects_found || 0,
+    queued_sends: campaign.agent_status?.ops?.sends_queued || 0,
+    sent_today: 0
+  };
 
   return {
     campaign,
@@ -271,11 +295,109 @@ async function handleDetail(campaignId) {
     territory,
     signal_config: signalConfig,
     sequence,
-    metrics: {
-      prospects_enrolled: prospects.length,
-      queued_sends: queued.length,
-      sent_today: sentToday
+    metrics
+  };
+}
+
+// ─── Funnel Handler (campaign-scoped) ───────────────────────────────────────
+// Returns funnel stages: sourced → queued → sent → delivered → opened → replied → positive
+
+async function handleFunnel(campaignId) {
+  if (!campaignId) return { error: "campaign_id required" };
+  const campaign = await getCampaign(campaignId);
+  if (!campaign) return { error: "Campaign not found" };
+
+  // Use cached metrics for the top of funnel (fast)
+  const sourced = campaign.metrics?.prospects_enrolled || campaign.agent_status?.researcher?.prospects_found || 0;
+  const queued = campaign.metrics?.queued_sends || campaign.agent_status?.ops?.sends_queued || 0;
+
+  // For sent/delivered/opened/replied, scan email_sends for this campaign
+  const { listCampaignSends, listCampaignReplies } = await import('./_campaign-store.mjs');
+  const sends = await listCampaignSends(campaignId);
+  const sent = sends.filter(s => s.status === 'sent').length;
+  const delivered = sends.filter(s => s.status === 'sent' && s.delivered !== false).length;
+  const opened = sends.filter(s => s.opened_at).length;
+
+  // Replies for this campaign
+  const replies = await listCampaignReplies(campaignId);
+  const replied = replies.length;
+  const positive = replies.filter(r => r.sentiment === 'positive').length;
+
+  return {
+    campaign_id: campaignId,
+    campaign_name: campaign.name,
+    funnel: { sourced, queued, sent, delivered, opened, replied, positive }
+  };
+}
+
+// ─── Replies Handler (campaign-scoped) ──────────────────────────────────────
+
+async function handleReplies(campaignId) {
+  if (!campaignId) return { error: "campaign_id required" };
+  const { listCampaignReplies, listAllReplies } = await import('./_campaign-store.mjs');
+  let replies;
+  if (campaignId === 'all') {
+    replies = await listAllReplies();
+  } else {
+    replies = await listCampaignReplies(campaignId);
+  }
+  // Sort newest first
+  replies.sort((a, b) => (b.received_at || '').localeCompare(a.received_at || ''));
+  return { campaign_id: campaignId, replies: replies.slice(0, 50) };
+}
+
+// ─── Loop State Handler (campaign-scoped) ───────────────────────────────────
+
+async function handleLoopState(campaignId) {
+  if (!campaignId) return { error: "campaign_id required" };
+  const experiments = await listCampaignExperiments(campaignId);
+  const campaign = await getCampaign(campaignId);
+  return {
+    campaign_id: campaignId,
+    campaign_name: campaign?.name || '',
+    loop_enabled: true,
+    experiments: experiments.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 20),
+    summary: {
+      total_experiments: experiments.length,
+      latest: experiments.length > 0 ? experiments[experiments.length - 1] : null
     }
+  };
+}
+
+// ─── Prospects Handler (campaign-scoped) ─────────────────────────────────────
+
+async function handleProspects(campaignId) {
+  if (!campaignId) return { error: "campaign_id required" };
+  const junctions = await listCampaignProspects(campaignId);
+  // Batch-read prospects (max 25 to stay fast)
+  const prospectIds = junctions.slice(0, 25).map(j => j.prospect_id);
+  const prospects = await Promise.all(prospectIds.map(id => getProspect(id)));
+  return {
+    campaign_id: campaignId,
+    total: junctions.length,
+    prospects: prospects.filter(Boolean).map(p => ({
+      id: p.id, email: p.email, name: p.name, company_name: p.company_name,
+      title: p.title, verified: p.verified, source: p.source, sourced_at: p.sourced_at
+    }))
+  };
+}
+
+// ─── Sends Handler (campaign-scoped) ────────────────────────────────────────
+
+async function handleSends(campaignId) {
+  if (!campaignId) return { error: "campaign_id required" };
+  const { listCampaignSends } = await import('./_campaign-store.mjs');
+  const sends = await listCampaignSends(campaignId);
+  // Sort newest first, limit to 50
+  sends.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  return {
+    campaign_id: campaignId,
+    total: sends.length,
+    sends: sends.slice(0, 50).map(s => ({
+      id: s.id, prospect_id: s.prospect_id, step_number: s.step_number,
+      status: s.status, scheduled_at: s.scheduled_at, sent_at: s.sent_at,
+      opened_at: s.opened_at, subject: s.subject
+    }))
   };
 }
 
@@ -564,16 +686,17 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
     await putCampaign(freshCampaign);
   }
 
-  // Hand off to Agent Ops
-  await runOpsAgent(campaignId, enrolled);
+  // Hand off to Agent Ops — pass freshCampaign directly to avoid stale-read race
+  await runOpsAgent(campaignId, enrolled, freshCampaign);
 
   return { prospects_enrolled: enrolled.length, stats: discoverStats };
 }
 
 // ─── Agent Ops ──────────────────────────────────────────────────────────────
 
-async function runOpsAgent(campaignId, prospects) {
-  const campaign = await getCampaign(campaignId);
+async function runOpsAgent(campaignId, prospects, campaignRecord) {
+  // Use the passed campaign record (from researcher's final write) to avoid Blobs eventual-consistency stale reads
+  const campaign = campaignRecord || await getCampaign(campaignId);
   if (!campaign) return;
 
   const now = new Date();

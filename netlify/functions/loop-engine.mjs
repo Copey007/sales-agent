@@ -72,28 +72,33 @@ async function getStore() {
   }
 }
 
-async function loadExperiments() {
+// Campaign-scoped storage keys: each campaign gets its own experiments + baseline
+// Global (no campaign_id) falls back to legacy keys for backward compatibility
+function experimentsKey(campaignId) { return campaignId ? `experiments_${campaignId}` : 'experiments'; }
+function baselineKey(campaignId) { return campaignId ? `baseline_${campaignId}` : 'baseline'; }
+
+async function loadExperiments(campaignId) {
   const store = await getStore();
-  const raw = await store.get('experiments');
+  const raw = await store.get(experimentsKey(campaignId));
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { return []; }
 }
 
-async function saveExperiments(experiments) {
+async function saveExperiments(experiments, campaignId) {
   const store = await getStore();
-  await store.set('experiments', JSON.stringify(experiments));
+  await store.set(experimentsKey(campaignId), JSON.stringify(experiments));
 }
 
-async function loadBaseline() {
+async function loadBaseline(campaignId) {
   const store = await getStore();
-  const raw = await store.get('baseline');
+  const raw = await store.get(baselineKey(campaignId));
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-async function saveBaseline(baseline) {
+async function saveBaseline(baseline, campaignId) {
   const store = await getStore();
-  await store.set('baseline', JSON.stringify(baseline));
+  await store.set(baselineKey(campaignId), JSON.stringify(baseline));
 }
 
 // ─── LOCKED Guardrails (cannot be modified by the loop) ──────────────────────────
@@ -327,13 +332,13 @@ Write a GAP Prospecting email. Return valid JSON only.`;
 
 // ─── Single Iteration (fits within Netlify timeout) ──────────────────────────────
 
-async function runSingleIteration() {
-  let experiments = await loadExperiments();
-  let baseline = await loadBaseline();
+async function runSingleIteration(campaignId) {
+  let experiments = await loadExperiments(campaignId);
+  let baseline = await loadBaseline(campaignId);
   
   if (!baseline) {
     baseline = { ...DEFAULT_BASELINE };
-    await saveBaseline(baseline);
+    await saveBaseline(baseline, campaignId);
   }
 
   // Pick ONE prospect (rotate through pool based on experiment count)
@@ -358,7 +363,7 @@ async function runSingleIteration() {
   // Update baseline score if not set
   if (baseline.score === null) {
     baseline.score = baselineAvg.avg;
-    await saveBaseline(baseline);
+    await saveBaseline(baseline, campaignId);
   }
 
   // Step 2: Propose a variant
@@ -378,7 +383,7 @@ async function runSingleIteration() {
       timestamp: new Date().toISOString()
     };
     experiments.push(skipped);
-    await saveExperiments(experiments);
+    await saveExperiments(experiments, campaignId);
     return { experiment: skipped, current_baseline: summarizeBaseline(baseline) };
   }
 
@@ -430,11 +435,11 @@ async function runSingleIteration() {
       created_at: new Date().toISOString(),
       parent_id: baseline.id
     };
-    await saveBaseline(baseline);
+    await saveBaseline(baseline, campaignId);
   }
 
   experiments.push(experiment);
-  await saveExperiments(experiments);
+  await saveExperiments(experiments, campaignId);
 
   return { experiment, current_baseline: summarizeBaseline(baseline) };
 }
@@ -464,18 +469,24 @@ export default async (req, context) => {
 
   try {
     let action = 'status';
+    let campaignId = null;
 
     if (req.method === 'POST') {
       const body = await req.json();
       action = body.action || 'status';
+      campaignId = body.campaign_id || null;
+    } else {
+      const url = new URL(req.url);
+      campaignId = url.searchParams.get('campaign_id') || null;
     }
 
     if (action === 'run') {
-      // Run ONE iteration (fits within timeout)
-      const result = await runSingleIteration();
+      // Run ONE iteration (fits within timeout), scoped to campaign
+      const result = await runSingleIteration(campaignId);
       return new Response(JSON.stringify({
         success: true,
         action: 'run',
+        campaign_id: campaignId,
         experiments_run: 1,
         results: [result.experiment],
         current_baseline: result.current_baseline
@@ -486,11 +497,12 @@ export default async (req, context) => {
     }
 
     if (action === 'history') {
-      const experiments = await loadExperiments();
-      const baseline = await loadBaseline();
+      const experiments = await loadExperiments(campaignId);
+      const baseline = await loadBaseline(campaignId);
       return new Response(JSON.stringify({
         success: true,
         action: 'history',
+        campaign_id: campaignId,
         total_experiments: experiments.length,
         experiments,
         current_baseline: baseline ? summarizeBaseline(baseline) : null
@@ -501,12 +513,13 @@ export default async (req, context) => {
     }
 
     if (action === 'reset') {
-      // Reset experiments (for testing)
-      await saveExperiments([]);
-      await saveBaseline(null);
+      // Reset experiments (for testing), scoped to campaign
+      await saveExperiments([], campaignId);
+      await saveBaseline(null, campaignId);
       return new Response(JSON.stringify({
         success: true,
         action: 'reset',
+        campaign_id: campaignId,
         message: 'Loop Engine state cleared'
       }), {
         status: 200,
@@ -514,12 +527,13 @@ export default async (req, context) => {
       });
     }
 
-    // Default: status
-    const baseline = await loadBaseline();
-    const experiments = await loadExperiments();
+    // Default: status (scoped to campaign if provided)
+    const baseline = await loadBaseline(campaignId);
+    const experiments = await loadExperiments(campaignId);
     return new Response(JSON.stringify({
       success: true,
       action: 'status',
+      campaign_id: campaignId,
       loop_engine: {
         name: 'Loop Engine',
         description: 'Self-optimizing outbound email loop using keep-or-revert pattern',
