@@ -22,7 +22,7 @@ import {
   listCampaignProspects, putCampaignProspect, putProspect,
   getProspect, findProspectByEmail, isEmailSuppressed,
   listQueuedSends, countSentToday, putEmailSend,
-  logActivity, setFeatureFlag,
+  listRecords, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
 
@@ -387,15 +387,27 @@ async function handleProspects(campaignId) {
 async function handleSends(campaignId) {
   if (!campaignId) return { error: "campaign_id required" };
   const { listCampaignSends } = await import('./_campaign-store.mjs');
-  const sends = await listCampaignSends(campaignId);
+  let sends = await listCampaignSends(campaignId);
+  // Fallback: if no sends have campaign_id, look up via enrolled prospect IDs
+  if (sends.length === 0) {
+    try {
+      const junctions = await listCampaignProspects(campaignId);
+      const prospectIds = new Set(junctions.map(j => j.prospect_id));
+      if (prospectIds.size > 0) {
+        const allSends = await listRecords('email_sends');
+        sends = allSends.filter(s => prospectIds.has(s.prospect_id));
+      }
+    } catch { /* fallback failed, return empty */ }
+  }
   // Sort newest first, limit to 50
-  sends.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  sends.sort((a, b) => (b.created_at || b.scheduled_at || '').localeCompare(a.created_at || a.scheduled_at || ''));
   return {
     campaign_id: campaignId,
     total: sends.length,
     sends: sends.slice(0, 50).map(s => ({
-      id: s.id, prospect_id: s.prospect_id, step_number: s.step_number,
-      status: s.status, scheduled_at: s.scheduled_at, sent_at: s.sent_at,
+      id: s.id, prospect_id: s.prospect_id, prospect_email: s.prospect_email,
+      step_number: s.step_number, status: s.status,
+      scheduled_at: s.scheduled_at, sent_at: s.sent_at,
       opened_at: s.opened_at, subject: s.subject
     }))
   };
@@ -712,6 +724,7 @@ async function runOpsAgent(campaignId, prospects, campaignRecord) {
       tenant_id: DEFAULTS.TENANT_ID,
       campaign_id: campaignId,
       prospect_id: prospect.id,
+      prospect_email: prospect.email,
       step_number: 1,
       status: "queued",
       scheduled_at: scheduledAt.toISOString(),

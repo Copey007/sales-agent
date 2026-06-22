@@ -185,6 +185,40 @@ export default async (req, context) => {
         console.warn('[inbound-webhook] Attribution lookup failed:', attrErr.message);
       }
 
+      // Second fallback: look up prospect by email in prospects store, then find their campaign
+      if (!attributedCampaignId && prospectEmail) {
+        try {
+          const prospectsStore = getStore('prospects');
+          const prospectsList = await prospectsStore.list();
+          const prospectBlobs = prospectsList.blobs || [];
+          let foundProspectId = null;
+          for (const blob of prospectBlobs.slice(-200)) {
+            try {
+              const p = await prospectsStore.get(blob.key, { type: 'json' });
+              if (p && p.email && p.email.toLowerCase() === prospectEmail.toLowerCase()) {
+                foundProspectId = p.id || blob.key;
+                break;
+              }
+            } catch { /* skip */ }
+          }
+          if (foundProspectId) {
+            const cpStore = getStore('campaign_prospects');
+            const cpList = await cpStore.list();
+            for (const blob of cpList.blobs || []) {
+              try {
+                const cp = await cpStore.get(blob.key, { type: 'json' });
+                if (cp && cp.prospect_id === foundProspectId) {
+                  attributedCampaignId = cp.campaign_id;
+                  break;
+                }
+              } catch { /* skip */ }
+            }
+          }
+        } catch (fallbackErr) {
+          console.warn('[inbound-webhook] Prospect-based attribution failed:', fallbackErr.message);
+        }
+      }
+
       const replyRecord = {
         id: replyId,
         from: from,

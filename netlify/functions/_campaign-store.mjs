@@ -57,7 +57,7 @@ async function deleteRecord(storeName, key) {
   await s.delete(key);
 }
 
-async function listRecords(storeName, prefix = "") {
+export async function listRecords(storeName, prefix = "") {
   const getStore = await ensureBlobs();
   const s = getStore(storeName);
   const { blobs } = await s.list({ prefix });
