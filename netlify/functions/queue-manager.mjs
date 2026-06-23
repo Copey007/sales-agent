@@ -244,9 +244,8 @@ export default async (req, context) => {
 };
 
 export const config = {
-  // Expose over HTTP at /api/queue-manager so it can be manually triggered for
-  // testing and so the subagent/orchestrator can invoke it on-demand. Schedule
-  // runs it automatically every 5 minutes.
-  path: "/api/queue-manager",
+  // Scheduled only — Netlify does not allow `path` AND `schedule` on the
+  // same function. The cron fires every 5 minutes; for manual testing,
+  // wait for the cron or invoke the equivalent logic via send-worker.
   schedule: "@every 5m"
 };
