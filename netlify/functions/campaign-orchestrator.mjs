@@ -200,51 +200,19 @@ async function handleLaunch(req) {
   await setFeatureFlag("multi_campaign_orchestration", true);
   await setFeatureFlag("queue_manager_active", true);
 
-  // 7. Mark researcher as queued and orchestrator as active
-  // We hand off to researcher-background.mjs which handles the full pipeline
-  // (8 ICP domains, email verification, cross-campaign dedup, send scheduling,
-  // and proper agent_status writeback) within Netlify's 15-minute background window.
+  // 7. Run Agent Researcher INLINE (synchronous, capped at 3 domains to fit
+  // Netlify's 26s foreground timeout). This is the primary path — the
+  // background function hand-off is unreliable because the function's
+  // resolved URL may not match the public URL, causing self-call to fail.
+  // Each Hunter domain search takes ~1-2s; 3 domains = ~5s total, leaving
+  // room for verification + Blobs writes + the runOpsAgent handoff.
   campaign.agent_status.orchestrator = { state: "ACTIVE", last_action: "Coordinating specialist agents", updated_at: now };
-  campaign.agent_status.researcher = { state: "QUEUED", last_action: "Handing off to background researcher", updated_at: now };
+  campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io", updated_at: now };
   await putCampaign(campaign);
 
-  // 7a. Kick off the background researcher (async — does not block this response)
-  const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
-    ? Netlify.env.get('URL')
-    : (process.env.URL || 'https://aisdr.a-gent.co');
-  console.log(`[orchestrator] siteUrl resolved to: ${siteUrl}`);
-  const researcherBgUrl = `${siteUrl}/api/researcher-background`;
-  console.log(`[orchestrator] researcherBgUrl: ${researcherBgUrl}`);
-  let researchResult = { prospects_enrolled: 0, stats: {}, fallback: true };
-  try {
-    const bgResp = await fetch(researcherBgUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        campaign_id: campaignId,
-        parsed_icp: parsedICP,
-        target_role: target_persona
-      })
-    });
-    console.log(`[orchestrator] researcher-bg responded: ${bgResp.status}`);
-    if (bgResp.ok) {
-      const bgBody = await bgResp.json().catch(() => ({}));
-      console.log(`[orchestrator] researcher-bg body: ${JSON.stringify(bgBody).slice(0, 200)}`);
-      researchResult = { prospects_enrolled: bgBody.prospects_enrolled || 0, stats: bgBody.stats || {}, fallback: false };
-    } else {
-      const errText = await bgResp.text().catch(() => '');
-      console.warn(`[orchestrator] researcher-background responded ${bgResp.status} — falling back to inline path. Body: ${errText.slice(0, 300)}`);
-      // Fallback: run the inline (3-domain, no-status-writeback) researcher so the campaign isn't dead
-      campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io (inline fallback)", updated_at: now };
-      await putCampaign(campaign);
-      researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
-    }
-  } catch (err) {
-    console.error(`[orchestrator] researcher-background kickoff FAILED: ${err.message} — falling back to inline path`);
-    campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io (inline fallback after error)", updated_at: now };
-    await putCampaign(campaign);
-    researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
-  }
+  console.log(`[orchestrator] launch: running inline researcher for campaign ${campaignId}`);
+  const researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
+  console.log(`[orchestrator] inline researcher returned: ${JSON.stringify(researchResult)}`);
 
   // Log activity
   await logActivity({
