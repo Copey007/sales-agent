@@ -125,10 +125,16 @@ const GAP_SYSTEM_PROMPT = `You are an expert cold email writer trained in the GA
 async function generateEmail(prospect, signals, persona, campaign) {
   const senderName = campaign?.sender_name || "Mark";
 
+  // Field normalization: researcher-background saves `name`, but earlier flows used
+  // `contact_name`. Support both so the GAP prompt always has a name to work with.
+  const prospectName = prospect.contact_name || prospect.name ||
+    [prospect.first_name, prospect.last_name].filter(Boolean).join(' ') ||
+    null;
+
   let userPrompt = `## Prospect
-- Name: ${prospect.contact_name}
+- Name: ${prospectName || 'Unknown'}
 - Company: ${prospect.company_name || 'Unknown'}
-- Role: ${prospect.role || prospect.title || 'Unknown'}
+- Role: ${prospect.title || prospect.role || 'Unknown'}
 - Industry: ${prospect.industry || 'Unknown'}
 
 ## Signals (${signals.length})

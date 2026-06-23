@@ -274,6 +274,11 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
         name: p.name || null,
         first_name: p.first_name || null,
         last_name: p.last_name || null,
+        // Field aliases: older functions (send-worker, gather-signals, loop-engine,
+        // generate-gap-email, gap-email-pipeline) read `contact_name` and `role`.
+        // New researcher writes `name` and `title`. Write both so all paths work.
+        contact_name: p.name || [p.first_name, p.last_name].filter(Boolean).join(' ') || null,
+        role: p.title || targetRole,
         company_name: p.company_name || null,
         company_domain: p.company_domain || null,
         title: p.title || targetRole,
