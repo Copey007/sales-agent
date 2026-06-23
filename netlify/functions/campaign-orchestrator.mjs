@@ -212,7 +212,9 @@ async function handleLaunch(req) {
   const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
     ? Netlify.env.get('URL')
     : (process.env.URL || 'https://aisdr.a-gent.co');
+  console.log(`[orchestrator] siteUrl resolved to: ${siteUrl}`);
   const researcherBgUrl = `${siteUrl}/api/researcher-background`;
+  console.log(`[orchestrator] researcherBgUrl: ${researcherBgUrl}`);
   let researchResult = { prospects_enrolled: 0, stats: {}, fallback: true };
   try {
     const bgResp = await fetch(researcherBgUrl, {
@@ -224,18 +226,21 @@ async function handleLaunch(req) {
         target_role: target_persona
       })
     });
+    console.log(`[orchestrator] researcher-bg responded: ${bgResp.status}`);
     if (bgResp.ok) {
       const bgBody = await bgResp.json().catch(() => ({}));
+      console.log(`[orchestrator] researcher-bg body: ${JSON.stringify(bgBody).slice(0, 200)}`);
       researchResult = { prospects_enrolled: bgBody.prospects_enrolled || 0, stats: bgBody.stats || {}, fallback: false };
     } else {
-      console.warn(`[orchestrator] researcher-background responded ${bgResp.status} — falling back to inline path`);
+      const errText = await bgResp.text().catch(() => '');
+      console.warn(`[orchestrator] researcher-background responded ${bgResp.status} — falling back to inline path. Body: ${errText.slice(0, 300)}`);
       // Fallback: run the inline (3-domain, no-status-writeback) researcher so the campaign isn't dead
       campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io (inline fallback)", updated_at: now };
       await putCampaign(campaign);
       researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
     }
   } catch (err) {
-    console.error(`[orchestrator] researcher-background kickoff failed: ${err.message} — falling back to inline path`);
+    console.error(`[orchestrator] researcher-background kickoff FAILED: ${err.message} — falling back to inline path`);
     campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io (inline fallback after error)", updated_at: now };
     await putCampaign(campaign);
     researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);

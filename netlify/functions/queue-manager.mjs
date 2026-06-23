@@ -244,5 +244,9 @@ export default async (req, context) => {
 };
 
 export const config = {
+  // Expose over HTTP at /api/queue-manager so it can be manually triggered for
+  // testing and so the subagent/orchestrator can invoke it on-demand. Schedule
+  // runs it automatically every 5 minutes.
+  path: "/api/queue-manager",
   schedule: "@every 5m"
 };

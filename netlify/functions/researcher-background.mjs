@@ -127,9 +127,13 @@ function mapRoleToDepartment(role) {
 // ─── Main Researcher Logic ───────────────────────────────────────────────────
 
 async function runResearcher(campaignId, parsedICP, targetRole) {
+  const startTs = Date.now();
+  console.log(`[researcher-bg] START campaign=${campaignId} role="${targetRole}" icp=${JSON.stringify(parsedICP)}`);
+
   const HUNTER_KEY = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
     ? Netlify.env.get('HUNTER_API_KEY')
     : (process.env.HUNTER_API_KEY || '');
+  console.log(`[researcher-bg] HUNTER_API_KEY present: ${HUNTER_KEY ? 'yes (' + HUNTER_KEY.slice(0,8) + '...)' : 'NO — using demo fallback'}`);
 
   const campaign = await getCampaign(campaignId);
   if (!campaign) {
@@ -353,7 +357,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     timestamp: new Date().toISOString()
   });
 
-  console.log(`[researcher-bg] DONE: ${enrolled.length} prospects enrolled, ${scheduledCount} sends queued`);
+  console.log(`[researcher-bg] DONE: ${enrolled.length} prospects enrolled, ${scheduledCount} sends queued in ${Date.now() - startTs}ms`);
 }
 
 function generateDemoProspects(parsedICP, targetRole, count) {
@@ -395,7 +399,7 @@ export default async (req) => {
   // Netlify background functions: the handler must return a response,
   // then any remaining async work continues until the function exits
   runResearcher(campaign_id, parsed_icp || {}, target_role || '').catch(err => {
-    console.error('[researcher-bg] Fatal error:', err.message, err.stack);
+    console.error('[researcher-bg] FATAL campaign=' + campaign_id + ':', err.message, err.stack);
   });
 
   return new Response(JSON.stringify({
