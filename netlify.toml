@@ -6,6 +6,15 @@
   node_bundler = "esbuild"
   external_node_modules = ["@netlify/blobs"]
 
+[functions."queue-manager"]
+  schedule = "*/5 * * * *"
+
+[functions."loop-engine"]
+  schedule = "0 */2 * * *"
+
+[functions."researcher-background"]
+  schedule = "@hourly"
+
 [[headers]]
   for = "/api/*"
   [headers.values]
