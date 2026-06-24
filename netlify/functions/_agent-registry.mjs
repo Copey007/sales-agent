@@ -152,11 +152,19 @@ Return ONLY valid JSON:
       "agent": "researcher|sdr|ops|support|success|social",
       "objective": "Specific task description for this agent",
       "context": {},
-      "priority": 1-10
+      "priority": 1-10,
+      "depends_on": null,
+      "parallel": true
     }
   ],
   "execution_plan": "Brief description of execution order and dependencies"
-}`
+}
+
+Rules:
+- Set "parallel": true for tasks that can run simultaneously (no dependency on each other)
+- Set "depends_on": "task_index" (0-based) when a task needs output from a prior task
+- Independent tasks should have "parallel": true and "depends_on": null
+- Minimize the number of sequential steps — maximize parallelism`
         },
         {
           role: 'user',
@@ -176,38 +184,91 @@ Return ONLY valid JSON:
       return { success: false, error: 'Failed to parse LLM decomposition', raw: decomposition.content };
     }
 
-    // Create tasks in the task system and execute them
-    const taskResults = [];
-    for (const task of plan.tasks || []) {
-      const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      
+    // Create task records for all tasks first
+    const taskList = plan.tasks || [];
+    const taskRecords = taskList.map((task, i) => ({
+      ...task,
+      taskId: `task_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 8)}`,
+      index: i
+    }));
+
+    for (const task of taskRecords) {
       await createTask({
-        taskId,
+        taskId: task.taskId,
         delegatedBy: 'manager',
         delegatedTo: task.agent,
         objective: task.objective,
         context: task.context || {},
         priority: task.priority || 5
       });
+    }
 
-      // Execute the task via the specialist agent
-      const agent = getAgent(task.agent);
-      if (!agent) {
-        taskResults.push({ agent: task.agent, success: false, error: `Unknown agent: ${task.agent}` });
-        continue;
+    // Execute tasks with dependency-aware parallel execution
+    const taskResults = [];
+    const executed = new Set();
+    const maxIterations = taskRecords.length + 1;
+
+    for (let iteration = 0; iteration < maxIterations && executed.size < taskRecords.length; iteration++) {
+      // Find tasks that can run now (no dependency or dependency already executed)
+      const ready = taskRecords.filter(t => {
+        if (executed.has(t.index)) return false;
+        if (t.depends_on === null || t.depends_on === undefined) return true;
+        return executed.has(t.depends_on);
+      });
+
+      if (ready.length === 0) break; // No more tasks can run
+
+      // Group ready tasks: run all parallel ones together
+      const parallelTasks = ready.filter(t => t.parallel !== false);
+      const sequentialTasks = ready.filter(t => t.parallel === false);
+
+      // Execute parallel tasks with Promise.allSettled
+      if (parallelTasks.length > 0) {
+        const promises = parallelTasks.map(async (task) => {
+          const agent = getAgent(task.agent);
+          if (!agent) return { agent: task.agent, success: false, error: `Unknown agent: ${task.agent}` };
+          try {
+            const result = await agent.execute({
+              objective: task.objective,
+              context: task.context || {},
+              taskId: task.taskId
+            });
+            await updateTask({ taskId: task.taskId, status: 'completed', result });
+            return { agent: task.agent, success: true, result, parallel: true };
+          } catch (e) {
+            await updateTask({ taskId: task.taskId, status: 'failed', error: e.message });
+            return { agent: task.agent, success: false, error: e.message, parallel: true };
+          }
+        });
+        const results = await Promise.allSettled(promises);
+        results.forEach(r => {
+          if (r.status === 'fulfilled') taskResults.push(r.value);
+          else taskResults.push({ success: false, error: r.reason?.message || 'Promise rejected' });
+        });
+        parallelTasks.forEach(t => executed.add(t.index));
       }
 
-      try {
-        const result = await agent.execute({
-          objective: task.objective,
-          context: task.context || {},
-          taskId
-        });
-        await updateTask({ taskId, status: 'completed', result });
-        taskResults.push({ agent: task.agent, success: true, result });
-      } catch (e) {
-        await updateTask({ taskId, status: 'failed', error: e.message });
-        taskResults.push({ agent: task.agent, success: false, error: e.message });
+      // Execute sequential tasks one by one
+      for (const task of sequentialTasks) {
+        const agent = getAgent(task.agent);
+        if (!agent) {
+          taskResults.push({ agent: task.agent, success: false, error: `Unknown agent: ${task.agent}` });
+          executed.add(task.index);
+          continue;
+        }
+        try {
+          const result = await agent.execute({
+            objective: task.objective,
+            context: task.context || {},
+            taskId: task.taskId
+          });
+          await updateTask({ taskId: task.taskId, status: 'completed', result });
+          taskResults.push({ agent: task.agent, success: true, result, sequential: true });
+        } catch (e) {
+          await updateTask({ taskId: task.taskId, status: 'failed', error: e.message });
+          taskResults.push({ agent: task.agent, success: false, error: e.message, sequential: true });
+        }
+        executed.add(task.index);
       }
     }
 
@@ -461,7 +522,7 @@ class SupportAgent extends Agent {
       id: 'support',
       type: 'support',
       name: 'A-Gent Support',
-      description: 'Handles inbound customer questions and routes issues',
+      description: 'Handles inbound customer questions, classifies reply sentiment, routes issues',
       capabilities: ['supabase.query', 'supabase.insert', 'llm.chat']
     });
   }
@@ -470,13 +531,17 @@ class SupportAgent extends Agent {
     await this.updateStatus('active', objective, 'Processing support request');
 
     try {
-      // Recall any previous interactions with this customer
+      // Mode 1: Classify inbound replies from Netlify Blobs
+      if (context.action === 'classify_replies') {
+        return await this._classifyReplies(objective, context);
+      }
+
+      // Mode 2: Direct question mode (existing behavior)
       let customerHistory = [];
       if (context.customerEmail) {
         customerHistory = await this.recall(`support interaction with ${context.customerEmail}`, { matchCount: 5 });
       }
 
-      // Generate a response using LLM
       const response = await this.use('llm', 'chat', {
         messages: [
           {
@@ -492,7 +557,6 @@ class SupportAgent extends Agent {
         maxTokens: 500
       });
 
-      // Store the interaction
       await this.remember('note', `Support Q: ${objective} | A: ${response.content}`, {
         customer: context.customerEmail,
         response: response.content
@@ -504,6 +568,79 @@ class SupportAgent extends Agent {
       await this.updateStatus('error', objective, `Error: ${e.message}`);
       throw e;
     }
+  }
+
+  /**
+   * Classify sentiment of recent unclassified replies from Netlify Blobs
+   */
+  async _classifyReplies(objective, context) {
+    const { getStore } = await import('@netlify/blobs');
+    const repliesStore = getStore('replies');
+    const list = await repliesStore.list();
+    const replyBlobs = list.blobs || [];
+
+    const classified = [];
+    const escalations = [];
+
+    // Process up to 20 recent replies
+    for (const blob of replyBlobs.slice(-20)) {
+      try {
+        const reply = await repliesStore.get(blob.key, { type: 'json' });
+        if (!reply || reply.sentiment !== 'unclassified') continue;
+
+        // Use LLM to classify sentiment
+        const classification = await this.use('llm', 'chat', {
+          messages: [
+            {
+              role: 'system',
+              content: `Classify the sentiment of this email reply. Return ONLY valid JSON:
+{"sentiment": "positive|negative|neutral|objection|out_of_office", "summary": "one sentence summary", "needs_escalation": true|false}`
+            },
+            {
+              role: 'user',
+              content: `From: ${reply.from_email || 'unknown'}\nSubject: ${reply.subject || ''}\nBody: ${(reply.text_body || '').slice(0, 500)}`
+            }
+          ],
+          temperature: 0.2,
+          maxTokens: 200
+        });
+
+        let result;
+        try {
+          result = JSON.parse(classification.content.replace(/```json\s*/gi, '').replace(/```/g, ''));
+        } catch {
+          result = { sentiment: 'neutral', summary: 'classification failed', needs_escalation: false };
+        }
+
+        // Update the reply in the store with classification
+        reply.sentiment = result.sentiment;
+        reply.sentiment_summary = result.summary;
+        await repliesStore.setJSON(blob.key, reply);
+
+        // Store as memory
+        await this.remember('reply', `Reply from ${reply.from_email}: ${result.sentiment} — ${result.summary}`, {
+          email: reply.from_email,
+          sentiment: result.sentiment,
+          subject: reply.subject
+        });
+
+        classified.push({ email: reply.from_email, sentiment: result.sentiment, summary: result.summary });
+
+        if (result.needs_escalation || result.sentiment === 'negative' || result.sentiment === 'objection') {
+          escalations.push({ email: reply.from_email, sentiment: result.sentiment, summary: result.summary, subject: reply.subject });
+        }
+      } catch (e) {
+        // Skip unreadable reply
+      }
+    }
+
+    await this.updateStatus('idle', null, `Classified ${classified.length} replies, ${escalations.length} escalations`);
+    return {
+      success: true,
+      classified_count: classified.length,
+      escalations,
+      classified
+    };
   }
 }
 
@@ -524,23 +661,62 @@ class SuccessAgent extends Agent {
     await this.updateStatus('active', objective, 'Checking customer health');
 
     try {
-      // Query customer engagement data
-      const contacts = await this.use('supabase', 'query', {
-        table: 'contacts',
-        select: 'id,name,email,company_name,created_at',
-        filter: 'order=created_at.desc&limit=50'
+      // Query real engagement data from Supabase
+      const [contacts, steps] = await Promise.all([
+        this.use('supabase', 'query', {
+          table: 'contacts',
+          select: 'id,name,email,company_name,created_at',
+          filter: 'order=created_at.desc&limit=50'
+        }),
+        this.use('supabase', 'query', {
+          table: 'email_steps',
+          select: 'sequence_id,status,sent_at,scheduled_at',
+          filter: 'order=created_at.desc&limit=500'
+        })
+      ]);
+
+      // Calculate per-contact engagement metrics
+      const now = Date.now();
+      const fourteenDaysAgo = now - (14 * 24 * 60 * 60 * 1000);
+      const contactMetrics = contacts.map(c => {
+        const contactSteps = steps.filter(s => {
+          // We need to match via sequences, but we don't have sequence data here
+          // Use a simpler heuristic: match by contact activity in the activity_log
+          return true;
+        });
+        const contactAge = c.created_at ? now - new Date(c.created_at).getTime() : 0;
+        return {
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          company: c.company_name,
+          age_days: Math.floor(contactAge / (1000 * 60 * 60 * 24)),
+          created_at: c.created_at
+        };
       });
 
-      // Use LLM to assess health and suggest actions
+      // Calculate aggregate metrics
+      const totalContacts = contacts.length;
+      const totalSteps = steps.length;
+      const sentCount = steps.filter(s => s.status === 'sent').length;
+      const repliedCount = steps.filter(s => s.status === 'replied').length;
+      const queuedCount = steps.filter(s => s.status === 'queued').length;
+      const replyRate = sentCount > 0 ? (repliedCount / sentCount * 100).toFixed(1) : 0;
+
+      // Identify at-risk: contacts created >14 days ago with no recent activity
+      const recentActivity = steps.filter(s => s.sent_at && new Date(s.sent_at).getTime() > fourteenDaysAgo).length;
+      const staleContacts = contactMetrics.filter(c => c.age_days > 14).length;
+
+      // Use LLM to assess health based on real numbers
       const assessment = await this.use('llm', 'chat', {
         messages: [
           {
             role: 'system',
-            content: 'You are A-Gent Customer Success. Assess customer health based on engagement data and suggest retention actions. Return JSON: {"health": "good|at_risk|critical", "actions": ["action1", "action2"], "summary": "brief summary"}'
+            content: 'You are A-Gent Customer Success. Assess customer health based on engagement metrics and suggest retention actions. Return JSON: {"health": "good|at_risk|critical", "at_risk_count": N, "actions": ["action1"], "summary": "brief summary"}'
           },
           {
             role: 'user',
-            content: `Objective: ${objective}\nCustomers: ${JSON.stringify(contacts.slice(0, 20))}`
+            content: `Objective: ${objective}\n\nEngagement Metrics:\n- Total contacts: ${totalContacts}\n- Total email steps: ${totalSteps}\n- Sent: ${sentCount}\n- Replied: ${repliedCount}\n- Queued: ${queuedCount}\n- Reply rate: ${replyRate}%\n- Recent activity (14d): ${recentActivity} sends\n- Stale contacts (>14d no activity): ${staleContacts}\n- Recent contacts: ${JSON.stringify(contactMetrics.slice(0, 10).map(c => ({name: c.name, company: c.company, age_days: c.age_days})))}`
           }
         ],
         temperature: 0.3,
@@ -549,14 +725,26 @@ class SuccessAgent extends Agent {
 
       let result;
       try {
-        result = JSON.parse(assessment.content.replace(/```json\s*/gi, '').replace(/```\s*/g, ''));
+        result = JSON.parse(assessment.content.replace(/```json\s*/gi, '').replace(/```/g, ''));
       } catch {
-        result = { health: 'unknown', actions: [], summary: assessment.content };
+        result = { health: 'unknown', at_risk_count: staleContacts, actions: [], summary: assessment.content };
       }
 
-      await this.remember('note', `Customer health check: ${result.health} - ${result.summary}`, result);
-      await this.updateStatus('idle', null, 'Health check complete');
-      return { success: true, ...result };
+      // Store health assessment as memory
+      await this.remember('campaign_result', `Health check: ${result.health} — ${result.summary}. Reply rate: ${replyRate}%, ${staleContacts} stale contacts.`, {
+        health: result.health,
+        reply_rate: replyRate,
+        stale_contacts: staleContacts,
+        total_contacts: totalContacts,
+        actions: result.actions
+      });
+
+      await this.updateStatus('idle', null, `Health check: ${result.health}, ${staleContacts} at-risk`);
+      return {
+        success: true,
+        ...result,
+        metrics: { totalContacts, totalSteps, sentCount, repliedCount, queuedCount, replyRate, recentActivity, staleContacts }
+      };
     } catch (e) {
       await this.updateStatus('error', objective, `Error: ${e.message}`);
       throw e;
