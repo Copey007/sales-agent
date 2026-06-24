@@ -173,7 +173,7 @@ async function recallByText({ query, matchCount = 5, agentId = null, accountId =
   }
 
   // Build OR filter: content=ilike.*word1*&content=ilike.*word2* (PostgREST OR = comma in same param)
-  const orFilter = keywords.map(k => `content=ilike.*${encodeURIComponent(k)}*`).join(',');
+  const orFilter = keywords.map(k => `content.ilike.*${encodeURIComponent(k)}*`).join(',');
 
   let filter = `limit=${matchCount}&order=created_at.desc`;
   if (agentId) filter += `&agent_id=eq.${encodeURIComponent(agentId)}`;
