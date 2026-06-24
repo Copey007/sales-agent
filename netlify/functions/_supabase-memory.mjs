@@ -61,6 +61,8 @@ async function remember({ agentId = 'default', accountId = null, memoryType = 'n
     }
   }
 
+  // Build the row — include embedding in the INSERT if we have it
+  // pgvector accepts the format "[1,2,3]" as a string via PostgREST
   const row = {
     agent_id: agentId,
     account_id: accountId,
@@ -69,8 +71,10 @@ async function remember({ agentId = 'default', accountId = null, memoryType = 'n
     metadata
   };
 
-  // Insert via Supabase REST API
-  // Note: embedding is sent as a string literal for pgvector
+  if (embedding && embedding.length > 0) {
+    row.embedding = `[${embedding.join(',')}]`;
+  }
+
   const res = await fetch(`${url}/rest/v1/agent_memory`, {
     method: 'POST',
     headers: {
@@ -83,7 +87,6 @@ async function remember({ agentId = 'default', accountId = null, memoryType = 'n
   });
 
   if (!res.ok) {
-    // If agent_memory table doesn't exist, fall back gracefully
     if (res.status === 404) {
       console.warn('[memory] agent_memory table not found — memory not stored. Run schema setup first.');
       return { stored: false, reason: 'table_not_found' };
@@ -92,24 +95,6 @@ async function remember({ agentId = 'default', accountId = null, memoryType = 'n
   }
 
   const result = await res.json();
-
-  // If we have an embedding, update the row with it
-  if (embedding && embedding.length > 0 && result[0]?.id) {
-    try {
-      await fetch(`${url}/rest/v1/agent_memory?id=eq.${result[0].id}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ embedding: `[${embedding.join(',')}]` })
-      });
-    } catch (e) {
-      console.warn('[memory] Failed to store embedding:', e.message);
-    }
-  }
-
   return { stored: true, id: result[0]?.id };
 }
 
