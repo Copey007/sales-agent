@@ -163,11 +163,23 @@ async function recall({ query, matchCount = 5, agentId = null, accountId = null,
 async function recallByText({ query, matchCount = 5, agentId = null, accountId = null, memoryType = null }) {
   const { url, key } = getCredentials();
 
+  // Split query into keywords and search for any match using OR logic
+  // PostgREST uses & for AND, we want OR so we'll try each keyword
+  const keywords = query.split(/\s+/).filter(w => w.length > 3).slice(0, 5);
+  
+  if (keywords.length === 0) {
+    // Fall back to full query match
+    keywords.push(query);
+  }
+
+  // Build OR filter: content=ilike.*word1*&content=ilike.*word2* (PostgREST OR = comma in same param)
+  const orFilter = keywords.map(k => `content=ilike.*${encodeURIComponent(k)}*`).join(',');
+
   let filter = `limit=${matchCount}&order=created_at.desc`;
   if (agentId) filter += `&agent_id=eq.${encodeURIComponent(agentId)}`;
   if (accountId) filter += `&account_id=eq.${encodeURIComponent(accountId)}`;
   if (memoryType) filter += `&memory_type=eq.${encodeURIComponent(memoryType)}`;
-  filter += `&content=ilike.*${encodeURIComponent(query)}*`;
+  filter += `&or=(${orFilter})`;
 
   const res = await fetch(`${url}/rest/v1/agent_memory?select=id,agent_id,account_id,memory_type,content,metadata,created_at&${filter}`, {
     headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
