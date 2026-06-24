@@ -148,7 +148,13 @@ async function recall({ query, matchCount = 5, agentId = null, accountId = null,
     return await recallByText({ query, matchCount, agentId, accountId, memoryType });
   }
 
-  return await res.json();
+  const results = await res.json();
+  // If semantic search returns empty (no embeddings stored), fall back to text search
+  if (!results || results.length === 0) {
+    console.warn('[memory] Semantic search returned no results, falling back to text search');
+    return await recallByText({ query, matchCount, agentId, accountId, memoryType });
+  }
+  return results;
 }
 
 /**
