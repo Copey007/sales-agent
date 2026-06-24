@@ -311,8 +311,8 @@ function createLLMConnector() {
     model: { type: 'string', description: 'Override default model' }
   }, async ({ messages, temperature = 0.7, maxTokens = 2000, model }) => {
     const apiKey = env('OPENAI_API_KEY');
-    const apiBase = env('OPENAI_API_BASE', 'https://api.openai.com/v1');
-    const defaultModel = env('LLM_MODEL', 'gpt-4o-mini');
+    const apiBase = env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1');
+    const defaultModel = env('LLM_MODEL', 'claude-haiku-4-5');
     if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
     const res = await fetch(`${apiBase}/chat/completions`, {
@@ -334,21 +334,42 @@ function createLLMConnector() {
     model: { type: 'string', default: 'text-embedding-3-small' }
   }, async ({ text, model = 'text-embedding-3-small' }) => {
     const apiKey = env('OPENAI_API_KEY');
-    const apiBase = env('OPENAI_API_BASE', 'https://api.openai.com/v1');
+    const apiBase = env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1');
     if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
-    const res = await fetch(`${apiBase}/embeddings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({ input: text, model })
-    });
-    if (!res.ok) throw new Error(`Embedding error ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    return {
-      embedding: data.data?.[0]?.embedding || [],
-      model: data.model,
-      usage: data.usage
-    };
+    // Try the proxy first, fall back to OpenAI direct for embeddings
+    // (not all proxies support the embeddings endpoint)
+    try {
+      const res = await fetch(`${apiBase}/embeddings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ input: text, model })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          embedding: data.data?.[0]?.embedding || [],
+          model: data.model,
+          usage: data.usage
+        };
+      }
+      // If proxy doesn't support embeddings, try OpenAI direct
+      throw new Error(`Proxy embed failed: ${res.status}`);
+    } catch (proxyErr) {
+      // Fall back to OpenAI direct for embeddings
+      const res = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ input: text, model })
+      });
+      if (!res.ok) throw new Error(`Embedding error ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      return {
+        embedding: data.data?.[0]?.embedding || [],
+        model: data.model,
+        usage: data.usage
+      };
+    }
   });
 
   return c;
