@@ -413,5 +413,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: '/api/researcher-background'
+  // Scheduled only — no path (Netlify disallows path + schedule together)
 };

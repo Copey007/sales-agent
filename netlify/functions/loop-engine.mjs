@@ -567,5 +567,5 @@ export default async (req, context) => {
 };
 
 export const config = {
-  path: "/api/loop-engine"
+  // Scheduled only — no path (Netlify disallows path + schedule together)
 };
