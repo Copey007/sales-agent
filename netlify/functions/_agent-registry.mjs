@@ -881,19 +881,37 @@ function listAgents() {
 }
 
 /**
- * Get all agent statuses from Supabase (or fall back to in-memory)
+ * Get all agent statuses — merge Supabase status data with in-memory rich profiles
  */
 async function getAgentStatuses() {
+  const inMemory = listAgents();
   const { url, key } = getSupabaseCreds();
   try {
     const res = await fetch(`${url}/rest/v1/agent_registry?select=agent_id,agent_type,name,description,status,current_task,last_action,last_active_at&order=agent_type.asc`, {
       headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
     });
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      const dbAgents = await res.json();
+      // Merge: use in-memory profiles as base, overlay Supabase status data
+      const dbMap = Object.fromEntries(dbAgents.map(a => [a.agent_id, a]));
+      return inMemory.map(a => ({
+        ...a,
+        ...dbMap[a.id],
+        agent_id: a.id,
+        agent_type: a.type,
+        name: a.name, // keep in-memory name (richer)
+        description: a.description, // keep in-memory description
+        title: a.title,
+        bio: a.bio,
+        avatar: a.avatar,
+        skills: a.skills,
+        tools: a.tools
+      }));
+    }
   } catch (e) { /* fall through */ }
   
-  // Fallback to in-memory
-  return listAgents();
+  // Fallback to in-memory only
+  return inMemory;
 }
 
 // ─── Export ────────────────────────────────────────────────────────────────────
