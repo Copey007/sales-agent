@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your A-Gent Demo — Powered by AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216; --panel-3:#12181e;
+      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.10);
+      --green:#41ff9f; --green-dim:rgba(65,255,159,.06);
+      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
+      --line:rgba(201,162,39,.15); --line-2:rgba(255,255,255,.06);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{background:var(--black);color:var(--text);font-family:'Inter',sans-serif}
+    body{background:radial-gradient(circle at 20% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
+
+    .nav{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line)}
+    .nav img{height:32px;width:auto}
+    .nav a{color:var(--soft);font-size:.82rem;text-decoration:none}
+    .nav a:hover{color:var(--gold-2)}
+
+    .hero{text-align:center;padding:40px 20px 30px}
+    .hero h1{font-size:clamp(1.6rem,4vw,2.5rem);font-weight:800;color:var(--text);margin-bottom:10px}
+    .hero p{font-size:1rem;color:var(--soft);max-width:600px;margin:0 auto;line-height:1.6}
+    .hero .powered{font-size:.78rem;color:var(--muted);margin-top:8px}
+    .hero .powered span{color:var(--green);font-weight:600}
+
+    /* Demo iframe container */
+    .demo-container{max-width:1000px;margin:0 auto 30px;padding:0 20px}
+    .demo-frame{width:100%;height:580px;border:1px solid var(--line);border-radius:24px;overflow:hidden;background:var(--panel);box-shadow:0 8px 48px rgba(0,0,0,.4)}
+    .demo-frame iframe{width:100%;height:100%;border:0}
+
+    .fallback{margin-top:12px;font-size:.82rem;color:var(--muted);text-align:center}
+    .fallback a{color:var(--gold-2);text-decoration:none}
+    .fallback a:hover{text-decoration:underline}
+
+    /* Pricing section */
+    .pricing{max-width:800px;margin:0 auto;padding:40px 20px;text-align:center}
+    .pricing h2{font-size:1.4rem;font-weight:700;margin-bottom:8px}
+    .pricing>p{font-size:.88rem;color:var(--soft);margin-bottom:28px}
+    .pricing-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .price-card{padding:24px;background:var(--panel-2);border:1px solid var(--line);border-radius:20px;text-align:center;position:relative}
+    .price-card.best{border-color:var(--gold)}
+    .price-tag{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--black);font-size:.62rem;font-weight:700;padding:3px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em}
+    .price-card h3{font-size:.92rem;color:var(--soft);margin-bottom:10px}
+    .price-card .amount{font-size:2rem;font-weight:800;color:var(--gold-2)}
+    .price-card .period{font-size:.78rem;color:var(--muted)}
+    .price-card .note{font-size:.68rem;color:var(--muted);margin-top:8px}
+    .price-card .btn{display:block;margin-top:16px;padding:12px;border:0;border-radius:12px;font-weight:700;font-size:.85rem;cursor:pointer;text-decoration:none;text-align:center;transition:transform .15s}
+    .price-card .btn:hover{transform:scale(1.02)}
+    .price-card.best .btn{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
+    .price-card .btn{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
+
+    /* Trust section */
+    .trust{padding:40px 20px;text-align:center;border-top:1px solid var(--line)}
+    .trust h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px}
+    .trust-logos{display:flex;gap:24px;justify-content:center;flex-wrap:wrap;opacity:.5}
+    .trust-logos span{font-size:.78rem;color:var(--soft);font-weight:600}
+
+    .footer{padding:24px;text-align:center;border-top:1px solid var(--line);font-size:.72rem;color:var(--muted)}
+    .footer a{color:var(--soft);text-decoration:none;margin:0 8px}
+
+    @media(max-width:600px){.pricing-cards{grid-template-columns:1fr}.demo-frame{height:650px}}
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <img src="assets/agent-logo.svg" alt="A-Gent" />
+    <a href="https://aisdr.a-gent.co/workers.html">Browse Workers →</a>
+  </div>
+
+  <div class="hero">
+    <h1>Here's Your Demo, Powered by AI</h1>
+    <p>Speak with our AI agent to see how A-Gent's autonomous sales workforce can transform your pipeline — from signal detection to outbound sequences, 24/7.</p>
+    <div class="powered">Demo powered by <span>A-Gent Concierge</span> · Interactive AI</div>
+  </div>
+
+  <div class="demo-container">
+    <div class="demo-frame">
+      <iframe src="https://aisdr.a-gent.co/demo.html" title="A-Gent Interactive Demo" allow="microphone; autoplay"></iframe>
+    </div>
+    <div class="fallback">
+      Prefer a video? <a href="https://missioncontrol.a-gent.co">View Mission Control dashboard instead →</a>
+    </div>
+  </div>
+
+  <div class="pricing">
+    <h2>A-Gent is in Early Access</h2>
+    <p>Deploy your first AI worker in under 5 minutes. No credit card required. Founding partner pricing available.</p>
+    <div class="pricing-cards">
+      <div class="price-card best">
+        <div class="price-tag">Best Value</div>
+        <h3>Founding Partner</h3>
+        <div class="amount">$499<span class="period">/mo</span></div>
+        <div class="note">Annual commitment · All 7 workers · Mission Control</div>
+        <a href="https://aisdr.a-gent.co/workers.html"><button class="btn">Hire Workers →</button></a>
+      </div>
+      <div class="price-card">
+        <h3>Starter</h3>
+        <div class="amount">$99<span class="period">/mo</span></div>
+        <div class="note">Month-to-month · 1 worker · Email sequences</div>
+        <a href="https://aisdr.a-gent.co/workers.html"><button class="btn">Get Started</button></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="trust">
+    <h3>Built for modern revenue teams</h3>
+    <div class="trust-logos">
+      <span>B2B SaaS</span>
+      <span>Series A-B</span>
+      <span>Mid-Market</span>
+      <span>Enterprise</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    © 2026 A-Gent · <a href="https://a-gent.co">a-gent.co</a> · <a href="mailto:mark@a-gent.co">Contact</a> · <a href="https://missioncontrol.a-gent.co">Mission Control</a>
+  </div>
+</body>
+</html>

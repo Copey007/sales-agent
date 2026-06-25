@@ -13,256 +13,451 @@
       --green:#41ff9f; --green-dim:rgba(65,255,159,.06);
       --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
       --line:rgba(201,162,39,.15); --line-2:rgba(255,255,255,.06);
+      --blue:#5b9fff; --purple:#b86fff;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column;background:radial-gradient(circle at 30% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
 
-    .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative}
+    /* ─── Top bar ─────────────────────────────────────── */
+    .topbar{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
+    .topbar img{height:28px;width:auto}
+    .topbar .spacer{flex:1}
+    .lang-select{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-3);color:var(--soft);font-size:.72rem;font-family:inherit;cursor:pointer}
 
-    /* Agent avatar that "presents" the demo */
-    .presenter{display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:30px}
-    .presenter .logo{max-width:200px;width:50%;margin-bottom:8px}
-    .presenter-avatar{width:80px;height:80px;border-radius:24px;display:grid;place-items:center;font-size:2rem;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));border:1px solid var(--gold);box-shadow:0 0 32px rgba(201,162,39,.15);animation:float 3s ease-in-out infinite}
-    .presenter-name{font-size:1rem;font-weight:700;color:var(--gold-2)}
-    .presenter-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
-    .presenter-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    /* ─── Main split layout ──────────────────────────── */
+    .main{flex:1;display:flex;overflow:hidden}
+
+    /* Left: AI agent video area */
+    .agent-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;min-width:300px}
+    .agent-frame{width:100%;max-width:480px;aspect-ratio:4/3;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
+    .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.12);border-color:rgba(65,255,159,.3)}
+
+    /* Avatar (visual stand-in — in production this would be a HeyGen/ElevenLabs video) */
+    .agent-avatar{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;font-size:3rem;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));border:2px solid var(--gold);animation:float 3s ease-in-out infinite;transition:border-color .3s}
+    .agent-frame.speaking .agent-avatar{border-color:var(--green);animation:pulse-speak 1s ease-in-out infinite}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    @keyframes pulse-speak{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(65,255,159,0)}50%{transform:scale(1.05);box-shadow:0 0 24px 8px rgba(65,255,159,.15)}}
+
+    .agent-label{margin-top:16px;font-size:.95rem;font-weight:700;color:var(--gold-2)}
+    .agent-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px;margin-top:3px}
+    .agent-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
     @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
 
-    /* Demo content area — shows different "slides" */
-    .demo-area{width:min(700px,100%);min-height:300px}
+    .agent-caption{margin-top:16px;padding:12px 18px;background:var(--panel-2);border:1px solid var(--line);border-radius:16px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:480px;min-height:48px;text-align:center;transition:opacity .2s}
+    .agent-caption.typing{color:var(--muted)}
 
-    /* Welcome slide */
-    .slide{display:none;animation:fadeIn .4s ease}
-    .slide.active{display:block}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    /* See a Demo button — appears before the demo starts */
+    .demo-cta{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center}
+    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.95rem;cursor:pointer;transition:transform .2s;box-shadow:0 4px 20px rgba(201,162,39,.3)}
+    .see-demo-btn:hover{transform:scale(1.04)}
 
-    .slide h1{font-size:1.8rem;font-weight:800;text-align:center;margin-bottom:12px}
-    .slide p{text-align:center;color:var(--soft);font-size:.95rem;line-height:1.6;margin-bottom:24px}
+    /* Right: product showcase + chat */
+    .showcase-panel{width:480px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.4)}
 
-    /* Chat-style demo */
-    .chat-demo{background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:24px;margin-bottom:20px}
-    .chat-demo .msg{padding:10px 14px;border-radius:14px;margin-bottom:10px;font-size:.85rem;line-height:1.5;max-width:85%}
-    .chat-demo .msg.agent{background:var(--gold-dim);border:1px solid var(--line);border-bottom-left-radius:4px}
-    .chat-demo .msg.visitor{background:var(--green-dim);border:1px solid rgba(65,255,159,.15);border-bottom-right-radius:4px;margin-left:auto;text-align:right}
+    /* Product UI mockup area */
+    .showcase{flex:1;overflow-y:auto;padding:20px}
+    .showcase::-webkit-scrollbar{width:4px}
+    .showcase::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 
-    /* Feature cards */
-    .features{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-    .feature{padding:16px;background:var(--panel-2);border:1px solid var(--line);border-radius:16px;text-align:center}
-    .feature .icon{font-size:1.8rem;margin-bottom:8px}
-    .feature .name{font-size:.82rem;font-weight:600;color:var(--gold-2)}
-    .feature .desc{font-size:.72rem;color:var(--muted);margin-top:4px}
+    .mockup{display:none;animation:slideIn .4s ease}
+    .mockup.active{display:block}
+    @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
 
-    /* Live metrics mockup */
-    .metrics-mockup{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
-    .metric-box{padding:14px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;text-align:center}
-    .metric-box .val{font-size:1.4rem;font-weight:800;color:var(--green)}
-    .metric-box .lbl{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+    .mockup-title{font-size:.82rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;font-weight:600}
+
+    /* Mission Control mockup */
+    .mc-mockup{background:var(--panel-2);border:1px solid var(--line);border-radius:16px;padding:16px}
+    .mc-mockup .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+    .mc-mockup .stat{padding:10px;background:var(--panel-3);border-radius:10px;text-align:center}
+    .mc-mockup .stat .v{font-size:1.2rem;font-weight:800;color:var(--green)}
+    .mc-mockup .stat .l{font-size:.6rem;color:var(--muted);text-transform:uppercase}
+    .mc-mockup .bars{display:flex;gap:4px;height:40px;align-items:flex-end;margin-bottom:8px}
+    .mc-mockup .bar{flex:1;background:linear-gradient(180deg,var(--gold),var(--green));border-radius:3px 3px 0 0;min-height:8px;animation:growBar .8s ease}
+    @keyframes growBar{from{height:0}}
+    .mc-mockup .table-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line-2);font-size:.72rem}
+    .mc-mockup .table-row .name{color:var(--soft)}
+    .mc-mockup .table-row .status{color:var(--green);font-weight:600}
+
+    /* Worker marketplace mockup */
+    .wm-mockup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .wm-card{padding:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;display:flex;gap:10px;align-items:center}
+    .wm-card .av{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:1rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .wm-card .info .n{font-size:.78rem;font-weight:600}
+    .wm-card .info .t{font-size:.66rem;color:var(--gold-2)}
+
+    /* Email sequence mockup */
+    .es-mockup{display:flex;flex-direction:column;gap:8px}
+    .es-step{padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;gap:10px;align-items:center}
+    .es-step .num{width:24px;height:24px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--line);display:grid;place-items:center;font-size:.68rem;font-weight:700;color:var(--gold-2);flex-shrink:0}
+    .es-step .desc{font-size:.76rem;color:var(--soft)}
+    .es-step .meta{font-size:.62rem;color:var(--muted);margin-left:auto}
+
+    /* Chat input */
+    .chat-bar{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);flex-shrink:0}
+    .chat-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.85rem;outline:none;transition:border-color .2s}
+    .chat-bar input:focus{border-color:var(--gold)}
+    .chat-bar input::placeholder{color:var(--muted)}
+    .chat-bar button{padding:10px 16px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
+    .chat-bar button:hover{transform:scale(1.03)}
+    .chat-bar button:disabled{opacity:.4;cursor:wait}
+
+    /* Quick replies */
+    .quick-replies{display:flex;gap:6px;padding:0 16px 8px;flex-wrap:wrap;flex-shrink:0}
+    .qr{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
+    .qr:hover{border-color:var(--gold);color:var(--gold-2);background:var(--gold-dim)}
 
     /* Progress dots */
-    .progress{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2);transition:all .3s}
-    .dot.active{background:var(--gold);width:24px;border-radius:4px}
-    .dot.done{background:var(--green)}
+    .progress-dots{display:flex;gap:6px;justify-content:center;padding:8px 0;flex-shrink:0}
+    .pdot{width:6px;height:6px;border-radius:50%;background:var(--line-2);transition:all .3s}
+    .pdot.active{background:var(--gold);width:20px;border-radius:3px}
+    .pdot.done{background:var(--green)}
 
-    /* CTAs */
-    .cta-row{display:flex;gap:10px;justify-content:center}
-    .cta{padding:12px 24px;border:0;border-radius:14px;font-weight:700;font-size:.88rem;cursor:pointer;transition:transform .15s}
-    .cta:hover{transform:scale(1.02)}
-    .cta.primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
-    .cta.secondary{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
-    .cta.gold{background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black)}
+    /* Bottom CTA bar */
+    .cta-bar{padding:12px 16px;border-top:1px solid var(--line);background:rgba(5,5,8,.7);display:flex;gap:8px;flex-shrink:0}
+    .cta-bar a{flex:1}
+    .cta-bar button{width:100%;padding:10px;border:0;border-radius:12px;font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
+    .cta-bar button:hover{transform:scale(1.01)}
+    .cta-bar .primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
+    .cta-bar .secondary{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
 
-    /* Typing indicator */
-    .typing{display:flex;gap:4px;padding:12px 16px}
-    .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1.4s infinite}
-    .typing span:nth-child(2){animation-delay:.2s}
-    .typing span:nth-child(3){animation-delay:.4s}
-    @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+    /* Embed badge */
+    .embed-badge{position:fixed;bottom:8px;right:12px;font-size:.62rem;color:var(--muted);background:rgba(5,5,8,.6);padding:4px 10px;border-radius:6px;border:1px solid var(--line-2);z-index:50}
 
-    .embed-note{position:fixed;bottom:12px;right:12px;font-size:.68rem;color:var(--muted);background:rgba(5,5,8,.8);padding:6px 12px;border-radius:8px;border:1px solid var(--line-2)}
-
-    @media(max-width:600px){.features,.metrics-mockup{grid-template-columns:1fr 1fr}.slide h1{font-size:1.4rem}}
+    @media(max-width:900px){
+      .main{flex-direction:column}
+      .showcase-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}
+      .agent-stage{padding:12px}
+      .agent-frame{max-width:300px}
+    }
   </style>
 </head>
 <body>
-  <div class="stage">
-    <div class="presenter">
-      <img src="assets/agent-logo.svg" alt="A-Gent" class="logo" />
-      <div class="presenter-avatar" id="avatar">🤖</div>
-      <div>
-        <div class="presenter-name" id="agentName">A-Gent Demo Agent</div>
-        <div class="presenter-status">Live · Ready to demo</div>
+  <!-- Top bar with logo + language -->
+  <div class="topbar">
+    <img src="assets/agent-logo.svg" alt="A-Gent" />
+    <div class="spacer"></div>
+    <select class="lang-select" id="langSelect">
+      <option value="en">EN</option>
+      <option value="es">ES</option>
+      <option value="fr">FR</option>
+      <option value="de">DE</option>
+    </select>
+  </div>
+
+  <div class="main">
+    <!-- Left: AI Agent stage -->
+    <div class="agent-stage">
+      <div class="agent-frame" id="agentFrame">
+        <div class="agent-avatar" id="agentAvatar">🤖</div>
+      </div>
+      <div class="agent-label" id="agentLabel">A-Gent Demo Agent</div>
+      <div class="agent-status">Online · Ready to demo</div>
+      <div class="agent-caption" id="caption">Click "See a Demo" to start your interactive walkthrough</div>
+
+      <div class="demo-cta" id="demoCta">
+        <button class="see-demo-btn" id="startBtn" onclick="startDemo()">▶ See a Demo</button>
       </div>
     </div>
 
-    <div class="progress" id="progress"></div>
+    <!-- Right: Product showcase + chat -->
+    <div class="showcase-panel">
+      <div class="progress-dots" id="progressDots"></div>
+      <div class="showcase" id="showcase">
+        <!-- Mockup 1: Welcome -->
+        <div class="mockup active" id="mockup-welcome">
+          <div class="mockup-title">Welcome to A-Gent</div>
+          <div style="padding:20px;text-align:center">
+            <div style="font-size:3rem;margin-bottom:12px">🚀</div>
+            <div style="font-size:.95rem;color:var(--text);font-weight:600;margin-bottom:8px">Autonomous AI Sales Workforce</div>
+            <div style="font-size:.82rem;color:var(--soft);line-height:1.6">AI workers that detect buying signals, run outbound sequences, and manage your pipeline — 24/7.</div>
+          </div>
+        </div>
 
-    <div class="demo-area">
-      <!-- Slide 1: Welcome -->
-      <div class="slide active" id="slide1">
-        <h1>Welcome to A-Gent</h1>
-        <p>I'm your AI demo agent. I'll walk you through how A-Gent's autonomous sales workforce can transform your pipeline — in about 2 minutes.</p>
-        <div class="cta-row">
-          <button class="cta primary" onclick="nextSlide()">Start Demo →</button>
-          <button class="cta secondary" onclick="skipToChat()">Skip to Live Chat</button>
+        <!-- Mockup 2: Mission Control -->
+        <div class="mockup" id="mockup-mission">
+          <div class="mockup-title">📊 Mission Control Dashboard</div>
+          <div class="mc-mockup">
+            <div class="grid">
+              <div class="stat"><div class="v">100</div><div class="l">Contacts</div></div>
+              <div class="stat"><div class="v">154</div><div class="l">Sent</div></div>
+              <div class="stat"><div class="v">454</div><div class="l">Queued</div></div>
+            </div>
+            <div class="bars">
+              <div class="bar" style="height:60%"></div>
+              <div class="bar" style="height:80%"></div>
+              <div class="bar" style="height:45%"></div>
+              <div class="bar" style="height:90%"></div>
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:85%"></div>
+            </div>
+            <div class="table-row"><span class="name">SalesNexus — Craig Klein</span><span class="status">ACTIVE</span></div>
+            <div class="table-row"><span class="name">Authentise — Andre Wegner</span><span class="status">ACTIVE</span></div>
+            <div class="table-row"><span class="name">StratusLIVE — Jim Funari</span><span class="status">ACTIVE</span></div>
+          </div>
+        </div>
+
+        <!-- Mockup 3: Worker Marketplace -->
+        <div class="mockup" id="mockup-workers">
+          <div class="mockup-title">👥 Hire Your AI Workforce</div>
+          <div class="wm-mockup">
+            <div class="wm-card"><div class="av">🔬</div><div class="info"><div class="n">Sarah Chen</div><div class="t">Sales Researcher</div></div></div>
+            <div class="wm-card"><div class="av">✉️</div><div class="info"><div class="n">James Calloway</div><div class="t">Sales Dev Rep</div></div></div>
+            <div class="wm-card"><div class="av">⚙️</div><div class="info"><div class="n">Priya Sharma</div><div class="t">RevOps Manager</div></div></div>
+            <div class="wm-card"><div class="av">🎧</div><div class="info"><div class="n">Maria Rodriguez</div><div class="t">Support Specialist</div></div></div>
+            <div class="wm-card"><div class="av">🎯</div><div class="info"><div class="n">David Okafor</div><div class="t">Success Manager</div></div></div>
+            <div class="wm-card"><div class="av">📱</div><div class="info"><div class="n">Emma Williams</div><div class="t">Social Media</div></div></div>
+          </div>
+        </div>
+
+        <!-- Mockup 4: Email Sequence -->
+        <div class="mockup" id="mockup-sequence">
+          <div class="mockup-title">✉️ Autonomous Outbound Sequences</div>
+          <div class="es-mockup">
+            <div class="es-step"><div class="num">1</div><div class="desc">Signal-driven opening — references their buying signal</div><div class="meta">Day 0</div></div>
+            <div class="es-step"><div class="num">2</div><div class="desc">Follow-up — new angle, different signal</div><div class="meta">Day 3</div></div>
+            <div class="es-step"><div class="num">3</div><div class="desc">Value-add — insight or resource</div><div class="meta">Day 7</div></div>
+            <div class="es-step"><div class="num">4</div><div class="desc">Social proof — case study</div><div class="meta">Day 12</div></div>
+            <div class="es-step"><div class="num">5</div><div class="desc">Break-up — final value with CTA</div><div class="meta">Day 18</div></div>
+          </div>
         </div>
       </div>
 
-      <!-- Slide 2: The Problem -->
-      <div class="slide" id="slide2">
-        <h1>The Pipeline Problem</h1>
-        <p>Most sales teams struggle with the same gap: not enough qualified pipeline. SDRs are expensive, slow to ramp, and hard to scale.</p>
-        <div class="metrics-mockup">
-          <div class="metric-box"><div class="val">$85K</div><div class="lbl">Avg SDR Cost</div></div>
-          <div class="metric-box"><div class="val">3mo</div><div class="lbl">Ramp Time</div></div>
-          <div class="metric-box"><div class="val">40%</div><div class="lbl">Quota Attainment</div></div>
-          <div class="metric-box"><div class="val">24/7</div><div class="lbl">A-Gent Works</div></div>
-        </div>
-        <div class="cta-row">
-          <button class="cta secondary" onclick="prevSlide()">← Back</button>
-          <button class="cta primary" onclick="nextSlide()">How A-Gent Solves This →</button>
-        </div>
+      <!-- Quick replies -->
+      <div class="quick-replies" id="quickReplies"></div>
+
+      <!-- Chat bar -->
+      <div class="chat-bar">
+        <input type="text" id="chatInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendChat()" />
+        <button id="sendBtn" onclick="sendChat()">Send</button>
       </div>
 
-      <!-- Slide 3: The Solution -->
-      <div class="slide" id="slide3">
-        <h1>Your Autonomous Sales Workforce</h1>
-        <p>A-Gent deploys specialized AI workers that detect buying signals, run outbound sequences, and manage your pipeline — 24/7.</p>
-        <div class="features">
-          <div class="feature"><div class="icon">🔬</div><div class="name">Researcher</div><div class="desc">Finds prospects & buying signals</div></div>
-          <div class="feature"><div class="icon">✉️</div><div class="name">SDR</div><div class="desc">Writes & sends GAP emails</div></div>
-          <div class="feature"><div class="icon">⚙️</div><div class="name">Ops</div><div class="desc">Manages queue & limits</div></div>
-          <div class="feature"><div class="icon">🎧</div><div class="name">Support</div><div class="desc">Classifies inbound replies</div></div>
-          <div class="feature"><div class="icon">🎯</div><div class="name">Success</div><div class="desc">Monitors customer health</div></div>
-          <div class="feature"><div class="icon">📱</div><div class="name">Social</div><div class="desc">Publishes social content</div></div>
-        </div>
-        <div class="cta-row">
-          <button class="cta secondary" onclick="prevSlide()">← Back</button>
-          <button class="cta primary" onclick="nextSlide()">See It in Action →</button>
-        </div>
-      </div>
-
-      <!-- Slide 4: Live Demo Chat -->
-      <div class="slide" id="slide4">
-        <h1>Chat with A-Gent</h1>
-        <p>Try it yourself — ask anything about how A-Gent works, pricing, or your specific use case.</p>
-        <div class="chat-demo" id="chatDemo">
-          <div class="msg agent" id="agentGreeting">Hi! I'm the A-Gent Concierge. What would you like to know about our autonomous sales workforce?</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <input type="text" id="chatInput" placeholder="Ask a question..." style="flex:1;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.88rem;outline:none" onkeydown="if(event.key==='Enter')sendChat()" />
-          <button class="cta gold" onclick="sendChat()">Send</button>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-          <button class="cta secondary" style="padding:6px 12px;font-size:.76rem" onclick="quickAsk('How does A-Gent find prospects?')">How does prospecting work?</button>
-          <button class="cta secondary" style="padding:6px 12px;font-size:.76rem" onclick="quickAsk('What does it cost?')">What does it cost?</button>
-          <button class="cta secondary" style="padding:6px 12px;font-size:.76rem" onclick="quickAsk('Can I see a demo campaign?')">Show me a campaign</button>
-        </div>
-        <div class="cta-row">
-          <button class="cta secondary" onclick="prevSlide()">← Back</button>
-          <button class="cta primary" onclick="nextSlide()">Get Started →</button>
-        </div>
-      </div>
-
-      <!-- Slide 5: CTA -->
-      <div class="slide" id="slide5">
-        <h1>Ready to Hire Your AI Workforce?</h1>
-        <p>Deploy your first AI worker in under 5 minutes. No credit card required.</p>
-        <div class="cta-row" style="flex-direction:column;gap:12px;max-width:300px;margin:0 auto">
-          <a href="https://aisdr.a-gent.co/workers.html" target="_blank" style="width:100%"><button class="cta primary" style="width:100%">🚀 Hire a Worker</button></a>
-          <a href="https://missioncontrol.a-gent.co" target="_blank" style="width:100%"><button class="cta gold" style="width:100%">📊 View Mission Control</button></a>
-          <a href="mailto:mark@a-gent.co" style="width:100%"><button class="cta secondary" style="width:100%">✉️ Talk to a Human</button></a>
-        </div>
+      <!-- CTA bar -->
+      <div class="cta-bar" id="ctaBar" style="display:none">
+        <a href="https://aisdr.a-gent.co/workers.html" target="_blank"><button class="primary">🚀 Hire Workers</button></a>
+        <a href="https://missioncontrol.a-gent.co" target="_blank"><button class="secondary">📊 Mission Control</button></a>
       </div>
     </div>
   </div>
 
-  <div class="embed-note">Powered by A-Gent · Embeddable</div>
+  <div class="embed-badge">Powered by A-Gent · Embeddable</div>
 
   <script>
-    let currentSlide = 1;
-    const totalSlides = 5;
+    const API = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
+    const CONCIERGE_URL = API + '/api/concierge';
+
+    let demoStarted = false;
+    let currentStep = 0;
     let chatMessages = [];
+    let isSpeaking = false;
+
+    const STEPS = [
+      {
+        mockup: 'mockup-welcome',
+        script: "Hi! I'm the A-Gent demo agent. I'll walk you through how our autonomous AI sales workforce can transform your pipeline. Let's start with the dashboard.",
+        quickReplies: ['Tell me more', 'Skip to pricing', 'How does prospecting work?']
+      },
+      {
+        mockup: 'mockup-mission',
+        script: "This is Mission Control — your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.",
+        quickReplies: ['How are emails written?', 'What about the AI workers?', 'Show me pricing']
+      },
+      {
+        mockup: 'mockup-workers',
+        script: "These are your AI workers. Each one has a real identity — Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees, with an onboarding flow.",
+        quickReplies: ['Can I hire one now?', 'How much does it cost?', 'What tools do they use?']
+      },
+      {
+        mockup: 'mockup-sequence',
+        script: "Here's how outbound works — a 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA. No generic templates.",
+        quickReplies: ['What signals do you track?', 'Show me pricing', 'Talk to someone']
+      }
+    ];
+
+    // ─── Demo flow ─────────────────────────────────────────────
+    function startDemo() {
+      if (demoStarted) return;
+      demoStarted = true;
+      document.getElementById('demoCta').style.display = 'none';
+      document.getElementById('ctaBar').style.display = 'flex';
+      currentStep = 0;
+      runStep();
+    }
+
+    async function runStep() {
+      if (currentStep >= STEPS.length) {
+        showFinalCTA();
+        return;
+      }
+
+      const step = STEPS[currentStep];
+      updateProgress();
+      showMockup(step.mockup);
+      showQuickReplies(step.quickReplies);
+
+      // Agent speaks the script
+      await speakScript(step.script);
+    }
+
+    function nextStep() {
+      currentStep++;
+      runStep();
+    }
+
+    function showFinalCTA() {
+      updateProgress();
+      showMockup('mockup-welcome');
+      document.getElementById('mockup-welcome').innerHTML = `
+        <div class="mockup-title">Ready to get started?</div>
+        <div style="padding:30px 20px;text-align:center">
+          <div style="font-size:2.5rem;margin-bottom:12px">🎉</div>
+          <div style="font-size:1rem;color:var(--text);font-weight:700;margin-bottom:8px">Deploy your first AI worker in under 5 minutes</div>
+          <div style="font-size:.82rem;color:var(--soft);margin-bottom:20px">No credit card required. Set a goal, they figure out the how.</div>
+        </div>
+      `;
+      showQuickReplies([]);
+      speakScript("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control to see live campaigns. What would you like to do?");
+    }
+
+    // ─── Agent speaking (TTS + caption) ───────────────────────
+    async function speakScript(text) {
+      const caption = document.getElementById('caption');
+      const frame = document.getElementById('agentFrame');
+
+      // Show typing then text
+      caption.className = 'agent-caption typing';
+      caption.textContent = '...';
+
+      await new Promise(r => setTimeout(r, 600));
+
+      // Type out the caption
+      caption.className = 'agent-caption';
+      caption.textContent = text;
+
+      // Animate agent as "speaking"
+      frame.classList.add('speaking');
+      isSpeaking = true;
+
+      // Try TTS audio
+      try {
+        const res = await fetch(CONCIERGE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'chat',
+            messages: [{ role: 'user', content: text }],
+            speak: true,
+            sessionId: 'demo'
+          })
+        });
+        const data = await res.json();
+
+        if (data.audio) {
+          const audio = new Audio(data.audio);
+          audio.play().catch(() => {});
+          audio.onended = () => {
+            frame.classList.remove('speaking');
+            isSpeaking = false;
+          };
+          // Wait for audio to finish or timeout after 15s
+          await new Promise(r => setTimeout(r, 15000));
+        } else {
+          // No audio — wait based on text length
+          await new Promise(r => setTimeout(r, Math.min(text.length * 50, 5000)));
+        }
+      } catch(e) {
+        // TTS failed — wait based on text length
+        await new Promise(r => setTimeout(r, Math.min(text.length * 50, 4000)));
+      }
+
+      frame.classList.remove('speaking');
+      isSpeaking = false;
+    }
+
+    // ─── UI helpers ────────────────────────────────────────────
+    function showMockup(id) {
+      document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
+      const el = document.getElementById(id);
+      if (el) el.classList.add('active');
+    }
+
+    function showQuickReplies(replies) {
+      const container = document.getElementById('quickReplies');
+      container.innerHTML = '';
+      replies.forEach(text => {
+        const btn = document.createElement('button');
+        btn.className = 'qr';
+        btn.textContent = text;
+        btn.onclick = () => {
+          document.getElementById('chatInput').value = text;
+          sendChat();
+        };
+        container.appendChild(btn);
+      });
+    }
 
     function updateProgress() {
-      const dots = Array.from({length: totalSlides}, (_, i) => {
-        const n = i + 1;
-        if (n < currentSlide) return '<div class="dot done"></div>';
-        if (n === currentSlide) return '<div class="dot active"></div>';
-        return '<div class="dot"></div>';
+      const dots = document.getElementById('progressDots');
+      const total = STEPS.length + 1; // +1 for final CTA
+      dots.innerHTML = Array.from({length: total}, (_, i) => {
+        if (i < currentStep) return '<div class="pdot done"></div>';
+        if (i === currentStep) return '<div class="pdot active"></div>';
+        return '<div class="pdot"></div>';
       }).join('');
-      document.getElementById('progress').innerHTML = dots;
     }
 
-    function showSlide(n) {
-      document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
-      const slide = document.getElementById('slide' + n);
-      if (slide) slide.classList.add('active');
-      currentSlide = n;
-      updateProgress();
-    }
-
-    function nextSlide() { if (currentSlide < totalSlides) showSlide(currentSlide + 1); }
-    function prevSlide() { if (currentSlide > 1) showSlide(currentSlide - 1); }
-    function skipToChat() { showSlide(4); }
-
-    updateProgress();
-
-    // ─── Chat functionality ───────────────────────────────────────
+    // ─── Chat ──────────────────────────────────────────────────
     async function sendChat() {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
+      document.getElementById('sendBtn').disabled = true;
 
-      addChatMsg('visitor', text);
       chatMessages.push({ role: 'user', content: text });
 
-      // Typing indicator
-      const chatDemo = document.getElementById('chatDemo');
-      const typing = document.createElement('div');
-      typing.className = 'msg agent typing';
-      typing.id = 'typing';
-      typing.innerHTML = '<span></span><span></span><span></span>';
-      chatDemo.appendChild(typing);
-
-      try {
-        const res = await fetch(window.location.origin + '/api/concierge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'chat',
-            messages: chatMessages,
-            speak: false
-          })
-        });
-        const data = await res.json();
-        document.getElementById('typing')?.remove();
-        if (data.reply) {
-          addChatMsg('agent', data.reply);
-          chatMessages.push({ role: 'bot', content: data.reply });
+      // Check for navigation commands
+      const lower = text.toLowerCase();
+      if (lower.includes('pricing') || lower.includes('cost') || lower.includes('price')) {
+        await speakScript("We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?");
+        showQuickReplies(['Yes, contact me', 'Show me the workers', 'Keep exploring']);
+      } else if (lower.includes('hire') || lower.includes('start') || lower.includes('sign up')) {
+        await speakScript("You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.");
+        showQuickReplies(['Open marketplace', 'Show me the dashboard', 'Talk to someone']);
+      } else if (lower.includes('skip') || lower.includes('next')) {
+        nextStep();
+      } else if (lower.includes('contact') || lower.includes('human') || lower.includes('someone') || lower.includes('talk to')) {
+        await speakScript("I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!");
+        showQuickReplies(['Hire a worker', 'Show dashboard', 'Back to demo']);
+      } else {
+        // Send to concierge API for natural conversation
+        try {
+          const res = await fetch(CONCIERGE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'chat',
+              messages: chatMessages,
+              speak: true
+            })
+          });
+          const data = await res.json();
+          if (data.reply) {
+            await speakScript(data.reply);
+            chatMessages.push({ role: 'bot', content: data.reply });
+          }
+        } catch(e) {
+          await speakScript("I'm having trouble connecting right now. Please try again or email mark@a-gent.co");
         }
-      } catch(e) {
-        document.getElementById('typing')?.remove();
-        addChatMsg('agent', "I'm having trouble connecting. Please try again or visit missioncontrol.a-gent.co");
       }
+
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('chatInput').focus();
     }
 
-    function quickAsk(text) {
-      document.getElementById('chatInput').value = text;
-      sendChat();
-    }
-
-    function addChatMsg(role, text) {
-      const chatDemo = document.getElementById('chatDemo');
-      const div = document.createElement('div');
-      div.className = `msg ${role}`;
-      div.textContent = text;
-      chatDemo.appendChild(div);
-      chatDemo.scrollTop = chatDemo.scrollHeight;
-    }
+    // Init
+    updateProgress();
   </script>
 </body>
 </html>
