@@ -10,7 +10,7 @@
  * Results are stored as memories in Supabase and visible in Mission Control
  * via the agent_registry status updates.
  * 
- * Scheduled via netlify.toml: schedule = "*/30 * * * *"
+ * Scheduled via netlify.toml: schedule = "every 30 minutes"
  * IMPORTANT: This function MUST NOT have `path` in its config export
  * (Netlify rejects scheduled functions with path).
  */
