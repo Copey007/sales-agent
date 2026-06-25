@@ -19,11 +19,16 @@ import { remember, recall, getAccountMemories, createTask, updateTask, getPendin
 // ─── Agent Base Class ──────────────────────────────────────────────────────────
 
 class Agent {
-  constructor({ id, type, name, description, capabilities = [] }) {
+  constructor({ id, type, name, title, description, bio, avatar, skills = [], tools = [], capabilities = [] }) {
     this.id = id;
     this.type = type;
     this.name = name;
+    this.title = title || name;
     this.description = description;
+    this.bio = bio || description;
+    this.avatar = avatar || id.charAt(0).toUpperCase();
+    this.skills = skills;
+    this.tools = tools;
     this.capabilities = capabilities;
     this.status = 'idle';
     this.currentTask = null;
@@ -118,8 +123,13 @@ class ManagerAgent extends Agent {
     super({
       id: 'manager',
       type: 'manager',
-      name: 'Mission Control Manager',
+      name: 'Marcus Brightwell',
+      title: 'Mission Control Manager',
       description: 'Receives high-level objectives and delegates to specialist agents',
+      bio: 'Former Chief of Staff at a Series B SaaS startup. Marcus excels at breaking down complex objectives into actionable plans and coordinating specialist teams. He thinks in systems and never misses a detail.',
+      avatar: '👔',
+      skills: ['Strategic Planning', 'Task Decomposition', 'Team Coordination', 'OKR Management'],
+      tools: ['Slack', 'Notion', 'Asana'],
       capabilities: ['supabase.query', 'supabase.insert', 'supabase.update', 'llm.chat']
     });
   }
@@ -288,8 +298,13 @@ class ResearcherAgent extends Agent {
     super({
       id: 'researcher',
       type: 'researcher',
-      name: 'A-Gent Researcher',
+      name: 'Sarah Chen',
+      title: 'Sales Researcher',
       description: 'Sources prospects via Hunter.io, gathers buying signals via web search',
+      bio: 'Ex-Gong.io research analyst. Sarah has a knack for finding the right decision-makers and spotting buying signals before anyone else. She treats every prospect list like a puzzle waiting to be solved.',
+      avatar: '🔬',
+      skills: ['Prospect Sourcing', 'Signal Detection', 'Account Research', 'Email Enrichment', 'ICP Matching'],
+      tools: ['Hunter.io', 'Serper', 'LinkedIn', 'Crunchbase'],
       capabilities: ['hunter.find_email', 'hunter.domain_search', 'hunter.verify_email', 'serper.search', 'serper.news', 'supabase.insert', 'supabase.query', 'llm.chat', 'llm.embed']
     });
   }
@@ -376,8 +391,13 @@ class SDRAgent extends Agent {
     super({
       id: 'sdr',
       type: 'sdr',
-      name: 'A-Gent SDR',
+      name: 'James Calloway',
+      title: 'Sales Development Rep',
       description: 'Generates GAP-methodology emails and manages outbound sequences',
+      bio: '5 years at Outreach.io running top-of-funnel. James writes cold emails that actually get replies. He lives by the GAP methodology: signal, problem, credibility, single CTA. Under 100 words or it doesn\'t ship.',
+      avatar: '✉️',
+      skills: ['Cold Email Writing', 'GAP Methodology', 'Sequence Management', 'Reply Handling', 'A/B Testing'],
+      tools: ['Resend', 'Gmail', 'Outlook', 'HubSpot'],
       capabilities: ['llm.chat', 'llm.embed', 'resend.send', 'supabase.query', 'supabase.insert', 'supabase.update']
     });
   }
@@ -469,8 +489,13 @@ class OpsAgent extends Agent {
     super({
       id: 'ops',
       type: 'ops',
-      name: 'A-Gent Ops',
+      name: 'Priya Sharma',
+      title: 'Revenue Operations Manager',
       description: 'Manages queue scheduling, daily limits, and system health',
+      bio: 'Ex-RevOps lead at Pipedrive. Priya keeps the engine running. She monitors send limits, queue depth, and system health so nothing falls through the cracks. If something breaks, she knows before you do.',
+      avatar: '⚙️',
+      skills: ['Queue Management', 'Daily Limit Enforcement', 'System Health', 'Deliverability', 'Compliance'],
+      tools: ['Netlify', 'Supabase', 'Datadog', 'Slack'],
       capabilities: ['supabase.query', 'supabase.update', 'supabase.insert']
     });
   }
@@ -521,8 +546,13 @@ class SupportAgent extends Agent {
     super({
       id: 'support',
       type: 'support',
-      name: 'A-Gent Support',
+      name: 'Maria Rodriguez',
+      title: 'Customer Support Specialist',
       description: 'Handles inbound customer questions, classifies reply sentiment, routes issues',
+      bio: 'Ex-Intercom support lead. Maria has seen every customer question imaginable. She classifies inbound replies by sentiment, flags escalations before they become problems, and writes responses that make customers feel heard.',
+      avatar: '🎧',
+      skills: ['Inbound Triage', 'Sentiment Classification', 'Escalation Management', 'Response Writing', 'Knowledge Base'],
+      tools: ['Intercom', 'Zendesk', 'Slack', 'Gmail'],
       capabilities: ['supabase.query', 'supabase.insert', 'llm.chat']
     });
   }
@@ -651,8 +681,13 @@ class SuccessAgent extends Agent {
     super({
       id: 'success',
       type: 'success',
-      name: 'A-Gent Success',
+      name: 'David Okafor',
+      title: 'Customer Success Manager',
       description: 'Monitors customer health, triggers retention plays, manages renewals',
+      bio: 'Ex-Gainsight CSM. David proactively monitors customer engagement, spots at-risk accounts before they churn, and triggers retention plays. He believes the best renewal is the one you never have to ask for.',
+      avatar: '🎯',
+      skills: ['Health Scoring', 'Churn Prevention', 'Renewal Management', 'Onboarding', 'Upsell Detection'],
+      tools: ['Gainsight', 'Salesforce', 'Slack', 'Zoom'],
       capabilities: ['supabase.query', 'supabase.update', 'llm.chat', 'resend.send']
     });
   }
@@ -759,8 +794,13 @@ class SocialAgent extends Agent {
     super({
       id: 'social',
       type: 'social',
-      name: 'A-Gent Social',
+      name: 'Emma Williams',
+      title: 'Social Media Manager',
       description: 'Manages social media publishing and engagement tracking',
+      bio: 'Ex-Buffer content strategist. Emma knows what posts land and which flop. She generates on-brand social content, schedules it at optimal times, and tracks engagement. She treats every post like a mini-campaign.',
+      avatar: '📱',
+      skills: ['Content Creation', 'Social Scheduling', 'Engagement Tracking', 'Brand Voice', 'Hashtag Strategy'],
+      tools: ['Buffer', 'Twitter', 'LinkedIn', 'Hootsuite'],
       capabilities: ['llm.chat', 'supabase.query']
     });
   }
@@ -829,7 +869,12 @@ function listAgents() {
     id: a.id,
     type: a.type,
     name: a.name,
+    title: a.title,
     description: a.description,
+    bio: a.bio,
+    avatar: a.avatar,
+    skills: a.skills,
+    tools: a.tools,
     status: a.status,
     capabilities: a.capabilities
   }));

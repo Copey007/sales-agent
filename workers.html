@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent Workers — Hire Your AI Team</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216; --panel-3:#12181e;
+      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.10);
+      --green:#41ff9f; --green-dim:rgba(65,255,159,.06);
+      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
+      --line:rgba(201,162,39,.15); --line-2:rgba(255,255,255,.06);
+      --blue:#5b9fff; --purple:#b86fff; --red:#ff5c7a;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{background:var(--black);color:var(--text);font-family:'Inter',sans-serif;min-height:100%}
+    body{background:radial-gradient(circle at 20% 0%,rgba(201,162,39,.08),transparent 50%),radial-gradient(circle at 80% 20%,rgba(65,255,159,.05),transparent 40%),var(--black)}
+
+    .hero{padding:60px 20px 40px;text-align:center}
+    .hero h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:800;background:linear-gradient(135deg,var(--gold-2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+    .hero p{font-size:1.1rem;color:var(--soft);max-width:600px;margin:0 auto}
+    .hero .stats{display:flex;justify-content:center;gap:40px;margin-top:30px}
+    .hero .stat{text-align:center}
+    .hero .stat .num{font-size:2rem;font-weight:800;color:var(--gold-2)}
+    .hero .stat .label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+
+    .filters{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 20px 30px}
+    .filter{padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--soft);font-size:.82rem;cursor:pointer;transition:all .15s}
+    .filter:hover{border-color:var(--gold)}
+    .filter.active{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-2)}
+
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;max-width:1200px;margin:0 auto;padding:0 20px 60px}
+    .card{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:20px;padding:24px;transition:transform .2s,border-color .2s,box-shadow .2s;cursor:pointer;position:relative;overflow:hidden}
+    .card:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 8px 32px rgba(201,162,39,.10)}
+    .card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent,rgba(201,162,39,.03),transparent);pointer-events:none}
+
+    .card-header{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+    .card-avatar{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:1.6rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0}
+    .card-name{font-size:1.1rem;font-weight:700;color:var(--text)}
+    .card-title{font-size:.82rem;color:var(--gold-2);margin-top:2px}
+    .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+    .card-status.idle{background:var(--green-dim);color:var(--green);border:1px solid rgba(65,255,159,.2)}
+    .card-status.active{background:rgba(65,255,159,.15);color:var(--green)}
+
+    .card-bio{font-size:.85rem;color:var(--soft);line-height:1.6;margin-bottom:16px}
+
+    .card-skills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
+    .skill{font-size:.68rem;padding:4px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);color:var(--soft)}
+
+    .card-tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+    .tool{font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:3px}
+    .tool::before{content:'🔌';font-size:.6rem}
+
+    .card-footer{display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--line-2)}
+    .hire-btn{padding:8px 18px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
+    .hire-btn:hover{transform:scale(1.03)}
+    .card-dept{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+
+    /* Onboarding modal */
+    .modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(5,5,8,.92);backdrop-filter:blur(16px);overflow-y:auto}
+    .modal-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
+    .modal{width:min(560px,100%);background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);border-radius:24px;padding:32px;position:relative}
+    .modal-close{position:absolute;top:16px;right:16px;background:none;border:0;color:var(--muted);font-size:1.4rem;cursor:pointer}
+    .modal-step{font-size:.68rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+    .modal h2{font-size:1.4rem;font-weight:700;margin-bottom:8px}
+    .modal .sub{font-size:.85rem;color:var(--soft);margin-bottom:24px}
+
+    .worker-preview{display:flex;align-items:center;gap:14px;padding:16px;background:var(--panel-3);border-radius:16px;border:1px solid var(--line);margin-bottom:24px}
+    .worker-preview .av{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:1.4rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .worker-preview .info .n{font-weight:700}
+    .worker-preview .info .t{font-size:.78rem;color:var(--gold-2)}
+
+    .field{margin-bottom:18px}
+    .field label{display:block;font-size:.78rem;color:var(--gold-2);margin-bottom:6px;font-weight:600}
+    .field input,.field textarea,.field select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.88rem;outline:none;transition:border-color .2s}
+    .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--gold)}
+    .field textarea{min-height:70px;resize:vertical}
+
+    .btn-row{display:flex;gap:10px;margin-top:8px}
+    .btn-primary{flex:1;padding:14px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;font-weight:700;font-size:.9rem;cursor:pointer;transition:transform .15s}
+    .btn-primary:hover{transform:scale(1.01)}
+    .btn-primary:disabled{opacity:.5;cursor:wait}
+    .btn-secondary{padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--soft);font-weight:600;font-size:.9rem;cursor:pointer}
+
+    .onboard-result{padding:20px;background:var(--green-dim);border:1px solid rgba(65,255,159,.2);border-radius:16px;margin-top:16px}
+    .onboard-result h3{color:var(--green);font-size:.95rem;margin-bottom:8px}
+    .onboard-result p{font-size:.82rem;color:var(--soft);line-height:1.5}
+    .onboard-result .next{margin-top:10px;font-size:.78rem;color:var(--gold-2)}
+
+    @media(max-width:600px){.hero .stats{gap:20px}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>Hire Your AI Workforce</h1>
+    <p>Autonomous AI workers that operate 24/7 — with their own identity, memory, and initiative. Set a goal, they figure out the how.</p>
+    <div class="stats">
+      <div class="stat"><div class="num" id="workerCount">—</div><div class="label">Workers Available</div></div>
+      <div class="stat"><div class="num">24/7</div><div class="label">Always Working</div></div>
+      <div class="stat"><div class="num" id="connectorCount">—</div><div class="label">Tools Connected</div></div>
+    </div>
+  </div>
+
+  <div class="filters" id="filters"></div>
+  <div class="grid" id="grid"><div style="color:var(--muted);text-align:center;padding:40px">Loading workforce...</div></div>
+
+  <!-- Onboarding Modal -->
+  <div class="modal-overlay" id="hireModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeHire()">&times;</button>
+      <div id="hireContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin + '/api/workforce';
+    let workers = [];
+    let connectors = [];
+    let allDepts = [];
+    let activeFilter = 'all';
+
+    async function load() {
+      const res = await fetch(API);
+      const data = await res.json();
+      workers = data.workforce || [];
+      connectors = data.connectors || [];
+
+      document.getElementById('workerCount').textContent = workers.length;
+      document.getElementById('connectorCount').textContent = connectors.length;
+
+      // Build department filters
+      allDepts = [...new Set(workers.map(w => w.type))];
+      const filtersEl = document.getElementById('filters');
+      filtersEl.innerHTML = `<button class="filter ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">All Workers</button>` +
+        allDepts.map(d => `<button class="filter ${activeFilter===d?'active':''}" onclick="setFilter('${d}')">${capitalize(d)}</button>`).join('');
+
+      render();
+    }
+
+    function setFilter(dept) { activeFilter = dept; load(); }
+
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+    function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+    function render() {
+      const filtered = activeFilter === 'all' ? workers : workers.filter(w => w.type === activeFilter);
+      const grid = document.getElementById('grid');
+      grid.innerHTML = filtered.map(w => `
+        <div class="card" onclick="hire('${w.id}')">
+          <span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>
+          <div class="card-header">
+            <div class="card-avatar">${w.avatar || '🤖'}</div>
+            <div>
+              <div class="card-name">${esc(w.name)}</div>
+              <div class="card-title">${esc(w.title)}</div>
+            </div>
+          </div>
+          <div class="card-bio">${esc(w.bio || w.description)}</div>
+          <div class="card-skills">${(w.skills||[]).map(s => `<span class="skill">${esc(s)}</span>`).join('')}</div>
+          <div class="card-tools">${(w.tools||[]).map(t => `<span class="tool">${esc(t)}</span>`).join('')}</div>
+          <div class="card-footer">
+            <span class="card-dept">${esc(w.type)}</span>
+            <button class="hire-btn">Hire ${esc(w.name.split(' ')[0])}</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ─── Hire / Onboarding Flow ──────────────────────────────────
+    let hiredWorker = null;
+
+    function hire(workerId) {
+      hiredWorker = workers.find(w => w.id === workerId);
+      if (!hiredWorker) return;
+      document.getElementById('hireModal').classList.add('open');
+      renderHireStep1();
+    }
+
+    function closeHire() {
+      document.getElementById('hireModal').classList.remove('open');
+      hiredWorker = null;
+    }
+
+    function renderHireStep1() {
+      document.getElementById('hireContent').innerHTML = `
+        <div class="modal-step">Step 1 of 3 — Onboarding</div>
+        <h2>Welcome ${esc(hiredWorker.name.split(' ')[0])} to your team</h2>
+        <p class="sub">Just like a new employee, your AI worker needs some context to get started.</p>
+
+        <div class="worker-preview">
+          <div class="av">${hiredWorker.avatar || '🤖'}</div>
+          <div class="info">
+            <div class="n">${esc(hiredWorker.name)}</div>
+            <div class="t">${esc(hiredWorker.title)}</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>What's your company name?</label>
+          <input type="text" id="companyName" placeholder="e.g. Acme Corp" />
+        </div>
+        <div class="field">
+          <label>What goal should ${esc(hiredWorker.name.split(' ')[0])} focus on?</label>
+          <textarea id="workerGoal" placeholder="e.g. Qualify 50 leads per week and book 10 meetings"></textarea>
+        </div>
+        <div class="field">
+          <label>Any context ${esc(hiredWorker.name.split(' ')[0])} should know? (optional)</label>
+          <textarea id="workerContext" placeholder="e.g. We sell B2B SaaS to mid-market companies. Our ICP is VP Sales at 50-200 employee companies."></textarea>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="closeHire()">Cancel</button>
+          <button class="btn-primary" onclick="renderHireStep2()">Continue →</button>
+        </div>
+      `;
+    }
+
+    function renderHireStep2() {
+      const company = document.getElementById('companyName')?.value?.trim();
+      const goal = document.getElementById('workerGoal')?.value?.trim();
+      if (!company || !goal) { alert('Please fill in company name and goal.'); return; }
+
+      document.getElementById('hireContent').innerHTML = `
+        <div class="modal-step">Step 2 of 3 — Tool Connection</div>
+        <h2>${esc(hiredWorker.name.split(' ')[0])}'s toolkit</h2>
+        <p class="sub">These are the tools ${esc(hiredWorker.name.split(' ')[0])} uses to get the job done. Some are already connected.</p>
+
+        <div class="worker-preview">
+          <div class="av">${hiredWorker.avatar || '🤖'}</div>
+          <div class="info">
+            <div class="n">${esc(hiredWorker.name)}</div>
+            <div class="t">Connecting tools...</div>
+          </div>
+        </div>
+
+        <div style="display:grid;gap:10px;margin-bottom:24px">
+          ${(hiredWorker.tools||[]).map((t,i) => `
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel-3);border-radius:12px;border:1px solid var(--line)">
+              <span style="font-size:1.1rem">🔌</span>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:.85rem">${esc(t)}</div>
+                <div style="font-size:.7rem;color:${i < 3 ? 'var(--green)' : 'var(--muted)'}">${i < 3 ? 'Connected' : 'Not connected — optional'}</div>
+              </div>
+              ${i < 3 ? '<span style="color:var(--green);font-size:.7rem;font-weight:600">✓</span>' : ''}
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="padding:14px;background:var(--gold-dim);border-radius:12px;border:1px solid var(--line);margin-bottom:20px">
+          <div style="font-size:.78rem;color:var(--gold-2);font-weight:600;margin-bottom:4px">Connected MCP Tools</div>
+          <div style="font-size:.72rem;color:var(--soft)">${connectors.map(c => c.name).join(' · ')}</div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="renderHireStep1()">← Back</button>
+          <button class="btn-primary" onclick="renderHireStep3('${esc(company)}','${esc(goal)}')">Onboard →</button>
+        </div>
+      `;
+    }
+
+    async function renderHireStep3(company, goal) {
+      const context = document.getElementById('workerContext')?.value?.trim() || '';
+      const btnHtml = `<button class="btn-primary" disabled>Onboarding...</button>`;
+      document.getElementById('hireContent').innerHTML = `
+        <div class="modal-step">Step 3 of 3 — Activating</div>
+        <h2>Onboarding ${esc(hiredWorker.name.split(' ')[0])}...</h2>
+        <p class="sub">Setting up memory, loading company context, and preparing for first task.</p>
+        <div id="onboardStatus" style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">Activating ${esc(hiredWorker.name)}...</div>
+      `;
+
+      // Actually onboard the worker via the workforce API
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'execute',
+            agent: hiredWorker.id,
+            objective: goal,
+            context: { company, goal, context, onboarded: true }
+          })
+        });
+        const result = await res.json();
+
+        document.getElementById('onboardStatus').innerHTML = `
+          <div class="onboard-result">
+            <h3>✅ ${esc(hiredWorker.name)} is now active!</h3>
+            <p>${esc(hiredWorker.name.split(' ')[0])} has been onboarded to <strong>${esc(company)}</strong> and given the goal: "${esc(goal)}"</p>
+            <p style="margin-top:8px">First task result: ${result.success ? 'Completed successfully' : 'Queued for processing'}</p>
+            <div class="next">→ View ${esc(hiredWorker.name.split(' ')[0])} in Mission Control at missioncontrol.a-gent.co</div>
+          </div>
+          <div class="btn-row" style="margin-top:16px">
+            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
+            <button class="btn-secondary" onclick="closeHire()">Close</button>
+          </div>
+        `;
+      } catch(e) {
+        document.getElementById('onboardStatus').innerHTML = `
+          <div class="onboard-result" style="background:rgba(255,92,122,.08);border-color:rgba(255,92,122,.2)">
+            <h3 style="color:var(--red)">⚠️ Onboarding queued</h3>
+            <p>${esc(hiredWorker.name)} has been assigned to your team. The first task will process shortly.</p>
+            <div class="next">→ View in Mission Control at missioncontrol.a-gent.co</div>
+          </div>
+          <div class="btn-row" style="margin-top:16px">
+            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
+            <button class="btn-secondary" onclick="closeHire()">Close</button>
+          </div>
+        `;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
