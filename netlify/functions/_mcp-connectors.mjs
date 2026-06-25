@@ -375,6 +375,47 @@ function createLLMConnector() {
   return c;
 }
 
+// ─── OpenAI TTS Connector ─────────────────────────────────────────────────────
+
+function createTTSConnector() {
+  const c = new Connector('tts', 'Text-to-speech via OpenAI TTS — generates audio for the concierge widget');
+
+  c.register('speak', 'Convert text to speech audio (returns base64 MP3)', {
+    text: { type: 'string', required: true },
+    voice: { type: 'string', default: 'alloy', description: 'alloy, echo, fable, onyx, nova, shimmer' },
+    speed: { type: 'number', default: 1.0 }
+  }, async ({ text, voice = 'alloy', speed = 1.0 }) => {
+    const apiKey = env('OPENAI_API_KEY');
+    if (!apiKey) throw new Error('OPENAI_API_KEY not set for TTS');
+
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'tts-1',
+        input: text.slice(0, 4000),
+        voice,
+        speed,
+        response_format: 'mp3'
+      })
+    });
+
+    if (!res.ok) throw new Error(`TTS error ${res.status}: ${await res.text()}`);
+
+    // Return the audio as base64 data URL for direct playback in browser
+    const audioBuffer = await res.arrayBuffer();
+    const base64 = Buffer.from(audioBuffer).toString('base64');
+    return {
+      audio: `data:audio/mpeg;base64,${base64}`,
+      format: 'mp3',
+      voice,
+      textLength: text.length
+    };
+  });
+
+  return c;
+}
+
 // ─── Resend Connector (Email Sending) ──────────────────────────────────────────
 
 function createResendConnector() {
@@ -415,6 +456,7 @@ function initConnectors() {
   registerConnector(createSerperConnector());
   registerConnector(createSupabaseConnector());
   registerConnector(createLLMConnector());
+  registerConnector(createTTSConnector());
   registerConnector(createResendConnector());
   initialized = true;
 }

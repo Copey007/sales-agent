@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent Concierge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216;
+      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.12);
+      --green:#41ff9f; --green-dim:rgba(65,255,159,.08);
+      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
+      --line:rgba(201,162,39,.20);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
+    body{display:flex;flex-direction:column;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,.08),transparent 50%),var(--black)}
+    
+    .header{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.6);backdrop-filter:blur(12px)}
+    .header-avatar{width:38px;height:38px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));font-size:1rem}
+    .header-info{flex:1}
+    .header-name{font-weight:700;font-size:.95rem;color:var(--gold-2)}
+    .header-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
+    .header-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+    .voice-toggle{background:none;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;color:var(--soft);font-size:.72rem;transition:all .2s}
+    .voice-toggle.active{color:var(--green);border-color:var(--green);background:var(--green-dim)}
+    .voice-toggle:hover{border-color:var(--gold)}
+    
+    .messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+    .messages::-webkit-scrollbar{width:4px}
+    .messages::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+    
+    .msg{max-width:82%;padding:12px 16px;border-radius:16px;font-size:.88rem;line-height:1.5;animation:fadeIn .3s ease}
+    .msg.bot{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+    .msg.user{align-self:flex-end;background:linear-gradient(135deg,var(--gold-dim),rgba(65,255,159,.05));border:1px solid var(--line);border-bottom-right-radius:4px}
+    .msg.typing{display:flex;gap:4px;padding:16px}
+    .msg.typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1.4s infinite}
+    .msg.typing span:nth-child(2){animation-delay:.2s}
+    .msg.typing span:nth-child(3){animation-delay:.4s}
+    
+    .audio-bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:rgba(65,255,159,.06);border-radius:10px;border:1px solid rgba(65,255,159,.15)}
+    .audio-bar audio{height:32px;flex:1}
+    .audio-bar label{font-size:.68rem;color:var(--green);text-transform:uppercase;letter-spacing:.08em}
+    
+    .input-bar{display:flex;gap:8px;padding:14px 16px;border-top:1px solid var(--line);background:rgba(5,5,8,.6);backdrop-filter:blur(12px)}
+    .input-bar input{flex:1;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font-family:inherit;font-size:.88rem;outline:none;transition:border-color .2s}
+    .input-bar input:focus{border-color:var(--gold)}
+    .input-bar input::placeholder{color:var(--muted)}
+    .send-btn{width:44px;height:44px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1.1rem;transition:transform .15s}
+    .send-btn:hover{transform:scale(1.05)}
+    .send-btn:disabled{opacity:.4;cursor:wait}
+    
+    .quick-replies{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 8px}
+    .quick-reply{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.78rem;cursor:pointer;transition:all .15s}
+    .quick-reply:hover{border-color:var(--gold);color:var(--gold-2);background:var(--gold-dim)}
+    
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes blink{0%,60%,100%{opacity:.3}30%{opacity:1}}
+    
+    @media(max-width:480px){.msg{max-width:90%}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-avatar">🤖</div>
+    <div class="header-info">
+      <div class="header-name">A-Gent Concierge</div>
+      <div class="header-status">Online · Autonomous Sales Assistant</div>
+    </div>
+    <button class="voice-toggle" id="voiceToggle" onclick="toggleVoice()">🔇 Voice Off</button>
+  </div>
+  
+  <div class="messages" id="messages"></div>
+  <div class="quick-replies" id="quickReplies"></div>
+  
+  <div class="input-bar">
+    <input type="text" id="input" placeholder="Ask about A-Gent..." autocomplete="off" onkeydown="if(event.key==='Enter')send()">
+    <button class="send-btn" id="sendBtn" onclick="send()">↑</button>
+  </div>
+  
+  <script>
+    const API_BASE = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
+    const API_URL = `${API_BASE}/api/concierge`;
+    
+    let sessionId = null;
+    let voiceEnabled = false;
+    let messages = [];
+    let visitorEmail = null;
+    
+    const $ = id => document.getElementById(id);
+    
+    function addMessage(role, content, audio) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = content;
+      if (audio) {
+        const audioBar = document.createElement('div');
+        audioBar.className = 'audio-bar';
+        audioBar.innerHTML = `<label>🔊 Voice</label>`;
+        const audioEl = document.createElement('audio');
+        audioEl.controls = true;
+        audioEl.src = audio;
+        audioBar.appendChild(audioEl);
+        div.appendChild(audioBar);
+      }
+      $('messages').appendChild(div);
+      $('messages').scrollTop = $('messages').scrollHeight;
+    }
+    
+    function addTyping() {
+      const div = document.createElement('div');
+      div.className = 'msg bot typing';
+      div.id = 'typing';
+      div.innerHTML = '<span></span><span></span><span></span>';
+      $('messages').appendChild(div);
+      $('messages').scrollTop = $('messages').scrollHeight;
+    }
+    
+    function removeTyping() {
+      const el = $('typing');
+      if (el) el.remove();
+    }
+    
+    function toggleVoice() {
+      voiceEnabled = !voiceEnabled;
+      const btn = $('voiceToggle');
+      btn.textContent = voiceEnabled ? '🔊 Voice On' : '🔇 Voice Off';
+      btn.classList.toggle('active', voiceEnabled);
+    }
+    
+    function showQuickReplies(replies) {
+      const container = $('quickReplies');
+      container.innerHTML = '';
+      replies.forEach(text => {
+        const btn = document.createElement('button');
+        btn.className = 'quick-reply';
+        btn.textContent = text;
+        btn.onclick = () => { $('input').value = text; send(); };
+        container.appendChild(btn);
+      });
+    }
+    
+    async function start() {
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'start', 
+            visitorInfo: { 
+              referrer: document.referrer,
+              page: window.location.pathname
+            }
+          })
+        });
+        const data = await res.json();
+        sessionId = data.sessionId;
+        addMessage('bot', data.greeting);
+        
+        // Extract email from conversation for CRM capture
+        showQuickReplies(['What does A-Gent do?', 'How does it work?', 'I need more pipeline']);
+      } catch (e) {
+        addMessage('bot', 'Hi! I'm the A-Gent Concierge. What brings you here today?');
+      }
+    }
+    
+    async function send() {
+      const input = $('input');
+      const text = input.value.trim();
+      if (!text) return;
+      
+      input.value = '';
+      $('sendBtn').disabled = true;
+      
+      addMessage('user', text);
+      messages.push({ role: 'user', content: text });
+      
+      // Try to extract email from user message
+      const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+      if (emailMatch) visitorEmail = emailMatch[0];
+      
+      addTyping();
+      
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'chat',
+            messages: messages,
+            sessionId,
+            speak: voiceEnabled,
+            visitorEmail
+          })
+        });
+        
+        removeTyping();
+        const data = await res.json();
+        
+        if (data.error) {
+          addMessage('bot', 'Sorry, I had a hiccup. Could you repeat that?');
+        } else {
+          addMessage('bot', data.reply, data.audio);
+          
+          // Show contextual quick replies
+          if (data.reply.toLowerCase().includes('email') || data.reply.toLowerCase().includes('connect')) {
+            showQuickReplies(['Sure, here\'s my email', 'Tell me more first', 'What\'s the pricing?']);
+          } else if (data.reply.toLowerCase().includes('pricing')) {
+            showQuickReplies(['That works for me', 'Can I see a demo?', 'I\'ll think about it']);
+          } else {
+            showQuickReplies([]);
+          }
+        }
+      } catch (e) {
+        removeTyping();
+        addMessage('bot', 'Connection issue — please try again in a moment.');
+      }
+      
+      $('sendBtn').disabled = false;
+      $('input').focus();
+    }
+    
+    // Start the conversation on load
+    start();
+    $('input').focus();
+  </script>
+</body>
+</html>
