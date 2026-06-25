@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent Co-Pilot — Live Meeting Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216;
+      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.12);
+      --green:#41ff9f; --green-2:#a7ffd3; --green-dim:rgba(65,255,159,.08);
+      --red:#ff5c7a; --red-dim:rgba(255,92,122,.08);
+      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
+      --line:rgba(201,162,39,.18);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif}
+    body{display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 20% 0%,rgba(201,162,39,.06),transparent 40%),var(--black)}
+    
+    .header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px)}
+    .header-icon{font-size:1.3rem}
+    .header-title{flex:1}
+    .header-title h1{font-size:1rem;color:var(--gold-2);font-weight:700}
+    .header-title p{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
+    .header-title p::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+    .rec-btn{padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--red-dim);color:var(--red);cursor:pointer;font-weight:600;font-size:.78rem;transition:all .2s;display:flex;align-items:center;gap:6px}
+    .rec-btn:hover{border-color:var(--red)}
+    .rec-btn.recording{background:var(--red);color:#fff;animation:pulse-rec 1.5s infinite}
+    .rec-btn .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+    @keyframes pulse-rec{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.4)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
+    
+    .main{display:flex;flex:1;overflow:hidden}
+    
+    .transcript-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .transcript-header{padding:10px 20px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+    .transcript{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
+    .transcript::-webkit-scrollbar{width:4px}
+    .transcript::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+    .transcript-entry{padding:10px 14px;border-radius:12px;font-size:.85rem;line-height:1.5;animation:fadeIn .2s ease}
+    .transcript-entry.rep{background:var(--gold-dim);border:1px solid var(--line);align-self:flex-end;max-width:80%;border-bottom-right-radius:4px}
+    .transcript-entry.prospect{background:var(--panel-2);border:1px solid var(--line);align-self:flex-start;max-width:80%;border-bottom-left-radius:4px}
+    .transcript-entry .speaker{font-size:.68rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+    .transcript-entry.prospect .speaker{color:var(--green)}
+    
+    .coach-panel{width:340px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.4)}
+    .coach-header{padding:10px 16px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+    .coach-feed{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+    .coach-feed::-webkit-scrollbar{width:4px}
+    .coach-feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+    
+    .coaching{padding:12px;border-radius:12px;border:1px solid var(--line);animation:fadeIn .3s ease;flex-shrink:0}
+    .coaching.high{border-color:var(--red);background:var(--red-dim)}
+    .coaching.medium{border-color:var(--gold);background:var(--gold-dim)}
+    .coaching.low{border-color:var(--line);background:var(--panel-2)}
+    .coaching .priority{font-size:.62rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:4px}
+    .coaching.high .priority{color:var(--red)}
+    .coaching.medium .priority{color:var(--gold-2)}
+    .coaching.low .priority{color:var(--muted)}
+    .coaching .text{font-size:.82rem;line-height:1.5;color:var(--text)}
+    .coaching .meta{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+    .coaching .meta span{font-size:.62rem;padding:2px 6px;border-radius:6px;background:rgba(255,255,255,.04);color:var(--soft)}
+    .coaching .meta .signal{color:var(--green);font-weight:600}
+    
+    .metrics-bar{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:12px;font-size:.72rem}
+    .metric{display:flex;flex-direction:column;gap:2px}
+    .metric .label{color:var(--muted);font-size:.6rem;text-transform:uppercase;letter-spacing:.08em}
+    .metric .value{color:var(--gold-2);font-weight:600}
+    .metric .value.good{color:var(--green)}
+    
+    .controls{padding:10px 20px;border-top:1px solid var(--line);display:flex;gap:8px;background:rgba(5,5,8,.7)}
+    .controls input{flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font-size:.78rem;outline:none}
+    .controls input:focus{border-color:var(--gold)}
+    .controls button{padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--soft);cursor:pointer;font-size:.72rem;font-weight:600}
+    .controls button:hover{border-color:var(--gold);color:var(--gold-2)}
+    .controls button.primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;border:0}
+    
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    
+    @media(max-width:768px){.main{flex-direction:column}.coach-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:35vh}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="header-icon">🎙️</span>
+    <div class="header-title">
+      <h1>A-Gent Co-Pilot</h1>
+      <p>Live Meeting Coach — GAP Methodology</p>
+    </div>
+    <button class="rec-btn" id="recBtn" onclick="toggleRecording()">
+      <span class="dot"></span> Start Recording
+    </button>
+  </div>
+  
+  <div class="main">
+    <div class="transcript-panel">
+      <div class="transcript-header">Live Transcript</div>
+      <div class="transcript" id="transcript">
+        <div style="color:var(--muted);text-align:center;padding:40px 20px;font-size:.82rem">
+          Click "Start Recording" to begin. The Co-Pilot will transcribe the call in real time and provide live coaching in the side panel.
+        </div>
+      </div>
+      <div class="metrics-bar" id="metricsBar" style="display:none">
+        <div class="metric"><span class="label">GAP Score</span><span class="value" id="gapScore">—</span></div>
+        <div class="metric"><span class="label">Talk Ratio</span><span class="value" id="talkRatio">—</span></div>
+        <div class="metric"><span class="label">Signals</span><span class="value" id="signalCount">0</span></div>
+        <div class="metric"><span class="label">Exchanges</span><span class="value" id="exchangeCount">0</span></div>
+      </div>
+      <div class="controls">
+        <input type="text" id="companyInput" placeholder="Company name (optional)..." />
+        <button onclick="addNote()">📝 Note</button>
+        <button class="primary" onclick="endMeeting()">End & Summarize</button>
+      </div>
+    </div>
+    
+    <div class="coach-panel">
+      <div class="coach-header">Live Coaching</div>
+      <div class="coach-feed" id="coachFeed">
+        <div style="color:var(--muted);text-align:center;padding:30px 16px;font-size:.78rem">
+          Coaching suggestions will appear here during the call.
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const API_BASE = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
+    const COPILOT_URL = `${API_BASE}/api/copilot`;
+    
+    let recognition = null;
+    let isRecording = false;
+    let transcript = [];
+    let currentSpeaker = 'prospect'; // toggles between 'rep' and 'prospect'
+    let coachInterval = null;
+    let lastCoachTime = 0;
+    let signals = [];
+    
+    const $ = id => document.getElementById(id);
+    
+    // Check for Web Speech API support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+    
+    function startRecording() {
+      if (!SpeechRecognition) {
+        alert('Speech recognition not supported in this browser. Use Chrome or Edge.');
+        return;
+      }
+      
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            const text = result[0].transcript.trim();
+            if (text) {
+              addTranscriptEntry(currentSpeaker, text);
+              transcript.push({ speaker: currentSpeaker, text });
+              // Toggle speaker after each final result
+              // (in a real integration, speaker detection would be automatic)
+            }
+          } else {
+            interim += result[0].transcript;
+          }
+        }
+      };
+      
+      recognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') return; // normal during pauses
+        if (event.error === 'aborted') return;
+      };
+      
+      recognition.onend = () => {
+        // Auto-restart if still recording (Chrome stops after silence)
+        if (isRecording) {
+          try { recognition.start(); } catch(e) {}
+        }
+      };
+      
+      try {
+        recognition.start();
+        isRecording = true;
+        $('recBtn').classList.add('recording');
+        $('recBtn').innerHTML = '<span class="dot"></span> Stop Recording';
+        $('metricsBar').style.display = 'flex';
+        $('transcript').innerHTML = '';
+        
+        // Start coaching loop — analyze every 20 seconds
+        coachInterval = setInterval(() => {
+          if (transcript.length >= 3) {
+            requestCoaching();
+          }
+        }, 20000);
+      } catch(e) {
+        alert('Failed to start: ' + e.message);
+      }
+    }
+    
+    function stopRecording() {
+      isRecording = false;
+      if (recognition) recognition.stop();
+      if (coachInterval) clearInterval(coachInterval);
+      $('recBtn').classList.remove('recording');
+      $('recBtn').innerHTML = '<span class="dot"></span> Start Recording';
+      
+      // Final coaching request
+      if (transcript.length >= 3) {
+        requestCoaching();
+      }
+    }
+    
+    function addTranscriptEntry(speaker, text) {
+      const div = document.createElement('div');
+      div.className = `transcript-entry ${speaker}`;
+      div.innerHTML = `<div class="speaker">${speaker === 'rep' ? 'You (Rep)' : 'Prospect'}</div>${escapeHtml(text)}`;
+      $('transcript').appendChild(div);
+      $('transcript').scrollTop = $('transcript').scrollHeight;
+      $('exchangeCount').textContent = transcript.length;
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    async function requestCoaching() {
+      // Throttle to every 15 seconds
+      const now = Date.now();
+      if (now - lastCoachTime < 15000) return;
+      lastCoachTime = now;
+      
+      const company = $('companyInput').value.trim();
+      const meetingContext = {
+        company: company || null,
+        contactName: null,
+        meetingType: 'discovery'
+      };
+      
+      try {
+        const res = await fetch(COPILOT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'coach',
+            transcript: transcript.slice(-20), // Last 20 entries
+            meetingContext
+          })
+        });
+        
+        const data = await res.json();
+        if (data.error) return;
+        
+        addCoaching(data);
+      } catch(e) {
+        console.warn('Coaching request failed:', e.message);
+      }
+    }
+    
+    function addCoaching(data) {
+      const feed = $('coachFeed');
+      // Remove placeholder
+      const placeholder = feed.querySelector('div[style*="text-align"]');
+      if (placeholder) placeholder.remove();
+      
+      const div = document.createElement('div');
+      div.className = `coaching ${data.priority || 'low'}`;
+      
+      const signalText = data.signal && data.signal !== 'none' ? `<span class="signal">${data.signal.toUpperCase()}</span>` : '';
+      const ratioText = data.talk_ratio ? `<span>${data.talk_ratio}</span>` : '';
+      const scoreText = data.gap_score != null ? `<span>GAP: ${data.gap_score}</span>` : '';
+      
+      div.innerHTML = `
+        <div class="priority">${data.priority || 'low'} priority</div>
+        <div class="text">${escapeHtml(data.coaching || '')}</div>
+        <div class="meta">${signalText}${ratioText}${scoreText}</div>
+      `;
+      feed.appendChild(div);
+      feed.scrollTop = feed.scrollHeight;
+      
+      // Update metrics
+      if (data.gap_score != null) {
+        const scoreEl = $('gapScore');
+        scoreEl.textContent = data.gap_score;
+        scoreEl.className = 'value ' + (data.gap_score >= 60 ? 'good' : '');
+      }
+      if (data.talk_ratio) $('talkRatio').textContent = data.talk_ratio;
+      if (data.signal && data.signal !== 'none') {
+        signals.push(data.signal);
+        $('signalCount').textContent = signals.length;
+      }
+    }
+    
+    function addNote() {
+      const text = prompt('Add a note to the transcript:');
+      if (text) {
+        addTranscriptEntry('rep', '[NOTE] ' + text);
+        transcript.push({ speaker: 'rep', text: '[NOTE] ' + text });
+      }
+    }
+    
+    async function endMeeting() {
+      if (transcript.length < 3) {
+        alert('Not enough transcript to summarize.');
+        return;
+      }
+      
+      stopRecording();
+      
+      const company = $('companyInput').value.trim();
+      const meetingContext = {
+        company: company || null,
+        contactName: null,
+        meetingType: 'discovery'
+      };
+      
+      try {
+        // Generate summary
+        const summaryRes = await fetch(COPILOT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'summarize',
+            transcript: transcript,
+            meetingContext
+          })
+        });
+        const notes = await summaryRes.json();
+        
+        // Store transcript + notes
+        await fetch(COPILOT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'store',
+            transcript: transcript,
+            notes: notes,
+            meetingContext,
+            meetingId: `meeting_${Date.now()}`
+          })
+        });
+        
+        // Show summary
+        const feed = $('coachFeed');
+        const div = document.createElement('div');
+        div.className = 'coaching medium';
+        div.style.marginTop = '10px';
+        div.innerHTML = `
+          <div class="priority">Meeting Summary</div>
+          <div class="text"><strong>${escapeHtml(notes.summary || 'No summary')}</strong></div>
+          ${notes.key_points ? `<div style="margin-top:8px;font-size:.74rem;color:var(--soft)">Key points: ${notes.key_points.map(escapeHtml).join(', ')}</div>` : ''}
+          ${notes.next_steps ? `<div style="margin-top:6px;font-size:.74rem;color:var(--green)">Next steps: ${notes.next_steps.map(escapeHtml).join(', ')}</div>` : ''}
+          ${notes.fit ? `<div style="margin-top:6px;font-size:.74rem;color:var(--gold-2)">Fit: ${escapeHtml(notes.fit)}</div>` : ''}
+        `;
+        feed.appendChild(div);
+        feed.scrollTop = feed.scrollHeight;
+        
+      } catch(e) {
+        alert('Summary failed: ' + e.message);
+      }
+    }
+    
+    // Toggle speaker on click of transcript area (quick manual toggle)
+    $('transcript').addEventListener('click', () => {
+      currentSpeaker = currentSpeaker === 'rep' ? 'prospect' : 'rep';
+    });
+    
+    // Keyboard shortcut: Space to toggle speaker
+    document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' && e.target.tagName !== 'INPUT') {
+        e.preventDefault();
+        currentSpeaker = currentSpeaker === 'rep' ? 'prospect' : 'rep';
+        const label = currentSpeaker === 'rep' ? 'You (Rep)' : 'Prospect';
+        const header = document.querySelector('.transcript-header');
+        header.textContent = `Live Transcript — Next: ${label}`;
+      }
+    });
+  </script>
+</body>
+</html>
