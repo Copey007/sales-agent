@@ -33,8 +33,9 @@
     .agent-frame{width:100%;max-width:480px;aspect-ratio:4/3;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
     .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.12);border-color:rgba(65,255,159,.3)}
 
-    /* Avatar (visual stand-in — in production this would be a HeyGen/ElevenLabs video) */
-    .agent-avatar{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;font-size:3rem;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));border:2px solid var(--gold);animation:float 3s ease-in-out infinite;transition:border-color .3s}
+    /* Avatar (photorealistic image) */
+    .agent-avatar{width:140px;height:140px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));border:3px solid var(--gold);animation:float 3s ease-in-out infinite;transition:border-color .3s}
+    .agent-avatar img{width:100%;height:100%;object-fit:cover}
     .agent-frame.speaking .agent-avatar{border-color:var(--green);animation:pulse-speak 1s ease-in-out infinite}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
     @keyframes pulse-speak{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(65,255,159,0)}50%{transform:scale(1.05);box-shadow:0 0 24px 8px rgba(65,255,159,.15)}}
@@ -149,7 +150,7 @@
     <!-- Left: AI Agent stage -->
     <div class="agent-stage">
       <div class="agent-frame" id="agentFrame">
-        <div class="agent-avatar" id="agentAvatar">🤖</div>
+        <div class="agent-avatar" id="agentAvatar"><img src="assets/demo-agent.png" alt="A-Gent Demo Agent" /></div>
       </div>
       <div class="agent-label" id="agentLabel">A-Gent Demo Agent</div>
       <div class="agent-status">Online · Ready to demo</div>
@@ -320,7 +321,22 @@
       speakScript("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control to see live campaigns. What would you like to do?");
     }
 
-    // ─── Agent speaking (TTS + caption) ───────────────────────
+    // ─── Agent speaking (browser SpeechSynthesis + caption) ────
+    // Uses the browser's built-in speech synthesis — no API key needed, works in Chrome/Safari/Edge
+    let speechVoice = null;
+    function pickVoice() {
+      if (!('speechSynthesis' in window)) return;
+      const voices = speechSynthesis.getVoices();
+      // Prefer a female English voice for the demo agent
+      speechVoice = voices.find(v => v.lang.startsWith('en') && /female|samantha|victoria|karen|moira|tessa/i.test(v.name))
+        || voices.find(v => v.lang.startsWith('en'))
+        || voices[0];
+    }
+    if ('speechSynthesis' in window) {
+      pickVoice();
+      speechSynthesis.onvoiceschanged = pickVoice;
+    }
+
     async function speakScript(text) {
       const caption = document.getElementById('caption');
       const frame = document.getElementById('agentFrame');
@@ -328,8 +344,7 @@
       // Show typing then text
       caption.className = 'agent-caption typing';
       caption.textContent = '...';
-
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 500));
 
       // Type out the caption
       caption.className = 'agent-caption';
@@ -339,36 +354,26 @@
       frame.classList.add('speaking');
       isSpeaking = true;
 
-      // Try TTS audio
-      try {
-        const res = await fetch(CONCIERGE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'chat',
-            messages: [{ role: 'user', content: text }],
-            speak: true,
-            sessionId: 'demo'
-          })
-        });
-        const data = await res.json();
+      // Use browser SpeechSynthesis API (free, no key needed)
+      if ('speechSynthesis' in window && speechVoice) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.voice = speechVoice;
+        utterance.rate = 1.0;
+        utterance.pitch = 1.05;
+        utterance.volume = 1.0;
 
-        if (data.audio) {
-          const audio = new Audio(data.audio);
-          audio.play().catch(() => {});
-          audio.onended = () => {
-            frame.classList.remove('speaking');
-            isSpeaking = false;
-          };
-          // Wait for audio to finish or timeout after 15s
-          await new Promise(r => setTimeout(r, 15000));
-        } else {
-          // No audio — wait based on text length
-          await new Promise(r => setTimeout(r, Math.min(text.length * 50, 5000)));
-        }
-      } catch(e) {
-        // TTS failed — wait based on text length
-        await new Promise(r => setTimeout(r, Math.min(text.length * 50, 4000)));
+        // Wait for speech to finish
+        await new Promise((resolve) => {
+          utterance.onend = resolve;
+          utterance.onerror = resolve;
+          speechSynthesis.speak(utterance);
+
+          // Fallback timeout — if speech doesn't end in 20s, move on
+          setTimeout(resolve, 20000);
+        });
+      } else {
+        // No speech synthesis — wait based on text length
+        await new Promise(r => setTimeout(r, Math.min(text.length * 50, 5000)));
       }
 
       frame.classList.remove('speaking');

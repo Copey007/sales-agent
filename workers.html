@@ -39,7 +39,8 @@
     .card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent,rgba(201,162,39,.03),transparent);pointer-events:none}
 
     .card-header{display:flex;align-items:center;gap:14px;margin-bottom:16px}
-    .card-avatar{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:1.6rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0}
+    .card-avatar{width:64px;height:64px;border-radius:16px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0}
+    .card-avatar img{width:100%;height:100%;object-fit:cover}
     .card-name{font-size:1.1rem;font-weight:700;color:var(--text)}
     .card-title{font-size:.82rem;color:var(--gold-2);margin-top:2px}
     .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
@@ -70,7 +71,8 @@
     .modal .sub{font-size:.85rem;color:var(--soft);margin-bottom:24px}
 
     .worker-preview{display:flex;align-items:center;gap:14px;padding:16px;background:var(--panel-3);border-radius:16px;border:1px solid var(--line);margin-bottom:24px}
-    .worker-preview .av{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:1.4rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .worker-preview .av{width:48px;height:48px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .worker-preview .av img{width:100%;height:100%;object-fit:cover}
     .worker-preview .info .n{font-weight:700}
     .worker-preview .info .t{font-size:.78rem;color:var(--gold-2)}
 
@@ -150,11 +152,15 @@
     function render() {
       const filtered = activeFilter === 'all' ? workers : workers.filter(w => w.type === activeFilter);
       const grid = document.getElementById('grid');
-      grid.innerHTML = filtered.map(w => `
+      grid.innerHTML = filtered.map(w => {
+        const avatarHtml = (w.avatar && w.avatar.includes('.')) 
+          ? `<div class="card-avatar"><img src="${w.avatar}" alt="${esc(w.name)}" /></div>`
+          : `<div class="card-avatar">${w.avatar || '🤖'}</div>`;
+        return `
         <div class="card" onclick="hire('${w.id}')">
           <span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>
           <div class="card-header">
-            <div class="card-avatar">${w.avatar || '🤖'}</div>
+            ${avatarHtml}
             <div>
               <div class="card-name">${esc(w.name)}</div>
               <div class="card-title">${esc(w.title)}</div>
@@ -167,8 +173,8 @@
             <span class="card-dept">${esc(w.type)}</span>
             <button class="hire-btn">Hire ${esc(w.name.split(' ')[0])}</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     }
 
     // ─── Hire / Onboarding Flow ──────────────────────────────────
@@ -193,7 +199,7 @@
         <p class="sub">Just like a new employee, your AI worker needs some context to get started.</p>
 
         <div class="worker-preview">
-          <div class="av">${hiredWorker.avatar || '🤖'}</div>
+          <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
           <div class="info">
             <div class="n">${esc(hiredWorker.name)}</div>
             <div class="t">${esc(hiredWorker.title)}</div>
@@ -231,7 +237,7 @@
         <p class="sub">These are the tools ${esc(hiredWorker.name.split(' ')[0])} uses to get the job done. Some are already connected.</p>
 
         <div class="worker-preview">
-          <div class="av">${hiredWorker.avatar || '🤖'}</div>
+          <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
           <div class="info">
             <div class="n">${esc(hiredWorker.name)}</div>
             <div class="t">Connecting tools...</div>
