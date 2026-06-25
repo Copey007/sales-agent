@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-labelledby="title desc">
+  <title id="title">A-Gent Logo</title>
+  <desc id="desc">Stylized metallic gold A mark followed by cream -Gent wordmark on a transparent background.</desc>
+  <defs>
+    <linearGradient id="goldStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fffdf0"/>
+      <stop offset="14%" stop-color="#ffffff"/>
+      <stop offset="32%" stop-color="#ffe98e"/>
+      <stop offset="57%" stop-color="#d4af37"/>
+      <stop offset="82%" stop-color="#b68b20"/>
+      <stop offset="100%" stop-color="#7c5d12"/>
+    </linearGradient>
+    <linearGradient id="goldDeep" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff1a8"/>
+      <stop offset="28%" stop-color="#edcf63"/>
+      <stop offset="62%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#876916"/>
+    </linearGradient>
+    <linearGradient id="creamText" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fffdf4"/>
+      <stop offset="62%" stop-color="#f1ead3"/>
+      <stop offset="100%" stop-color="#d8cfad"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(72 42)">
+    <!-- restrained glow, built as translucent vector strokes to stay crisp on dark backgrounds -->
+    <path d="M42 274 L189 74" fill="none" stroke="#d4af37" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" opacity="0.16"/>
+    <path d="M188 74 L286 277" fill="none" stroke="#d4af37" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" opacity="0.16"/>
+    <path d="M121 187 L244 158" fill="none" stroke="#d4af37" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" opacity="0.14"/>
+
+    <!-- metallic angular A / check-arrow mark -->
+    <path d="M42 274 L189 74" fill="none" stroke="url(#goldStroke)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M188 74 L286 277" fill="none" stroke="url(#goldDeep)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M121 187 L244 158" fill="none" stroke="url(#goldStroke)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- specular highlights matching the reference’s white-to-gold upper glint -->
+    <path d="M55 258 L177 91" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.86"/>
+    <path d="M204 97 L261 216" fill="none" stroke="#fff0a6" stroke-width="7" stroke-linecap="round" opacity="0.58"/>
+  </g>
+
+  <text x="350" y="250" font-family="DejaVu Sans, Arial Rounded MT Bold, Avenir Next, Nunito Sans, Inter, Helvetica Neue, Arial, sans-serif" font-size="142" font-weight="800" letter-spacing="-4" fill="#f6efd8">-Gent</text>
+</svg>
