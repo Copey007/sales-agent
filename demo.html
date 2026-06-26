@@ -378,12 +378,15 @@
       const frame = document.getElementById('agentFrame');
       const eqBars = document.getElementById('eqBars');
 
-      // Show typing then text
+      // Phase 1: Thinking (dots animation)
       caption.className = 'agent-caption typing';
-      caption.textContent = '...';
-      await new Promise(r => setTimeout(r, 500));
+      caption.textContent = '● ● ●';
+      frame.classList.remove('speaking');
+      eqBars.classList.remove('active');
 
-      // Show caption
+      await new Promise(r => setTimeout(r, 800));
+
+      // Phase 2: Show text + start speaking
       caption.className = 'agent-caption';
       caption.textContent = text;
 
@@ -392,31 +395,31 @@
       eqBars.classList.add('active');
       isSpeaking = true;
 
-      // Play audio via Google TTS
+      // Play audio via our TTS proxy
+      let audioPlayed = false;
       try {
         const audioUrl = googleTTSUrl(text);
         const audio = new Audio(audioUrl);
-        audio.crossOrigin = 'anonymous';
 
         await new Promise((resolve) => {
-          audio.onended = resolve;
+          audio.onended = () => { audioPlayed = true; resolve(); };
           audio.onerror = resolve;
           audio.play().then(() => {
-            // Audio playing — wait for it to finish
+            // Audio is playing — keep animation going until it ends
           }).catch(() => {
-            // Autoplay blocked or fetch failed — fall back to timed wait
-            setTimeout(resolve, Math.min(text.length * 50, 6000));
+            // Autoplay blocked — keep animation for a timed duration
+            setTimeout(resolve, Math.min(text.length * 60, 8000));
           });
 
-          // Safety timeout
-          setTimeout(resolve, 15000);
+          // Safety timeout — don't block forever
+          setTimeout(resolve, 20000);
         });
       } catch(e) {
-        // Fallback — wait based on text length
-        await new Promise(r => setTimeout(r, Math.min(text.length * 50, 5000)));
+        // Fallback — keep animation for a bit
+        await new Promise(r => setTimeout(r, Math.min(text.length * 60, 6000)));
       }
 
-      // Stop speaking animation
+      // Phase 3: Stop speaking
       frame.classList.remove('speaking');
       eqBars.classList.remove('active');
       isSpeaking = false;
