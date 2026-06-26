@@ -3,96 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A-Gent — Interactive AI Demo</title>
+  <title>A-Gent — Live AI Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
   <style>
-    :root {
-      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216; --panel-3:#12181e;
-      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.10);
-      --green:#41ff9f; --green-dim:rgba(65,255,159,.06);
-      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
-      --line:rgba(201,162,39,.15); --line-2:rgba(255,255,255,.06);
-    }
+    :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--panel-3:#12181e;--gold:#c9a227;--gold-2:#ffd86b;--gold-dim:rgba(201,162,39,.10);--green:#41ff9f;--green-dim:rgba(65,255,159,.06);--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--line-2:rgba(255,255,255,.06);--red:#ff5c7a}
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column;background:radial-gradient(circle at 30% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
-
     .topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
     .topbar img{height:26px;width:auto}
     .topbar .spacer{flex:1}
-    .lang-select{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel-3);color:var(--soft);font-size:.7rem;cursor:pointer}
-
     .main{flex:1;display:flex;overflow:hidden}
-
-    /* ─── Agent stage (left) ─────────────────────────── */
     .agent-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;min-width:300px}
-
-    /* Video frame — fills with the portrait, looks like a video call */
-    .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:linear-gradient(180deg,#0d1117,#050508);border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
+    .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:#0a0d10;border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
     .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
-
-    /* Portrait — video player fills the frame like a video call */
-    .portrait{width:100%;height:100%;position:relative;overflow:hidden;background:#0a0d10}
-    .portrait video{width:100%;height:100%;object-fit:cover;object-position:center top}
-    .portrait canvas{display:none}
-
-    /* Blink overlay — dark line that sweeps over eyes */
-    .blink{position:absolute;top:28%;left:50%;width:50%;height:3%;transform:translateX(-50%);background:linear-gradient(180deg,transparent 0%,rgba(5,5,8,.6) 45%,rgba(5,5,8,.9) 50%,rgba(5,5,8,.6) 55%,transparent 100%);opacity:0;pointer-events:none;transition:opacity .06s}
-    .blink.active{opacity:1}
-
-    /* Mouth glow — subtle warm glow at mouth position when speaking */
-    .mouth-glow{position:absolute;top:48%;left:50%;width:20%;height:8%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,200,150,.15),transparent 70%);opacity:0;pointer-events:none;transition:opacity .15s}
-    .video-frame.speaking .mouth-glow{opacity:1;animation:mouth-pulse 0.25s ease-in-out infinite}
-    @keyframes mouth-pulse{0%,100%{transform:translateX(-50%) scaleY(0.8);opacity:.5}50%{transform:translateX(-50%) scaleY(1.2);opacity:1}}
-
-    /* Speaking ring */
-    .video-frame.speaking::after{content:'';position:absolute;inset:0;border-radius:20px;box-shadow:inset 0 0 30px rgba(65,255,159,.08);pointer-events:none}
-
-    /* Status bar at bottom of video */
+    .video-frame video{width:100%;height:100%;object-fit:cover}
+    .video-frame .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:.85rem;gap:12px}
+    .video-frame .placeholder .spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
     .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
-    .video-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:live-pulse 2s infinite}
-    @keyframes live-pulse{0%,100%{opacity:.5}50%{opacity:1}}
-    .video-status .name{font-size:.82rem;font-weight:600;color:var(--text)}
+    .video-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+    .video-status .dot.connecting{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+    @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+    .video-status .name{font-size:.82rem;font-weight:600}
     .video-status .label{font-size:.68rem;color:var(--green);text-transform:uppercase;letter-spacing:.05em;margin-left:auto}
-
-    /* EQ bars */
     .eq{display:flex;gap:3px;align-items:flex-end;height:14px;margin-top:10px;opacity:.3;transition:opacity .3s}
     .eq.active{opacity:1}
-    .eq span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq-bounce 0.35s ease-in-out infinite}
+    .eq span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq-b 0.35s ease-in-out infinite}
     .eq span:nth-child(2){animation-delay:.08s;animation-duration:.3s}
     .eq span:nth-child(3){animation-delay:.16s;animation-duration:.42s}
     .eq span:nth-child(4){animation-delay:.04s;animation-duration:.28s}
     .eq span:nth-child(5){animation-delay:.12s;animation-duration:.38s}
-    @keyframes eq-bounce{0%,100%{height:3px}50%{height:14px}}
-
-    /* Caption */
+    @keyframes eq-b{0%,100%{height:3px}50%{height:14px}}
     .caption{margin-top:14px;padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:420px;min-height:44px;text-align:center}
     .caption.thinking{color:var(--muted)}
-    .caption .dots{animation:think 1.2s infinite}
-    @keyframes think{0%,100%{opacity:.3}50%{opacity:1}}
-
-    /* See a Demo button */
     .demo-cta{position:absolute;bottom:30px;left:50%;transform:translateX(-50%)}
     .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;transition:transform .2s;box-shadow:0 4px 20px rgba(201,162,39,.3)}
     .see-demo-btn:hover{transform:scale(1.04)}
-
-    /* ─── Right panel ────────────────────────────────── */
+    .see-demo-btn:disabled{opacity:.5;cursor:wait}
     .right-panel{width:440px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.3)}
-    .progress-dots{display:flex;gap:5px;justify-content:center;padding:8px 0;flex-shrink:0}
+    .progress-dots{display:flex;gap:5px;justify-content:center;padding:8px 0}
     .pdot{width:5px;height:5px;border-radius:50%;background:var(--line-2);transition:all .3s}
     .pdot.active{background:var(--gold);width:16px;border-radius:3px}
     .pdot.done{background:var(--green)}
-
     .showcase{flex:1;overflow-y:auto;padding:16px}
     .showcase::-webkit-scrollbar{width:3px}
     .showcase::-webkit-scrollbar-thumb{background:var(--line)}
-
     .mockup{display:none;animation:slideIn .4s ease}
     .mockup.active{display:block}
     @keyframes slideIn{from{opacity:0;transform:translateX(15px)}to{opacity:1;transform:translateX(0)}}
     .mockup-title{font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:600}
-
     .mc-mockup{background:var(--panel-2);border:1px solid var(--line);border-radius:14px;padding:14px}
     .mc-mockup .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
     .mc-mockup .stat{padding:9px;background:var(--panel-3);border-radius:9px;text-align:center}
@@ -102,45 +64,37 @@
     .mc-mockup .bar{flex:1;background:linear-gradient(180deg,var(--gold),var(--green));border-radius:3px 3px 0 0;min-height:6px}
     .mc-mockup .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line-2);font-size:.7rem}
     .mc-mockup .row .s{color:var(--green);font-weight:600}
-
     .wm-mockup{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .wm-card{padding:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;gap:8px;align-items:center}
     .wm-card .av{width:28px;height:28px;border-radius:8px;overflow:hidden;flex-shrink:0}
     .wm-card .av img{width:100%;height:100%;object-fit:cover}
     .wm-card .info .n{font-size:.72rem;font-weight:600}
     .wm-card .info .t{font-size:.62rem;color:var(--gold-2)}
-
     .es-mockup{display:flex;flex-direction:column;gap:7px}
     .es-step{padding:9px 11px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;display:flex;gap:9px;align-items:center}
     .es-step .num{width:22px;height:22px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--line);display:grid;place-items:center;font-size:.62rem;font-weight:700;color:var(--gold-2);flex-shrink:0}
     .es-step .desc{font-size:.72rem;color:var(--soft)}
     .es-step .meta{font-size:.58rem;color:var(--muted);margin-left:auto}
-
-    /* ─── Chat + input bar ───────────────────────────── */
-    .quick-replies{display:flex;gap:5px;padding:0 14px 6px;flex-wrap:wrap;flex-shrink:0}
+    .quick-replies{display:flex;gap:5px;padding:0 14px 6px;flex-wrap:wrap}
     .qr{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.7rem;cursor:pointer;transition:all .15s}
     .qr:hover{border-color:var(--gold);color:var(--gold-2);background:var(--gold-dim)}
-
-    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);flex-shrink:0;align-items:center}
+    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);align-items:center}
     .input-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.84rem;outline:none;transition:border-color .2s}
     .input-bar input:focus{border-color:var(--gold)}
     .input-bar input::placeholder{color:var(--muted)}
     .mic-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:var(--panel-3);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1rem;transition:all .2s;flex-shrink:0}
     .mic-btn:hover{border-color:var(--gold);color:var(--gold-2)}
-    .mic-btn.listening{background:var(--red,#ff5c7a);border-color:var(--red,#ff5c7a);color:#fff;animation:mic-pulse 1s infinite}
-    @keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.3)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
+    .mic-btn.listening{background:var(--red);border-color:var(--red);color:#fff;animation:mic-p 1s infinite}
+    @keyframes mic-p{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.3)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
     .send-btn{width:40px;height:40px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;transition:transform .15s;flex-shrink:0}
     .send-btn:hover{transform:scale(1.05)}
     .send-btn:disabled{opacity:.4;cursor:wait}
-
-    .cta-bar{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px;flex-shrink:0}
+    .cta-bar{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px}
     .cta-bar a{flex:1}
     .cta-bar button{width:100%;padding:9px;border:0;border-radius:10px;font-weight:700;font-size:.78rem;cursor:pointer}
     .cta-bar .primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
     .cta-bar .secondary{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
-
     .embed-badge{position:fixed;bottom:6px;right:10px;font-size:.58rem;color:var(--muted);background:rgba(5,5,8,.6);padding:3px 8px;border-radius:5px;z-index:50}
-
     @media(max-width:860px){.main{flex-direction:column}.right-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}}
   </style>
 </head>
@@ -148,22 +102,19 @@
   <div class="topbar">
     <img src="assets/agent-logo.svg" alt="A-Gent" />
     <div class="spacer"></div>
-    <select class="lang-select" id="langSelect"><option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option></select>
   </div>
-
   <div class="main">
-    <!-- Agent video stage -->
     <div class="agent-stage">
       <div class="video-frame" id="videoFrame">
-        <div class="portrait">
-          <video id="avatarVideo" playsinline muted loop autoplay>
-            <source src="assets/demo-step1.mp4" type="video/mp4" />
-          </video>
+        <video id="avatarVideo" autoplay playsinline></video>
+        <div class="placeholder" id="placeholder">
+          <div class="spinner"></div>
+          <div>Click "See a Demo" to connect</div>
         </div>
         <div class="video-status">
-          <div class="dot"></div>
+          <div class="dot connecting" id="statusDot"></div>
           <div class="name">A-Gent Demo Agent</div>
-          <div class="label" id="statusLabel">LIVE</div>
+          <div class="label" id="statusLabel">OFFLINE</div>
         </div>
       </div>
       <div class="eq" id="eq"><span></span><span></span><span></span><span></span><span></span></div>
@@ -172,8 +123,6 @@
         <button class="see-demo-btn" id="startBtn" onclick="startDemo()">▶ See a Demo</button>
       </div>
     </div>
-
-    <!-- Right panel -->
     <div class="right-panel">
       <div class="progress-dots" id="progressDots"></div>
       <div class="showcase" id="showcase">
@@ -229,109 +178,252 @@
       </div>
     </div>
   </div>
-
-  <div class="embed-badge">Powered by A-Gent</div>
+  <div class="embed-badge">Powered by A-Gent + LiveAvatar</div>
 
   <script>
     const API = window.location.origin;
     const TTS_URL = API + '/api/tts';
     const CONCIERGE_URL = API + '/api/concierge';
+    const SESSION_URL = API + '/api/avatar-session';
 
     let demoStarted = false;
     let currentStep = 0;
     let chatMessages = [];
     let isSpeaking = false;
     let audioCtx = null;
+    let livekitRoom = null;
+    let wsConnection = null;
+    let sessionInfo = null;
+    let keepAliveInterval = null;
 
     const STEPS = [
       { mockup:'mockup-welcome', script:"Hi! I'm the A-Gent demo agent. I'll walk you through how our autonomous AI sales workforce can transform your pipeline. Let's start with the dashboard.", quickReplies:['Tell me more','Skip to pricing','How does prospecting work?'] },
-      { mockup:'mockup-mission', script:"This is Mission Control — your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.", quickReplies:['How are emails written?','What about the AI workers?','Show me pricing'] },
-      { mockup:'mockup-workers', script:"These are your AI workers. Each one has a real identity — Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees, with an onboarding flow.", quickReplies:['Can I hire one now?','How much does it cost?','What tools do they use?'] },
-      { mockup:'mockup-sequence', script:"Here's how outbound works — a 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA. No generic templates.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
+      { mockup:'mockup-mission', script:"This is Mission Control, your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.", quickReplies:['How are emails written?','What about the AI workers?','Show me pricing'] },
+      { mockup:'mockup-workers', script:"These are your AI workers. Each one has a real identity. Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees.", quickReplies:['Can I hire one now?','How much does it cost?','What tools do they use?'] },
+      { mockup:'mockup-sequence', script:"Here is how outbound works. A 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
     ];
 
-    // ─── Video avatar player ──────────────────────────────────
-    // Plays pre-generated HeyGen talking-head videos for each demo step
-    // For chat responses, falls back to TTS audio + video playback
-    
-    const avatarVideo = document.getElementById('avatarVideo');
-    
-    // Map demo steps to video files
-    const STEP_VIDEOS = {
-      0: 'assets/demo-step1.mp4',
-      1: 'assets/demo-step2.mp4',
-      2: 'assets/demo-step3.mp4',
-      3: 'assets/demo-step4.mp4',
-      4: 'assets/demo-final.mp4'  // final CTA
-    };
-    
-    // Map chat topics to response videos
-    const CHAT_VIDEOS = {
-      pricing: 'assets/demo-pricing.mp4',
-      hire: 'assets/demo-hire.mp4',
-      contact: 'assets/demo-contact.mp4',
-      signals: 'assets/demo-signals.mp4',
-      more_info: 'assets/demo-more_info.mp4',
-      workers: 'assets/demo-workers.mp4',
-      dashboard: 'assets/demo-dashboard.mp4'
-    };
-    
-    function playAvatarVideo(stepIndex) {
-      const src = STEP_VIDEOS[stepIndex];
-      if (!src) return;
-      avatarVideo.src = src;
-      avatarVideo.muted = false; // unmute for actual speech
-      avatarVideo.loop = false;
-      avatarVideo.play().catch(() => {
-        // Autoplay with sound blocked — try muted then unmute
-        avatarVideo.muted = true;
-        avatarVideo.play().then(() => {
-          // Unmute after a brief moment
-          setTimeout(() => { avatarVideo.muted = false; }, 100);
-        }).catch(() => {});
-      });
-    }
-    
-    function playIdleVideo() {
-      // Loop the last video silently as idle
-      avatarVideo.muted = true;
-      avatarVideo.loop = true;
-      avatarVideo.play().catch(() => {});
-    }
-
-    // ─── Audio unlock (must be in click handler) ──────────────
-    function unlockAudio() {
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        // Play a tiny silent buffer to unlock
-        const buf = audioCtx.createBuffer(1, 1, 22050);
-        const src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(audioCtx.destination);
-        src.start(0);
-      } catch(e) {}
-    }
-
-    // ─── Start demo ───────────────────────────────────────────
-    function startDemo() {
+    // ─── Start demo — connect to LiveAvatar ────────────────────
+    async function startDemo() {
       if (demoStarted) return;
       demoStarted = true;
-      unlockAudio();
-      document.getElementById('demoCta').style.display = 'none';
-      document.getElementById('ctaBar').style.display = 'flex';
-      currentStep = 0;
-      runStep();
+      
+      const btn = document.getElementById('startBtn');
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+      
+      document.getElementById('statusLabel').textContent = 'CONNECTING';
+      document.getElementById('placeholder').innerHTML = '<div class="spinner"></div><div>Connecting to live avatar...</div>';
+
+      try {
+        // Unlock audio
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+        } catch(e) {}
+
+        // Create LiveAvatar session
+        const res = await fetch(SESSION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'start' })
+        });
+        const data = await res.json();
+        
+        if (!data.success) throw new Error(data.error || 'Session creation failed');
+        
+        sessionInfo = data;
+        
+        // Connect to LiveKit room
+        await connectLiveKit(data.livekit_url, data.livekit_client_token);
+        
+        // Connect WebSocket for sending audio
+        // The WebSocket URL is derived from the session
+        // For LITE mode, we send audio via WebSocket to make the avatar speak
+        
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('statusLabel').textContent = 'LIVE';
+        document.getElementById('statusDot').classList.remove('connecting');
+        document.getElementById('demoCta').style.display = 'none';
+        document.getElementById('ctaBar').style.display = 'flex';
+        
+        // Start keepalive
+        keepAliveInterval = setInterval(() => {
+          sendWebSocket({ type: 'session.keep_alive', event_id: 'ka_' + Date.now() });
+        }, 60000);
+        
+        // Start the walkthrough
+        currentStep = 0;
+        runStep();
+        
+      } catch(e) {
+        console.error('Connection failed:', e);
+        document.getElementById('placeholder').innerHTML = '<div style="color:var(--red)">Connection failed: ' + e.message + '</div><div style="font-size:.72rem">Using fallback video mode</div>';
+        btn.disabled = false;
+        btn.textContent = '▶ Try Again';
+        demoStarted = false;
+        
+        // Fallback to pre-recorded video mode
+        fallbackToVideoMode();
+      }
     }
 
+    // ─── Connect to LiveKit room ───────────────────────────────
+    async function connectLiveKit(url, token) {
+      const LiveKit = window.LivekitClient || window.LiveKit;
+      if (!LiveKit) throw new Error('LiveKit client not loaded');
+      
+      livekitRoom = new LiveKit.Room({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+
+      await livekitRoom.connect(url, token);
+
+      // Subscribe to avatar video track
+      livekitRoom.on('trackSubscribed', (track, publication, participant) => {
+        if (track.kind === 'video') {
+          const videoEl = document.getElementById('avatarVideo');
+          track.attach(videoEl);
+          videoEl.style.display = 'block';
+        }
+        if (track.kind === 'audio') {
+          const audioEl = document.createElement('audio');
+          track.attach(audioEl);
+          audioEl.autoplay = true;
+        }
+      });
+
+      livekitRoom.on('participantConnected', (participant) => {
+        console.log('Participant connected:', participant.identity);
+      });
+
+      livekitRoom.on('disconnected', () => {
+        console.log('Disconnected from room');
+        document.getElementById('statusLabel').textContent = 'OFFLINE';
+      });
+    }
+
+    // ─── WebSocket for controlling avatar ──────────────────────
+    function sendWebSocket(msg) {
+      // WebSocket connection will be set up after session starts
+      // For now, this is a placeholder — the actual WebSocket URL
+      // comes from the session start response
+      if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+        wsConnection.send(JSON.stringify(msg));
+      }
+    }
+
+    // ─── Speak via TTS → send audio to avatar ──────────────────
+    async function speak(text) {
+      const caption = document.getElementById('caption');
+      const frame = document.getElementById('videoFrame');
+      const eq = document.getElementById('eq');
+      const statusLabel = document.getElementById('statusLabel');
+
+      // Phase 1: Thinking
+      caption.className = 'caption thinking';
+      caption.innerHTML = '<span style="animation:think 1.2s infinite">● ● ●</span>';
+      frame.classList.remove('speaking');
+      eq.classList.remove('active');
+      statusLabel.textContent = 'THINKING';
+
+      await new Promise(r => setTimeout(r, 800));
+
+      // Phase 2: Show text
+      caption.className = 'caption';
+      caption.textContent = text;
+      frame.classList.add('speaking');
+      eq.classList.add('active');
+      statusLabel.textContent = 'SPEAKING';
+      isSpeaking = true;
+
+      // Get TTS audio and send to avatar via WebSocket
+      try {
+        const ttsRes = await fetch(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
+        const audioBlob = await ttsRes.blob();
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        
+        // Convert to PCM 16-bit 24kHz base64 for LiveAvatar
+        const pcmBase64 = await blobToPCMBase64(audioBlob);
+        
+        // Send audio chunks to avatar via WebSocket
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+          // Send in ~1 second chunks
+          const chunkSize = 48000; // 1 sec of 24kHz 16-bit mono = 48000 bytes
+          for (let i = 0; i < pcmBase64.length; i += chunkSize) {
+            const chunk = pcmBase64.substring(i, i + chunkSize);
+            sendWebSocket({ type: 'agent.speak', audio: chunk });
+            await new Promise(r => setTimeout(r, 50)); // small delay between chunks
+          }
+          sendWebSocket({ type: 'agent.speak_end', event_id: 'speak_' + Date.now() });
+        }
+        
+        // Also play audio locally for immediate feedback
+        const audio = new Audio(URL.createObjectURL(audioBlob));
+        audio.play().catch(() => {});
+        
+        // Wait for audio to finish
+        await new Promise(resolve => {
+          audio.onended = resolve;
+          audio.onerror = resolve;
+          setTimeout(resolve, 20000);
+        });
+        
+      } catch(e) {
+        console.warn('TTS/avatar speak failed:', e);
+        // Fallback — just wait
+        await new Promise(r => setTimeout(r, Math.min(text.length * 55, 6000)));
+      }
+
+      // Phase 3: Done
+      frame.classList.remove('speaking');
+      eq.classList.remove('active');
+      statusLabel.textContent = 'LIVE';
+      isSpeaking = false;
+    }
+
+    // Convert audio blob to PCM 16-bit 24kHz base64
+    async function blobToPCMBase64(arrayBuffer) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        
+        // Resample to 24kHz
+        const targetSampleRate = 24000;
+        const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * targetSampleRate), targetSampleRate);
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(offlineCtx.destination);
+        source.start();
+        const rendered = await offlineCtx.startRendering();
+        
+        // Convert to 16-bit PCM
+        const pcm16 = new Int16Array(rendered.length);
+        for (let i = 0; i < rendered.length; i++) {
+          const s = Math.max(-1, Math.min(1, rendered.getChannelData(0)[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        
+        // Base64 encode
+        const bytes = new Uint8Array(pcm16.buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      } catch(e) {
+        console.warn('PCM conversion failed:', e);
+        return '';
+      }
+    }
+
+    // ─── Demo walkthrough ──────────────────────────────────────
     async function runStep() {
       if (currentStep >= STEPS.length) { showFinalCTA(); return; }
       const step = STEPS[currentStep];
       updateProgress();
       showMockup(step.mockup);
       showQuickReplies(step.quickReplies);
-      await speak(step.script, currentStep);
-      // Auto-advance after speaking
+      await speak(step.script);
       setTimeout(() => { if (!isSpeaking && demoStarted) { currentStep++; runStep(); } }, 2000);
     }
 
@@ -343,99 +435,19 @@
           <div style="padding:24px 16px;text-align:center">
             <div style="font-size:2.2rem;margin-bottom:10px">🎉</div>
             <div style="font-size:.95rem;color:var(--text);font-weight:700;margin-bottom:6px">Deploy your first AI worker in under 5 minutes</div>
-            <div style="font-size:.8rem;color:var(--soft)">No credit card required. Set a goal, they figure out the how.</div>
+            <div style="font-size:.8rem;color:var(--soft)">No credit card required.</div>
           </div>
         </div>`;
       showQuickReplies([]);
-      speak("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control. What would you like to do?", 4);
+      speak("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control. What would you like to do?");
     }
 
-    // ─── Speaking (HeyGen video for scripts, TTS for chat) ────
-    async function speak(text, videoStep, isChatResponse) {
-      const caption = document.getElementById('caption');
-      const frame = document.getElementById('videoFrame');
-      const eq = document.getElementById('eq');
-      const statusLabel = document.getElementById('statusLabel');
-
-      // Phase 1: Thinking
-      caption.className = 'caption thinking';
-      caption.innerHTML = '<span class="dots">● ● ●</span>';
-      frame.classList.remove('speaking');
-      eq.classList.remove('active');
-      statusLabel.textContent = 'THINKING';
-
-      await new Promise(r => setTimeout(r, 800));
-
-      // Phase 2: Show text + speak
-      caption.className = 'caption';
-      caption.textContent = text;
-      frame.classList.add('speaking');
-      eq.classList.add('active');
-      statusLabel.textContent = 'SPEAKING';
-      isSpeaking = true;
-
-      // Determine video source
-      let videoSrc = null;
-      if (isChatResponse && CHAT_VIDEOS[videoStep]) {
-        videoSrc = CHAT_VIDEOS[videoStep];
-      } else if (videoStep !== undefined && STEP_VIDEOS[videoStep]) {
-        videoSrc = STEP_VIDEOS[videoStep];
-      }
-
-      if (videoSrc) {
-        // Play HeyGen talking-head video (has embedded audio)
-        avatarVideo.src = videoSrc;
-        avatarVideo.muted = false;
-        avatarVideo.loop = false;
-        avatarVideo.play().catch(() => {
-          avatarVideo.muted = true;
-          avatarVideo.play().then(() => {
-            setTimeout(() => { avatarVideo.muted = false; }, 100);
-          }).catch(() => {});
-        });
-        
-        // Wait for video to end
-        await new Promise((resolve) => {
-          let resolved = false;
-          const done = () => { if (!resolved) { resolved = true; resolve(); } };
-          avatarVideo.onended = done;
-          avatarVideo.onerror = done;
-          setTimeout(done, 45000);
-        });
-      } else {
-        // TTS fallback for dynamic LLM responses
-        try {
-          const audio = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
-          playIdleVideo();
-          
-          await new Promise((resolve) => {
-            let resolved = false;
-            const done = () => { if (!resolved) { resolved = true; resolve(); } };
-            audio.onended = done;
-            audio.onerror = done;
-            audio.play().then(() => {}).catch(() => { setTimeout(done, Math.min(text.length * 55, 8000)); });
-            setTimeout(done, 20000);
-          });
-        } catch(e) {
-          await new Promise(r => setTimeout(r, Math.min(text.length * 55, 6000)));
-        }
-      }
-
-      // Phase 3: Done
-      frame.classList.remove('speaking');
-      eq.classList.remove('active');
-      statusLabel.textContent = 'LIVE';
-      isSpeaking = false;
-      playIdleVideo();
-    }
-
-    // ─── UI helpers ───────────────────────────────────────────
+    // ─── UI helpers ────────────────────────────────────────────
     function showMockup(id) {
       document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
       const el = document.getElementById(id);
       if (el) el.classList.add('active');
     }
-
     function showQuickReplies(replies) {
       const c = document.getElementById('quickReplies');
       c.innerHTML = '';
@@ -447,7 +459,6 @@
         c.appendChild(b);
       });
     }
-
     function updateProgress() {
       const total = STEPS.length + 1;
       document.getElementById('progressDots').innerHTML = Array.from({length:total},(_,i)=>{
@@ -464,119 +475,64 @@
       if (!text || isSpeaking) return;
       input.value = '';
       document.getElementById('sendBtn').disabled = true;
-
       chatMessages.push({ role: 'user', content: text });
 
       const lower = text.toLowerCase();
-      
-      // Route to pre-generated video responses
-      let videoKey = null;
-      let responseText = null;
-      let quickRepliesAfter = [];
-      
-      if (lower.includes('pricing') || lower.includes('cost') || lower.includes('price') || lower.includes('how much')) {
-        videoKey = 'pricing';
-        responseText = "We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?";
-        quickRepliesAfter = ['Yes, contact me','Show me the workers','Keep exploring'];
-      } else if (lower.includes('hire') || lower.includes('start') || lower.includes('sign up') || lower.includes('begin')) {
-        videoKey = 'hire';
-        responseText = "You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.";
-        quickRepliesAfter = ['Open marketplace','Show dashboard','Talk to someone'];
-      } else if (lower.includes('contact') || lower.includes('human') || lower.includes('someone') || lower.includes('talk to') || lower.includes('email')) {
-        videoKey = 'contact';
-        responseText = "I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!";
-        quickRepliesAfter = ['Hire a worker','Show dashboard','Back to demo'];
-      } else if (lower.includes('signal') || lower.includes('buying signal') || lower.includes('trigger')) {
-        videoKey = 'signals';
-        responseText = "We track buying signals like job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher agent enriches the account and the SDR agent writes a signal-driven email.";
-        quickRepliesAfter = ['Show me pricing','How do emails work?','Hire a worker'];
-      } else if (lower.includes('worker') || lower.includes('agent') || lower.includes('team') || lower.includes('employee')) {
-        videoKey = 'workers';
-        responseText = "We have 7 AI workers available: Marcus the Manager, Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each one is hired through an onboarding flow just like a real employee.";
-        quickRepliesAfter = ['How much does it cost?','Show me the dashboard','Hire a worker'];
-      } else if (lower.includes('dashboard') || lower.includes('mission control') || lower.includes('monitor')) {
-        videoKey = 'dashboard';
-        responseText = "Mission Control is your command center. You can see live campaign metrics, agent status, heartbeat summaries, and the concierge activity. Everything runs autonomously with a heartbeat every 30 minutes.";
-        quickRepliesAfter = ['Show me pricing','Tell me about the workers','Hire a worker'];
-      } else if (lower.includes('more') || lower.includes('what is') || lower.includes('how does') || lower.includes('explain')) {
-        videoKey = 'more_info';
-        responseText = "A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how. No micromanagement required.";
-        quickRepliesAfter = ['Show me pricing','What signals do you track?','Hire a worker'];
-      } else if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
-        currentStep++;
-        runStep();
-        return;
-      }
-      
-      if (videoKey && CHAT_VIDEOS[videoKey]) {
-        await speak(responseText, videoKey, true);
-        showQuickReplies(quickRepliesAfter);
-      } else {
-        // Natural conversation via concierge API
-        try {
-          const res = await fetch(CONCIERGE_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'chat', messages: chatMessages, speak: false })
-          });
-          const data = await res.json();
-          if (data.reply) {
-            await speak(data.reply);
-            chatMessages.push({ role: 'bot', content: data.reply });
-          }
-        } catch(e) {
-          await speak("I'm having trouble connecting right now. Please try again.");
-        }
+      if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
+        currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return;
       }
 
+      // Natural conversation via concierge API
+      try {
+        const res = await fetch(CONCIERGE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'chat', messages: chatMessages, speak: false })
+        });
+        const data = await res.json();
+        if (data.reply) {
+          await speak(data.reply);
+          chatMessages.push({ role: 'bot', content: data.reply });
+          showQuickReplies(['Show me pricing','Tell me about the workers','Hire a worker']);
+        }
+      } catch(e) {
+        await speak("I'm having trouble connecting. Please try again.");
+      }
       document.getElementById('sendBtn').disabled = false;
       document.getElementById('chatInput').focus();
     }
 
-    // ─── Speech-to-text (microphone input) ────────────────────
-    let recognition = null;
-    let isListening = false;
-
+    // ─── Speech-to-text ────────────────────────────────────────
+    let recognition = null, isListening = false;
     function toggleMic() {
-      if (isListening) {
-        recognition?.stop();
-        return;
-      }
-
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert('Voice input not supported. Use Chrome or Edge.');
-        return;
-      }
-
-      recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
-
+      if (isListening) { recognition?.stop(); return; }
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { alert('Voice input not supported. Use Chrome.'); return; }
+      recognition = new SR();
+      recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US';
       const micBtn = document.getElementById('micBtn');
-      micBtn.classList.add('listening');
-      isListening = true;
-
-      recognition.onresult = (event) => {
-        const text = event.results[0][0].transcript;
-        document.getElementById('chatInput').value = text;
-        sendChat();
-      };
-
-      recognition.onerror = (event) => {
-        console.warn('Speech recognition error:', event.error);
-      };
-
-      recognition.onend = () => {
-        micBtn.classList.remove('listening');
-        isListening = false;
-      };
-
+      micBtn.classList.add('listening'); isListening = true;
+      recognition.onresult = (e) => { document.getElementById('chatInput').value = e.results[0][0].transcript; sendChat(); };
+      recognition.onerror = () => {}; recognition.onend = () => { micBtn.classList.remove('listening'); isListening = false; };
       recognition.start();
     }
 
-    // Init
+    // ─── Fallback to video mode ────────────────────────────────
+    function fallbackToVideoMode() {
+      const video = document.getElementById('avatarVideo');
+      video.src = 'assets/demo-step1.mp4';
+      video.muted = true; video.loop = true; video.play();
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('statusLabel').textContent = 'LIVE';
+      document.getElementById('demoCta').style.display = 'flex';
+      document.getElementById('startBtn').textContent = '▶ See a Demo';
+      document.getElementById('startBtn').onclick = () => { 
+        demoStarted = false; 
+        video.muted = false; video.loop = false;
+        startDemo(); 
+      };
+    }
+
     updateProgress();
   </script>
 </body>
