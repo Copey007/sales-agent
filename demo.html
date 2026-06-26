@@ -214,6 +214,51 @@
         room.on('trackPublished', (pub, participant) => {
           if (pub.isEnabled) pub.setSubscribed(true);
         });
+        room.on('participantConnected', (participant) => {
+          console.log('Participant joined:', participant.identity);
+          // Subscribe to their tracks
+          participant.tracks.forEach((pub) => {
+            if (pub.isEnabled) pub.setSubscribed(true);
+          });
+        });
+
+        // Wait for avatar participant to join (up to 20 seconds)
+        let avatarJoined = false;
+        const checkParticipants = () => {
+          room.participants.forEach((p) => {
+            if (!avatarJoined) {
+              avatarJoined = true;
+              console.log('Avatar participant found:', p.identity);
+            }
+            p.tracks.forEach((pub) => {
+              if (pub.isEnabled) pub.setSubscribed(true);
+            });
+          });
+        };
+        
+        // Check immediately and every 2 seconds
+        checkParticipants();
+        const participantCheck = setInterval(() => {
+          checkParticipants();
+          if (avatarJoined) clearInterval(participantCheck);
+        }, 2000);
+        
+        // Wait up to 20s for avatar
+        await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            clearInterval(participantCheck);
+            resolve();
+          }, 20000);
+          const checkInterval = setInterval(() => {
+            if (avatarConnected || avatarJoined) {
+              clearTimeout(timeout);
+              clearInterval(checkInterval);
+              clearInterval(participantCheck);
+              // Give it 2 more seconds for video track
+              setTimeout(resolve, 2000);
+            }
+          }, 500);
+        });
 
         // Connect WebSocket for sending audio TO the avatar
         if (data.ws_url) {
