@@ -3,544 +3,252 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A-Gent — Live AI Demo</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <title>A-Gent — Interactive Demo</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
   <style>
-    :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--panel-3:#12181e;--gold:#c9a227;--gold-2:#ffd86b;--gold-dim:rgba(201,162,39,.10);--green:#41ff9f;--green-dim:rgba(65,255,159,.06);--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--line-2:rgba(255,255,255,.06);--red:#ff5c7a}
+    :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--gold:#c9a227;--gold-2:#ffd86b;--green:#41ff9f;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--red:#ff5c7a}
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column;background:radial-gradient(circle at 30% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
     .topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
-    .topbar img{height:26px;width:auto}
+    .topbar img{height:26px}
     .topbar .spacer{flex:1}
     .main{flex:1;display:flex;overflow:hidden}
     .agent-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;min-width:300px}
     .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:#0a0d10;border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
-    .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
+    .video-frame.speaking{border-color:rgba(65,255,159,.3)}
     .video-frame video{width:100%;height:100%;object-fit:cover}
-    .video-frame .placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:.85rem;gap:12px}
-    .video-frame .spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
+    .video-frame .start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,5,8,.85)}
+    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(201,162,39,.3)}
+    .see-demo-btn:hover{transform:scale(1.04)}
     .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
     .video-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
-    .video-status .dot.connecting{background:var(--gold);box-shadow:0 0 8px var(--gold)}
     @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
-    .video-status .name{font-size:.82rem;font-weight:600}
-    .video-status .label{font-size:.68rem;color:var(--green);text-transform:uppercase;letter-spacing:.05em;margin-left:auto}
-    .eq{display:flex;gap:3px;align-items:flex-end;height:14px;margin-top:10px;opacity:.3;transition:opacity .3s}
-    .eq.active{opacity:1}
-    .eq span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq-b .35s ease-in-out infinite}
-    .eq span:nth-child(2){animation-delay:.08s;animation-duration:.3s}
-    .eq span:nth-child(3){animation-delay:.16s;animation-duration:.42s}
-    .eq span:nth-child(4){animation-delay:.04s;animation-duration:.28s}
-    .eq span:nth-child(5){animation-delay:.12s;animation-duration:.38s}
-    @keyframes eq-b{0%,100%{height:3px}50%{height:14px}}
+    .video-status .label{font-size:.68rem;color:var(--green);text-transform:uppercase;margin-left:auto}
     .caption{margin-top:14px;padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:420px;min-height:44px;text-align:center}
     .caption.thinking{color:var(--muted)}
-    .demo-cta{position:absolute;bottom:30px;left:50%;transform:translateX(-50%)}
-    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;transition:transform .2s;box-shadow:0 4px 20px rgba(201,162,39,.3)}
-    .see-demo-btn:hover{transform:scale(1.04)}
-    .see-demo-btn:disabled{opacity:.5;cursor:wait}
     .right-panel{width:440px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.3)}
     .showcase{flex:1;overflow-y:auto;padding:16px}
-    .showcase::-webkit-scrollbar{width:3px}
-    .showcase::-webkit-scrollbar-thumb{background:var(--line)}
     .mockup{display:none}
     .mockup.active{display:block}
     .mockup-title{font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:600}
     .mockup img{width:100%;border-radius:12px;border:1px solid var(--line)}
     .quick-replies{display:flex;gap:5px;padding:0 14px 6px;flex-wrap:wrap}
-    .qr{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.7rem;cursor:pointer;transition:all .15s}
-    .qr:hover{border-color:var(--gold);color:var(--gold-2);background:var(--gold-dim)}
-    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);align-items:center}
-    .input-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.84rem;outline:none}
+    .qr{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
+    .qr:hover{border-color:var(--gold);color:var(--gold-2)}
+    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);align-items:center}
+    .input-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.84rem;outline:none}
     .input-bar input:focus{border-color:var(--gold)}
     .input-bar input::placeholder{color:var(--muted)}
-    .mic-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:var(--panel-3);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
+    .mic-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:var(--panel-2);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
     .mic-btn:hover{border-color:var(--gold);color:var(--gold-2)}
     .mic-btn.listening{background:var(--red);border-color:var(--red);color:#fff;animation:mic-p 1s infinite}
     @keyframes mic-p{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.3)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
     .send-btn{width:40px;height:40px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
     .send-btn:hover{transform:scale(1.05)}
-    .send-btn:disabled{opacity:.4;cursor:wait}
+    .send-btn:disabled{opacity:.4}
     .cta-bar{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px}
     .cta-bar a{flex:1}
     .cta-bar button{width:100%;padding:9px;border:0;border-radius:10px;font-weight:700;font-size:.78rem;cursor:pointer}
     .cta-bar .primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
-    .cta-bar .secondary{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
-    .embed-badge{position:fixed;bottom:6px;right:10px;font-size:.58rem;color:var(--muted);background:rgba(5,5,8,.6);padding:3px 8px;border-radius:5px;z-index:50}
+    .cta-bar .secondary{background:var(--panel-2);color:var(--soft);border:1px solid var(--line)}
     @media(max-width:860px){.main{flex-direction:column}.right-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}}
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <img src="assets/agent-logo.svg" alt="A-Gent" />
-    <div class="spacer"></div>
-  </div>
+  <div class="topbar"><img src="assets/agent-logo.svg" alt="A-Gent"/><div class="spacer"></div></div>
   <div class="main">
     <div class="agent-stage">
-      <div class="video-frame" id="videoFrame">
-        <video id="avatarVideo" autoplay playsinline></video>
-        <div class="placeholder" id="placeholder">
-          <div class="spinner"></div>
-          <div>Connecting to live avatar...</div>
+      <div class="video-frame" id="frame">
+        <video id="avatar" autoplay playsinline></video>
+        <div class="start-overlay" id="overlay">
+          <div style="font-size:.85rem;color:var(--muted)">Click to start your demo</div>
+          <button class="see-demo-btn" onclick="start()">▶ Start Demo</button>
         </div>
-        <div class="video-status">
-          <div class="dot connecting" id="statusDot"></div>
-          <div class="name">A-Gent Demo Agent</div>
-          <div class="label" id="statusLabel">OFFLINE</div>
-        </div>
+        <div class="video-status"><div class="dot"></div><div style="font-size:.82rem;font-weight:600">A-Gent Demo Agent</div><div class="label" id="status">OFFLINE</div></div>
       </div>
-      <div class="eq" id="eq"><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="caption" id="caption">Click "See a Demo" to start</div>
-      <div class="demo-cta" id="demoCta">
-        <button class="see-demo-btn" id="startBtn" onclick="startDemo()">▶ See a Demo</button>
-      </div>
+      <div class="caption" id="caption">Click "Start Demo" to begin</div>
     </div>
     <div class="right-panel">
       <div class="showcase" id="showcase">
-        <div class="mockup active" id="mockup-welcome">
-          <div class="mockup-title">Welcome to A-Gent</div>
-          <div style="padding:16px;text-align:center">
-            <div style="font-size:2.5rem;margin-bottom:10px">🚀</div>
-            <div style="font-size:.9rem;color:var(--text);font-weight:600">Autonomous AI Sales Workforce</div>
-            <div style="font-size:.8rem;color:var(--soft);margin-top:6px">Ask me anything — type or speak.</div>
-          </div>
-        </div>
-        <div class="mockup" id="mockup-mission">
-          <div class="mockup-title">📊 Mission Control</div>
-          <img src="assets/screenshot-mission-control.png" alt="Mission Control" />
-        </div>
-        <div class="mockup" id="mockup-workers">
-          <div class="mockup-title">👥 AI Workforce</div>
-          <img src="assets/screenshot-workers.png" alt="Worker Marketplace" />
-        </div>
-        <div class="mockup" id="mockup-concierge">
-          <div class="mockup-title">💬 Concierge Widget</div>
-          <img src="assets/screenshot-concierge.png" alt="Concierge" />
-        </div>
+        <div class="mockup active" id="m-welcome"><div class="mockup-title">Welcome</div><div style="padding:20px;text-align:center"><div style="font-size:2.5rem">🚀</div><div style="font-size:.9rem;font-weight:600;margin-top:8px">Autonomous AI Sales Workforce</div></div></div>
+        <div class="mockup" id="m-mission"><div class="mockup-title">📊 Mission Control</div><img src="assets/screenshot-mission-control.png"/></div>
+        <div class="mockup" id="m-workers"><div class="mockup-title">👥 AI Workforce</div><img src="assets/screenshot-workers.png"/></div>
+        <div class="mockup" id="m-concierge"><div class="mockup-title">💬 Concierge</div><img src="assets/screenshot-concierge.png"/></div>
       </div>
-      <div class="quick-replies" id="quickReplies"></div>
+      <div class="quick-replies" id="qr"></div>
       <div class="input-bar">
-        <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="Speak">🎤</button>
-        <input type="text" id="chatInput" placeholder="Type or speak..." onkeydown="if(event.key==='Enter')sendChat()" />
-        <button class="send-btn" id="sendBtn" onclick="sendChat()">↑</button>
+        <button class="mic-btn" id="mic" onclick="toggleMic()">🎤</button>
+        <input type="text" id="input" placeholder="Type or speak..." onkeydown="if(event.key==='Enter')send()"/>
+        <button class="send-btn" id="send" onclick="send()">↑</button>
       </div>
-      <div class="cta-bar" id="ctaBar" style="display:none">
+      <div class="cta-bar" id="cta" style="display:none">
         <a href="https://aisdr.a-gent.co/workers.html" target="_blank"><button class="primary">🚀 Hire Workers</button></a>
         <a href="https://missioncontrol.a-gent.co" target="_blank"><button class="secondary">📊 Mission Control</button></a>
       </div>
     </div>
   </div>
-  <div class="embed-badge">Powered by A-Gent + LiveAvatar</div>
 
   <script>
-    const API = window.location.origin;
-    const TTS_URL = API + '/api/tts';
-    const CONCIERGE_URL = API + '/api/concierge';
-    const SESSION_URL = API + '/api/avatar-session';
+    const video = document.getElementById('avatar');
+    const V = {
+      greeting: 'assets/demo-greeting.mp4',
+      mission: 'assets/demo-dashboard.mp4',
+      workers: 'assets/demo-workers.mp4',
+      concierge: 'assets/demo-more_info.mp4',
+      pricing: 'assets/demo-pricing.mp4',
+      hire: 'assets/demo-hire.mp4',
+      contact: 'assets/demo-contact.mp4',
+      signals: 'assets/demo-signals.mp4',
+      platform: 'assets/demo-more_info.mp4',
+      final: 'assets/demo-final.mp4'
+    };
 
-    let demoStarted = false;
-    let isSpeaking = false;
-    let chatMessages = [];
-    let audioCtx = null;
-    let room = null;
-    let ws = null;
-    let keepAlive = null;
-    let avatarConnected = false;
-    const video = document.getElementById('avatarVideo');
+    let started = false;
+    let busy = false;
+    let messages = [];
 
-    // ─── Start: connect to streaming avatar ────────────────────
-    async function startDemo() {
-      if (demoStarted) return;
-      demoStarted = true;
-      const btn = document.getElementById('startBtn');
-      btn.disabled = true;
-      btn.textContent = 'Connecting...';
+    // Play a HeyGen video once with audio. When done, loop last frame muted.
+    function play(src, text) {
+      return new Promise(resolve => {
+        const cap = document.getElementById('caption');
+        const frame = document.getElementById('frame');
+        const status = document.getElementById('status');
 
-      // Unlock audio
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-      } catch(e) {}
+        // Thinking
+        cap.className = 'caption thinking';
+        cap.textContent = '● ● ●';
+        status.textContent = 'THINKING';
+        frame.classList.remove('speaking');
 
-      try {
-        // Create LiveAvatar session
-        const res = await fetch(SESSION_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'start' })
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Session failed');
-
-        // Connect to LiveKit room — this receives the avatar video
-        const LK = window.LivekitClient || window.LiveKit;
-        if (!LK) throw new Error('LiveKit not loaded');
-
-        room = new LK.Room({ adaptiveStream: true, dynacast: true });
-        await room.connect(data.livekit_url, data.livekit_client_token);
-
-        // Subscribe to avatar's video/audio tracks — both existing and new
-        function attachTrack(track) {
-          if (track.kind === 'video') {
-            track.attach(video);
-            document.getElementById('placeholder').style.display = 'none';
-            document.getElementById('statusLabel').textContent = 'LIVE';
-            document.getElementById('statusDot').classList.remove('connecting');
-            avatarConnected = true;
-          }
-          if (track.kind === 'audio') {
-            const a = document.createElement('audio');
-            track.attach(a);
-            a.autoplay = true;
-          }
-        }
-
-        // Subscribe to tracks already published when we join
-        room.participants.forEach((participant) => {
-          participant.tracks.forEach((pub) => {
-            if (pub.track) attachTrack(pub.track);
-            else if (pub.isEnabled) {
-              pub.setSubscribed(true);
-            }
-          });
-        });
-
-        // Subscribe to new tracks published after we join
-        room.on('trackSubscribed', (track) => attachTrack(track));
-        room.on('trackPublished', (pub, participant) => {
-          if (pub.isEnabled) pub.setSubscribed(true);
-        });
-        room.on('participantConnected', (participant) => {
-          console.log('Participant joined:', participant.identity);
-          // Subscribe to their tracks
-          participant.tracks.forEach((pub) => {
-            if (pub.isEnabled) pub.setSubscribed(true);
-          });
-        });
-
-        // Wait for avatar participant to join (up to 20 seconds)
-        let avatarJoined = false;
-        const checkParticipants = () => {
-          room.participants.forEach((p) => {
-            if (!avatarJoined) {
-              avatarJoined = true;
-              console.log('Avatar participant found:', p.identity);
-            }
-            p.tracks.forEach((pub) => {
-              if (pub.isEnabled) pub.setSubscribed(true);
-            });
-          });
-        };
-        
-        // Check immediately and every 2 seconds
-        checkParticipants();
-        const participantCheck = setInterval(() => {
-          checkParticipants();
-          if (avatarJoined) clearInterval(participantCheck);
-        }, 2000);
-        
-        // Wait up to 20s for avatar
-        await new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            clearInterval(participantCheck);
-            resolve();
-          }, 20000);
-          const checkInterval = setInterval(() => {
-            if (avatarConnected || avatarJoined) {
-              clearTimeout(timeout);
-              clearInterval(checkInterval);
-              clearInterval(participantCheck);
-              // Give it 2 more seconds for video track
-              setTimeout(resolve, 2000);
-            }
-          }, 500);
-        });
-
-        // Connect WebSocket for sending audio TO the avatar
-        if (data.ws_url) {
-          ws = new WebSocket(data.ws_url);
-          ws.onopen = () => console.log('WS connected');
-          ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'session.state_updated' && msg.state === 'connected') {
-              console.log('Avatar session ready');
-            }
-            if (msg.type === 'agent.speak_started') {
-              document.getElementById('videoFrame').classList.add('speaking');
-              document.getElementById('eq').classList.add('active');
-            }
-            if (msg.type === 'agent.speak_ended') {
-              document.getElementById('videoFrame').classList.remove('speaking');
-              document.getElementById('eq').classList.remove('active');
-            }
-          };
-          ws.onerror = (e) => console.warn('WS error');
-        }
-
-        // Keepalive
-        keepAlive = setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'session.keep_alive', event_id: 'ka_' + Date.now() }));
-          }
-        }, 60000);
-
-        document.getElementById('demoCta').style.display = 'none';
-        document.getElementById('ctaBar').style.display = 'flex';
-
-        // Hide placeholder after 5s even if track hasn't arrived
         setTimeout(() => {
-          if (!avatarConnected) {
-            document.getElementById('placeholder').style.display = 'none';
-            document.getElementById('statusLabel').textContent = 'LIVE';
-            document.getElementById('statusDot').classList.remove('connecting');
-          }
-        }, 5000);
+          cap.className = 'caption';
+          cap.textContent = text;
+          frame.classList.add('speaking');
+          status.textContent = 'SPEAKING';
+          busy = true;
 
-        // Greet the user, then wait for input
-        await speak('Welcome to A-Gent! How can I help you today?');
-        showQuickReplies(['Tell me about the platform', 'Show me the workers', 'Show me Mission Control', 'How much does it cost?']);
+          video.src = src;
+          video.loop = false;
+          video.muted = false;
 
-      } catch(e) {
-        console.error('Connection failed:', e);
-        document.getElementById('placeholder').innerHTML = '<div style="color:var(--red)">Connection failed</div>';
-        btn.disabled = false;
-        btn.textContent = '▶ Try Again';
-        demoStarted = false;
-      }
-    }
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            frame.classList.remove('speaking');
+            status.textContent = 'LIVE';
+            busy = false;
+            // Loop silently as idle
+            video.muted = true;
+            video.loop = true;
+            video.play().catch(() => {});
+            resolve();
+          };
 
-    // ─── Speak: TTS → send audio to avatar via WebSocket ───────
-    // The avatar lip-syncs in real-time to whatever audio we send
-    async function speak(text) {
-      const caption = document.getElementById('caption');
-      const frame = document.getElementById('videoFrame');
-      const eq = document.getElementById('eq');
-      const sl = document.getElementById('statusLabel');
-
-      // Thinking
-      caption.className = 'caption thinking';
-      caption.innerHTML = '<span style="animation:pulse 1s infinite">● ● ●</span>';
-      frame.classList.remove('speaking');
-      eq.classList.remove('active');
-      sl.textContent = 'THINKING';
-      await new Promise(r => setTimeout(r, 700));
-
-      // Show text
-      caption.className = 'caption';
-      caption.textContent = text;
-      frame.classList.add('speaking');
-      eq.classList.add('active');
-      sl.textContent = 'SPEAKING';
-      isSpeaking = true;
-
-      // Get TTS audio from our Edge neural TTS proxy
-      try {
-        const ttsRes = await fetch(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
-        const audioBlob = await ttsRes.blob();
-        const arrayBuffer = await audioBlob.arrayBuffer();
-
-        // Convert MP3 → PCM 16-bit 24kHz base64 for LiveAvatar
-        const pcmBase64 = await mp3ToPCMBase64(arrayBuffer);
-
-        // Send audio chunks to avatar via WebSocket
-        if (ws && ws.readyState === WebSocket.OPEN && pcmBase64) {
-          // Wait for session to be connected
-          // Send audio in ~1 second chunks
-          const chunkSize = 96000; // ~1 sec of 24kHz 16-bit mono base64
-          for (let i = 0; i < pcmBase64.length; i += chunkSize) {
-            const chunk = pcmBase64.substring(i, i + chunkSize);
-            ws.send(JSON.stringify({ type: 'agent.speak', audio: chunk }));
-            await new Promise(r => setTimeout(r, 80)); // pace the chunks
-          }
-          ws.send(JSON.stringify({ type: 'agent.speak_end', event_id: 'speak_' + Date.now() }));
-
-          // Wait for avatar to finish speaking
-          await new Promise(resolve => {
-            const timeout = setTimeout(resolve, 30000);
-            const origHandler = ws.onmessage;
-            ws.onmessage = (e) => {
-              const msg = JSON.parse(e.data);
-              if (msg.type === 'agent.speak_ended') {
-                clearTimeout(timeout);
-                resolve();
-              }
-              // Call original handler too
-              if (origHandler) origHandler(e);
-            };
+          video.onended = finish;
+          video.onerror = finish;
+          video.play().then(() => {}).catch(() => {
+            // Autoplay blocked — try muted then unmute
+            video.muted = true;
+            video.play().then(() => setTimeout(() => video.muted = false, 300)).catch(() => setTimeout(finish, 5000));
           });
-        } else {
-          // No WebSocket — just play audio locally
-          const audio = new Audio(URL.createObjectURL(audioBlob));
-          audio.play().catch(() => {});
-          await new Promise(resolve => {
-            audio.onended = resolve;
-            audio.onerror = resolve;
-            setTimeout(resolve, 15000);
-          });
-        }
-      } catch(e) {
-        console.warn('Speak failed:', e);
-        await new Promise(r => setTimeout(r, 2000));
-      }
-
-      frame.classList.remove('speaking');
-      eq.classList.remove('active');
-      sl.textContent = 'LIVE';
-      isSpeaking = false;
+          setTimeout(finish, 45000); // safety
+        }, 600);
+      });
     }
 
-    // Convert MP3 blob to PCM 16-bit 24kHz base64
-    async function mp3ToPCMBase64(arrayBuffer) {
-      try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+    // Start
+    function start() {
+      if (started) return;
+      started = true;
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('cta').style.display = 'flex';
+      document.getElementById('status').textContent = 'LIVE';
 
-        // Resample to 24kHz mono
-        const targetRate = 24000;
-        const offCtx = new OfflineAudioContext(1, Math.ceil(decoded.duration * targetRate), targetRate);
-        const src = offCtx.createBufferSource();
-        src.buffer = decoded;
-        src.connect(offCtx.destination);
-        src.start();
-        const rendered = await offCtx.startRendering();
-
-        // Convert float32 to int16
-        const pcm16 = new Int16Array(rendered.length);
-        const data = rendered.getChannelData(0);
-        for (let i = 0; i < data.length; i++) {
-          const s = Math.max(-1, Math.min(1, data[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-
-        // Base64 encode
-        const bytes = new Uint8Array(pcm16.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        return btoa(binary);
-      } catch(e) {
-        console.warn('PCM conversion failed:', e);
-        return null;
-      }
+      // Greet
+      play(V.greeting, 'Welcome to A-Gent! How can I help you today?').then(() => {
+        qr(['Tell me about the platform', 'Show me the workers', 'Show me Mission Control', 'How much does it cost?']);
+      });
     }
 
-    // ─── Chat ──────────────────────────────────────────────────
-    async function sendChat() {
-      const input = document.getElementById('chatInput');
+    // Send message
+    async function send() {
+      const input = document.getElementById('input');
       const text = input.value.trim();
-      if (!text || isSpeaking) return;
+      if (!text || busy) return;
       input.value = '';
-      document.getElementById('sendBtn').disabled = true;
-      chatMessages.push({ role: 'user', content: text });
+      document.getElementById('send').disabled = true;
+      messages.push({ role: 'user', content: text });
 
-      const lower = text.toLowerCase();
-      let responseText = null, replies = [], mockup = null;
+      const l = text.toLowerCase();
+      let v = null, t = null, r = [], m = null;
 
-      if (lower.match(/walkthrough|demo|tour|show me the platform/)) {
-        await runWalkthrough();
-        document.getElementById('sendBtn').disabled = false;
-        return;
-      }
-      if (lower.match(/pric|cost|how much/)) {
-        responseText = "We're in early access. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like a quote?";
-        replies = ['Yes, contact me', 'Show me the workers', 'Show me Mission Control'];
-      } else if (lower.match(/hire|start|sign up|begin|get started/)) {
-        responseText = "You can hire your first AI worker right now! Click Hire Workers below to browse the marketplace.";
-        replies = ['Open marketplace', 'Show dashboard', 'Talk to someone'];
-      } else if (lower.match(/contact|human|someone|talk to|email/)) {
-        responseText = "Email mark@a-gent.co and we'll get back to you within 24 hours.";
-        replies = ['Hire a worker', 'Show dashboard', 'Show me the workers'];
-      } else if (lower.match(/signal|trigger/)) {
-        responseText = "We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher enriches the account and the SDR writes a signal-driven email. Where would you like to go next?";
-        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control'];
-      } else if (lower.match(/worker|agent|team|employee|workforce/)) {
-        responseText = "We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each hired through an onboarding flow. Where would you like to go next?";
-        replies = ['How much?', 'Show me Mission Control', 'Show me the concierge', 'Hire a worker'];
-        mockup = 'mockup-workers';
-      } else if (lower.match(/dashboard|mission control|monitor/)) {
-        responseText = "Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7. Where would you like to go next?";
-        replies = ['Show me the workers', 'Show me the concierge', 'How much does it cost?', 'Talk to someone'];
-        mockup = 'mockup-mission';
-      } else if (lower.match(/concierge|chat|widget|inbound/)) {
-        responseText = "The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website. Where would you like to go next?";
-        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control', 'Hire a worker'];
-        mockup = 'mockup-concierge';
-      } else if (lower.match(/more|what is|how does|explain|platform|about|help/)) {
-        responseText = "A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how. Where would you like to go next?";
-        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control', 'Show me a demo walkthrough'];
-      }
+      if (l.match(/pric|cost|how much/)) { v='pricing'; t="We're in early access. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like a quote?"; r=['Yes, contact me','Show me the workers','Show me Mission Control']; }
+      else if (l.match(/hire|start|sign up|begin|get started/)) { v='hire'; t="You can hire your first AI worker right now! Click Hire Workers below to browse the marketplace."; r=['Open marketplace','Show Mission Control','Talk to someone']; }
+      else if (l.match(/contact|human|someone|talk to|email/)) { v='contact'; t="Email mark@a-gent.co and we'll get back to you within 24 hours."; r=['Hire a worker','Show me the workers','Show me Mission Control']; }
+      else if (l.match(/signal|trigger/)) { v='signals'; t="We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control']; }
+      else if (l.match(/worker|agent|team|employee|workforce/)) { v='workers'; t="We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Where would you like to go next?"; r=['How much?','Show me Mission Control','Show me the concierge','Hire a worker']; m='m-workers'; }
+      else if (l.match(/dashboard|mission control|monitor/)) { v='mission'; t="Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7. Where would you like to go next?"; r=['Show me the workers','Show me the concierge','How much?','Talk to someone']; m='m-mission'; }
+      else if (l.match(/concierge|chat|widget|inbound/)) { v='concierge'; t="The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']; m='m-concierge'; }
+      else if (l.match(/more|what is|how does|explain|platform|about|help/)) { v='platform'; t="A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Show me the concierge']; }
 
-      if (mockup) showMockup(mockup);
+      if (m) showMockup(m);
 
-      if (responseText) {
-        await speak(responseText);
-        showQuickReplies(replies);
+      if (v) {
+        await play(V[v], t);
+        qr(r);
       } else {
-        // Dynamic LLM response via concierge API
+        // Dynamic LLM response — play a generic video with the LLM text as caption
         try {
-          const res = await fetch(CONCIERGE_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'chat', messages: chatMessages, speak: false })
-          });
+          const res = await fetch('/api/concierge', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'chat',messages:messages,speak:false}) });
           const data = await res.json();
           if (data.reply) {
-            await speak(data.reply);
-            chatMessages.push({ role: 'bot', content: data.reply });
-            showQuickReplies(['Show pricing', 'Tell me about workers', 'Hire a worker', 'Show me a demo walkthrough']);
+            // Use the platform video muted, with caption for the LLM response
+            await play(V.platform, data.reply);
+            messages.push({role:'bot',content:data.reply});
+            qr(['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']);
           }
         } catch(e) {
-          await speak("I'm having trouble connecting. Please try again.");
+          await play(V.platform, "I'm having trouble right now. Please try asking something else.");
         }
       }
 
-      document.getElementById('sendBtn').disabled = false;
-      document.getElementById('chatInput').focus();
+      document.getElementById('send').disabled = false;
+      document.getElementById('input').focus();
     }
 
-    // ─── Walkthrough — fully user-driven, one step at a time ──
-    // User says "show me X" → avatar shows screenshot + explains → asks "where next?"
-    async function runWalkthrough() {
-      // Just show the first module and let the user drive from there
-      showMockup('mockup-mission');
-      await speak("Here's Mission Control, your command center. Live campaign metrics, agent status, and heartbeat summaries — all running autonomously. Where would you like to go next?");
-      showQuickReplies(['Show me the workers', 'Show me the concierge', 'How much does it cost?', 'Talk to someone']);
-    }
-
-    // ─── UI helpers ────────────────────────────────────────────
     function showMockup(id) {
       document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
-      const el = document.getElementById(id);
-      if (el) el.classList.add('active');
+      document.getElementById(id)?.classList.add('active');
     }
-    function showQuickReplies(replies) {
-      const c = document.getElementById('quickReplies');
+
+    function qr(replies) {
+      const c = document.getElementById('qr');
       c.innerHTML = '';
       replies.forEach(text => {
         const b = document.createElement('button');
         b.className = 'qr';
         b.textContent = text;
-        b.onclick = () => { document.getElementById('chatInput').value = text; sendChat(); };
+        b.onclick = () => { document.getElementById('input').value = text; send(); };
         c.appendChild(b);
       });
     }
 
-    // ─── Speech-to-text ────────────────────────────────────────
-    let recognition = null, isListening = false;
+    // Voice input
+    let rec = null, listening = false;
     function toggleMic() {
-      if (isListening) { recognition?.stop(); return; }
+      if (listening) { rec?.stop(); return; }
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { alert('Voice input needs Chrome.'); return; }
-      recognition = new SR();
-      recognition.continuous = false; recognition.interimResults = false; recognition.lang = 'en-US';
-      const micBtn = document.getElementById('micBtn');
-      micBtn.classList.add('listening'); isListening = true;
-      recognition.onresult = (e) => { document.getElementById('chatInput').value = e.results[0][0].transcript; sendChat(); };
-      recognition.onerror = () => {}; recognition.onend = () => { micBtn.classList.remove('listening'); isListening = false; };
-      recognition.start();
+      if (!SR) { alert('Use Chrome for voice input.'); return; }
+      rec = new SR();
+      rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US';
+      const btn = document.getElementById('mic');
+      btn.classList.add('listening'); listening = true;
+      rec.onresult = (e) => { document.getElementById('input').value = e.results[0][0].transcript; send(); };
+      rec.onerror = () => {};
+      rec.onend = () => { btn.classList.remove('listening'); listening = false; };
+      rec.start();
     }
   </script>
 </body>
