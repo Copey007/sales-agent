@@ -183,8 +183,8 @@
         room = new LK.Room({ adaptiveStream: true, dynacast: true });
         await room.connect(data.livekit_url, data.livekit_client_token);
 
-        // Subscribe to avatar's video/audio tracks
-        room.on('trackSubscribed', (track) => {
+        // Subscribe to avatar's video/audio tracks — both existing and new
+        function attachTrack(track) {
           if (track.kind === 'video') {
             track.attach(video);
             document.getElementById('placeholder').style.display = 'none';
@@ -197,6 +197,22 @@
             track.attach(a);
             a.autoplay = true;
           }
+        }
+
+        // Subscribe to tracks already published when we join
+        room.participants.forEach((participant) => {
+          participant.tracks.forEach((pub) => {
+            if (pub.track) attachTrack(pub.track);
+            else if (pub.isEnabled) {
+              pub.setSubscribed(true);
+            }
+          });
+        });
+
+        // Subscribe to new tracks published after we join
+        room.on('trackSubscribed', (track) => attachTrack(track));
+        room.on('trackPublished', (pub, participant) => {
+          if (pub.isEnabled) pub.setSubscribed(true);
         });
 
         // Connect WebSocket for sending audio TO the avatar
