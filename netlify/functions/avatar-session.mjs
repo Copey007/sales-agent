@@ -56,7 +56,7 @@ export default async (req, context) => {
 export const config = { path: "/api/avatar-session" };
 
 async function startSession(apiKey, body, corsHeaders) {
-  const avatarId = body.avatar_id || '8175dfc2-7858-49d6-b5fa-0c135d1c4bad'; // Elenora Tech Expert
+  const avatarId = body.avatar_id || 'ebdfdc7e-7e2c-4d2c-8407-a78883e5000a'; // Anastasia in Black Suit
   
   // First, stop any existing sessions to avoid concurrency limit
   try {

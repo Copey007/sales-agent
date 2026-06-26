@@ -239,9 +239,9 @@
           }
         }, 5000);
 
-        // Greet
+        // Greet the user, then wait for input
         await speak('Welcome to A-Gent! How can I help you today?');
-        showQuickReplies(['Tell me about the platform', 'Show me the workers', 'How much does it cost?', 'Show me a demo walkthrough']);
+        showQuickReplies(['Tell me about the platform', 'Show me the workers', 'Show me Mission Control', 'How much does it cost?']);
 
       } catch(e) {
         console.error('Connection failed:', e);
@@ -378,38 +378,38 @@
       const lower = text.toLowerCase();
       let responseText = null, replies = [], mockup = null;
 
-      if (lower.match(/walkthrough|demo|tour|show me/)) {
+      if (lower.match(/walkthrough|demo|tour|show me the platform/)) {
         await runWalkthrough();
         document.getElementById('sendBtn').disabled = false;
         return;
       }
       if (lower.match(/pric|cost|how much/)) {
         responseText = "We're in early access. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like a quote?";
-        replies = ['Yes, contact me', 'Show me the workers', 'Keep exploring'];
+        replies = ['Yes, contact me', 'Show me the workers', 'Show me Mission Control'];
       } else if (lower.match(/hire|start|sign up|begin|get started/)) {
         responseText = "You can hire your first AI worker right now! Click Hire Workers below to browse the marketplace.";
         replies = ['Open marketplace', 'Show dashboard', 'Talk to someone'];
       } else if (lower.match(/contact|human|someone|talk to|email/)) {
         responseText = "Email mark@a-gent.co and we'll get back to you within 24 hours.";
-        replies = ['Hire a worker', 'Show dashboard', 'Back to demo'];
+        replies = ['Hire a worker', 'Show dashboard', 'Show me the workers'];
       } else if (lower.match(/signal|trigger/)) {
-        responseText = "We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher enriches the account and the SDR writes a signal-driven email.";
-        replies = ['Show me pricing', 'How do emails work?', 'Hire a worker'];
+        responseText = "We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher enriches the account and the SDR writes a signal-driven email. Where would you like to go next?";
+        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control'];
       } else if (lower.match(/worker|agent|team|employee|workforce/)) {
-        responseText = "We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each hired through an onboarding flow.";
-        replies = ['How much?', 'Show dashboard', 'Hire a worker'];
+        responseText = "We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each hired through an onboarding flow. Where would you like to go next?";
+        replies = ['How much?', 'Show me Mission Control', 'Show me the concierge', 'Hire a worker'];
         mockup = 'mockup-workers';
       } else if (lower.match(/dashboard|mission control|monitor/)) {
-        responseText = "Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7.";
-        replies = ['Show pricing', 'Tell me about workers', 'Hire a worker'];
+        responseText = "Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7. Where would you like to go next?";
+        replies = ['Show me the workers', 'Show me the concierge', 'How much does it cost?', 'Talk to someone'];
         mockup = 'mockup-mission';
       } else if (lower.match(/concierge|chat|widget|inbound/)) {
-        responseText = "The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website.";
-        replies = ['Show pricing', 'Tell me about workers', 'Hire a worker'];
+        responseText = "The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website. Where would you like to go next?";
+        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control', 'Hire a worker'];
         mockup = 'mockup-concierge';
       } else if (lower.match(/more|what is|how does|explain|platform|about|help/)) {
-        responseText = "A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how.";
-        replies = ['Show pricing', 'What signals?', 'Hire a worker', 'Show me a demo walkthrough'];
+        responseText = "A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how. Where would you like to go next?";
+        replies = ['Show me pricing', 'Show me the workers', 'Show me Mission Control', 'Show me a demo walkthrough'];
       }
 
       if (mockup) showMockup(mockup);
@@ -440,32 +440,13 @@
       document.getElementById('chatInput').focus();
     }
 
-    // ─── Walkthrough ───────────────────────────────────────────
+    // ─── Walkthrough — fully user-driven, one step at a time ──
+    // User says "show me X" → avatar shows screenshot + explains → asks "where next?"
     async function runWalkthrough() {
-      const steps = [
-        { mockup: 'mockup-mission', text: "This is Mission Control, your command center. Live campaign metrics, agent status, and heartbeat summaries — all running autonomously 24/7.", replies: ['Next', 'How much?', 'Skip'] },
-        { mockup: 'mockup-workers', text: "These are your AI workers. Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees.", replies: ['Next', 'How much?', 'Skip'] },
-        { mockup: 'mockup-concierge', text: "And this is the Concierge — an inbound widget that greets visitors, qualifies leads, and captures emails. Embeddable on any website.", replies: ['Show pricing', 'Get started', 'Talk to someone'] }
-      ];
-
-      for (const step of steps) {
-        showMockup(step.mockup);
-        showQuickReplies(step.replies);
-        await speak(step.text);
-        await new Promise(r => setTimeout(r, 1500));
-      }
-
-      showMockup('mockup-welcome');
-      document.getElementById('showcase').innerHTML = `
-        <div class="mockup active">
-          <div class="mockup-title">Ready to get started?</div>
-          <div style="padding:24px 16px;text-align:center">
-            <div style="font-size:2.2rem;margin-bottom:10px">🎉</div>
-            <div style="font-size:.95rem;color:var(--text);font-weight:700">Deploy your first AI worker in under 5 minutes</div>
-          </div>
-        </div>`;
-      await speak("That's the A-Gent platform! You can hire your first AI worker right now. What would you like to do?");
-      showQuickReplies(['Hire a worker', 'Show Mission Control', 'Talk to someone']);
+      // Just show the first module and let the user drive from there
+      showMockup('mockup-mission');
+      await speak("Here's Mission Control, your command center. Live campaign metrics, agent status, and heartbeat summaries — all running autonomously. Where would you like to go next?");
+      showQuickReplies(['Show me the workers', 'Show me the concierge', 'How much does it cost?', 'Talk to someone']);
     }
 
     // ─── UI helpers ────────────────────────────────────────────
