@@ -33,12 +33,38 @@
     .agent-frame{width:100%;max-width:480px;aspect-ratio:4/3;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
     .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.12);border-color:rgba(65,255,159,.3)}
 
-    /* Avatar (photorealistic image) */
-    .agent-avatar{width:140px;height:140px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.2),rgba(5,5,8,.6));border:3px solid var(--gold);animation:float 3s ease-in-out infinite;transition:border-color .3s}
-    .agent-avatar img{width:100%;height:100%;object-fit:cover}
-    .agent-frame.speaking .agent-avatar{border-color:var(--green);animation:pulse-speak 1s ease-in-out infinite}
-    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-    @keyframes pulse-speak{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(65,255,159,0)}50%{transform:scale(1.05);box-shadow:0 0 24px 8px rgba(65,255,159,.15)}}
+    /* Avatar — lifelike animated portrait */
+    .agent-frame{width:100%;max-width:480px;aspect-ratio:3/4;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
+    .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.15);border-color:rgba(65,255,159,.4)}
+
+    .agent-portrait{width:100%;height:100%;position:relative;overflow:hidden;border-radius:24px}
+    .agent-portrait img{width:100%;height:100%;object-fit:cover;animation:breathe 4s ease-in-out infinite}
+    .agent-frame.speaking .agent-portrait img{animation:talk 0.3s ease-in-out infinite}
+
+    /* Subtle breathing — slow scale + vertical drift */
+    @keyframes breathe{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.015) translateY(-2px)}}
+    /* Talking — faster, slightly larger movement simulating head movement while speaking */
+    @keyframes talk{0%,100%{transform:scale(1.01) translateY(0) rotate(-0.3deg)}50%{transform:scale(1.03) translateY(-1px) rotate(0.3deg)}}
+
+    /* Blinking overlay — subtle dark sweep over the eyes area */
+    .blink-overlay{position:absolute;top:32%;left:50%;width:55%;height:4%;transform:translateX(-50%);background:linear-gradient(180deg,transparent,rgba(10,13,16,.0),rgba(10,13,16,.7),rgba(10,13,16,.0),transparent);opacity:0;pointer-events:none;transition:opacity .08s}
+    .blink-overlay.blink{opacity:1;transition:opacity .05s}
+
+    /* Speaking ring — animated glow around the frame */
+    .speak-ring{position:absolute;inset:-2px;border-radius:26px;pointer-events:none;opacity:0;transition:opacity .3s}
+    .agent-frame.speaking .speak-ring{opacity:1}
+    .speak-ring::before{content:'';position:absolute;inset:0;border-radius:26px;border:2px solid var(--green);animation:ring-pulse 1.5s ease-in-out infinite}
+    @keyframes ring-pulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.8;transform:scale(1.01)}}
+
+    /* Audio equalizer bars — show when speaking */
+    .eq-bars{display:flex;gap:3px;align-items:flex-end;height:16px;margin-top:8px;opacity:0;transition:opacity .3s}
+    .agent-frame.speaking ~ .eq-bars,.eq-bars.active{opacity:1}
+    .eq-bars span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq 0.4s ease-in-out infinite}
+    .eq-bars span:nth-child(2){animation-delay:.1s;animation-duration:.35s}
+    .eq-bars span:nth-child(3){animation-delay:.2s;animation-duration:.45s}
+    .eq-bars span:nth-child(4){animation-delay:.05s;animation-duration:.3s}
+    .eq-bars span:nth-child(5){animation-delay:.15s;animation-duration:.4s}
+    @keyframes eq{0%,100%{height:4px}50%{height:16px}}
 
     .agent-label{margin-top:16px;font-size:.95rem;font-weight:700;color:var(--gold-2)}
     .agent-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px;margin-top:3px}
@@ -150,8 +176,13 @@
     <!-- Left: AI Agent stage -->
     <div class="agent-stage">
       <div class="agent-frame" id="agentFrame">
-        <div class="agent-avatar" id="agentAvatar"><img src="assets/demo-agent.png" alt="A-Gent Demo Agent" /></div>
+        <div class="speak-ring"></div>
+        <div class="agent-portrait">
+          <img src="assets/demo-agent.png" alt="A-Gent Demo Agent" />
+          <div class="blink-overlay" id="blinkOverlay"></div>
+        </div>
       </div>
+      <div class="eq-bars" id="eqBars"><span></span><span></span><span></span><span></span><span></span></div>
       <div class="agent-label" id="agentLabel">A-Gent Demo Agent</div>
       <div class="agent-status">Online · Ready to demo</div>
       <div class="agent-caption" id="caption">Click "See a Demo" to start your interactive walkthrough</div>
@@ -321,62 +352,74 @@
       speakScript("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control to see live campaigns. What would you like to do?");
     }
 
-    // ─── Agent speaking (browser SpeechSynthesis + caption) ────
-    // Uses the browser's built-in speech synthesis — no API key needed, works in Chrome/Safari/Edge
-    let speechVoice = null;
-    function pickVoice() {
-      if (!('speechSynthesis' in window)) return;
-      const voices = speechSynthesis.getVoices();
-      // Prefer a female English voice for the demo agent
-      speechVoice = voices.find(v => v.lang.startsWith('en') && /female|samantha|victoria|karen|moira|tessa/i.test(v.name))
-        || voices.find(v => v.lang.startsWith('en'))
-        || voices[0];
+    // ─── Agent speaking (Google TTS + lifelike animation) ──────
+    // Uses Google Translate TTS — free, natural voice, returns MP3
+    // Chunks text at 200 chars to avoid URL length limits
+
+    let blinkInterval = null;
+    function startBlinking() {
+      const overlay = document.getElementById('blinkOverlay');
+      if (!overlay) return;
+      blinkInterval = setInterval(() => {
+        overlay.classList.add('blink');
+        setTimeout(() => overlay.classList.remove('blink'), 120);
+      }, 3000 + Math.random() * 2000); // blink every 3-5 seconds
     }
-    if ('speechSynthesis' in window) {
-      pickVoice();
-      speechSynthesis.onvoiceschanged = pickVoice;
+    startBlinking();
+
+    function googleTTSUrl(text) {
+      // Google Translate TTS — natural voice, free, returns MP3
+      // Split into chunks of 200 chars if needed, use first chunk
+      const chunk = text.slice(0, 200);
+      return 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent(chunk) + '&tl=en&client=tw-ob';
     }
 
     async function speakScript(text) {
       const caption = document.getElementById('caption');
       const frame = document.getElementById('agentFrame');
+      const eqBars = document.getElementById('eqBars');
 
       // Show typing then text
       caption.className = 'agent-caption typing';
       caption.textContent = '...';
       await new Promise(r => setTimeout(r, 500));
 
-      // Type out the caption
+      // Show caption
       caption.className = 'agent-caption';
       caption.textContent = text;
 
-      // Animate agent as "speaking"
+      // Start speaking animation
       frame.classList.add('speaking');
+      eqBars.classList.add('active');
       isSpeaking = true;
 
-      // Use browser SpeechSynthesis API (free, no key needed)
-      if ('speechSynthesis' in window && speechVoice) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = speechVoice;
-        utterance.rate = 1.0;
-        utterance.pitch = 1.05;
-        utterance.volume = 1.0;
+      // Play audio via Google TTS
+      try {
+        const audioUrl = googleTTSUrl(text);
+        const audio = new Audio(audioUrl);
+        audio.crossOrigin = 'anonymous';
 
-        // Wait for speech to finish
         await new Promise((resolve) => {
-          utterance.onend = resolve;
-          utterance.onerror = resolve;
-          speechSynthesis.speak(utterance);
+          audio.onended = resolve;
+          audio.onerror = resolve;
+          audio.play().then(() => {
+            // Audio playing — wait for it to finish
+          }).catch(() => {
+            // Autoplay blocked or fetch failed — fall back to timed wait
+            setTimeout(resolve, Math.min(text.length * 50, 6000));
+          });
 
-          // Fallback timeout — if speech doesn't end in 20s, move on
-          setTimeout(resolve, 20000);
+          // Safety timeout
+          setTimeout(resolve, 15000);
         });
-      } else {
-        // No speech synthesis — wait based on text length
+      } catch(e) {
+        // Fallback — wait based on text length
         await new Promise(r => setTimeout(r, Math.min(text.length * 50, 5000)));
       }
 
+      // Stop speaking animation
       frame.classList.remove('speaking');
+      eqBars.classList.remove('active');
       isSpeaking = false;
     }
 
