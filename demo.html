@@ -44,7 +44,7 @@
     /* Subtle breathing — slow scale + vertical drift */
     @keyframes breathe{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.015) translateY(-2px)}}
     /* Talking — faster, slightly larger movement simulating head movement while speaking */
-    @keyframes talk{0%,100%{transform:scale(1.01) translateY(0) rotate(-0.3deg)}50%{transform:scale(1.03) translateY(-1px) rotate(0.3deg)}}
+    @keyframes talk{0%,100%{transform:scale(1.02) translateY(0) rotate(-0.5deg)}25%{transform:scale(1.04) translateY(-2px) rotate(0.5deg)}50%{transform:scale(1.01) translateY(1px) rotate(-0.3deg)}75%{transform:scale(1.03) translateY(-1px) rotate(0.3deg)}}
 
     /* Blinking overlay — subtle dark sweep over the eyes area */
     .blink-overlay{position:absolute;top:32%;left:50%;width:55%;height:4%;transform:translateX(-50%);background:linear-gradient(180deg,transparent,rgba(10,13,16,.0),rgba(10,13,16,.7),rgba(10,13,16,.0),transparent);opacity:0;pointer-events:none;transition:opacity .08s}
@@ -311,6 +311,17 @@
     function startDemo() {
       if (demoStarted) return;
       demoStarted = true;
+
+      // Unlock audio playback — must happen directly in the click handler
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        // Play a silent sound to unlock audio
+        const silence = ctx.createBufferSource();
+        silence.connect(ctx.destination);
+        silence.start();
+      } catch(e) {}
+
       document.getElementById('demoCta').style.display = 'none';
       document.getElementById('ctaBar').style.display = 'flex';
       currentStep = 0;
