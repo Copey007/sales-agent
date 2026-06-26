@@ -237,13 +237,42 @@
         // Connect to LiveKit room
         await connectLiveKit(data.livekit_url, data.livekit_client_token);
         
-        // Connect WebSocket for sending audio
-        // The WebSocket URL is derived from the session
-        // For LITE mode, we send audio via WebSocket to make the avatar speak
+        // Connect WebSocket for sending audio to avatar
+        if (data.ws_url) {
+          wsConnection = new WebSocket(data.ws_url);
+          wsConnection.onopen = () => {
+            console.log('WebSocket connected');
+            // Wait for session.state_updated = connected
+          };
+          wsConnection.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'session.state_updated' && msg.state === 'connected') {
+              console.log('Avatar session connected');
+              document.getElementById('placeholder').style.display = 'none';
+              document.getElementById('statusLabel').textContent = 'LIVE';
+              document.getElementById('statusDot').classList.remove('connecting');
+            }
+            if (msg.type === 'agent.speak_started') {
+              document.getElementById('videoFrame').classList.add('speaking');
+              document.getElementById('eq').classList.add('active');
+            }
+            if (msg.type === 'agent.speak_ended') {
+              document.getElementById('videoFrame').classList.remove('speaking');
+              document.getElementById('eq').classList.remove('active');
+            }
+          };
+          wsConnection.onerror = (e) => console.warn('WebSocket error:', e);
+          wsConnection.onclose = () => console.log('WebSocket closed');
+        }
         
-        document.getElementById('placeholder').style.display = 'none';
-        document.getElementById('statusLabel').textContent = 'LIVE';
-        document.getElementById('statusDot').classList.remove('connecting');
+        // Hide placeholder after a short delay if WebSocket doesn't report connected
+        setTimeout(() => {
+          if (document.getElementById('placeholder').style.display !== 'none') {
+            document.getElementById('placeholder').style.display = 'none';
+            document.getElementById('statusLabel').textContent = 'LIVE';
+            document.getElementById('statusDot').classList.remove('connecting');
+          }
+        }, 5000);
         document.getElementById('demoCta').style.display = 'none';
         document.getElementById('ctaBar').style.display = 'flex';
         

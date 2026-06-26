@@ -111,6 +111,8 @@ async function startSession(apiKey, body, corsHeaders) {
     livekit_url: data.livekit_url,
     livekit_client_token: data.livekit_client_token,
     livekit_agent_token: data.livekit_agent_token,
+    ws_url: data.ws_url,
+    max_session_duration: data.max_session_duration,
     timestamp: new Date().toISOString()
   }), {
     status: 200,
