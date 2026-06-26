@@ -366,7 +366,7 @@
         await playVideoWithAudio(VIDEOS[videoKey], responseText);
         showQuickReplies(replies);
       } else {
-        // Dynamic LLM response
+        // Dynamic response — generate HeyGen video on the fly
         try {
           const res = await fetch(CONCIERGE_URL, {
             method: 'POST',
@@ -375,8 +375,60 @@
           });
           const data = await res.json();
           if (data.reply) {
-            await speakTTS(data.reply);
             chatMessages.push({ role: 'bot', content: data.reply });
+            const replyText = data.reply.slice(0, 400); // HeyGen limit
+            
+            // Show "generating" status
+            const caption = document.getElementById('caption');
+            const frame = document.getElementById('videoFrame');
+            const eq = document.getElementById('eq');
+            const sl = document.getElementById('statusLabel');
+            caption.className = 'caption';
+            caption.textContent = replyText;
+            frame.classList.add('speaking');
+            eq.classList.add('active');
+            sl.textContent = 'GENERATING VIDEO';
+            isSpeaking = true;
+            
+            // Generate talking-head video
+            const speakRes = await fetch(API + '/api/avatar-speak', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: replyText })
+            });
+            const speakData = await speakRes.json();
+            
+            if (speakData.success && speakData.video_url) {
+              sl.textContent = 'SPEAKING';
+              // Play the generated video
+              await new Promise((resolve) => {
+                let d = false;
+                const done = () => {
+                  if (d) return; d = true;
+                  frame.classList.remove('speaking');
+                  eq.classList.remove('active');
+                  sl.textContent = 'LIVE';
+                  isSpeaking = false;
+                  video.muted = true; video.loop = true;
+                  video.src = VIDEOS.greeting;
+                  video.play().catch(() => {});
+                  resolve();
+                };
+                video.onended = done;
+                video.onerror = done;
+                video.src = speakData.video_url;
+                video.muted = false;
+                video.loop = false;
+                video.play().catch(() => {
+                  video.muted = true;
+                  video.play().then(() => setTimeout(() => video.muted = false, 200)).catch(done);
+                });
+                setTimeout(done, 45000);
+              });
+            } else {
+              // Video generation failed or timed out — fall back to TTS
+              await speakTTS(replyText);
+            }
             showQuickReplies(['Show pricing', 'Tell me about workers', 'Hire a worker', 'Show me a demo walkthrough']);
           }
         } catch(e) {
