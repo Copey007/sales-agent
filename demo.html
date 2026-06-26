@@ -265,6 +265,17 @@
       4: 'assets/demo-final.mp4'  // final CTA
     };
     
+    // Map chat topics to response videos
+    const CHAT_VIDEOS = {
+      pricing: 'assets/demo-pricing.mp4',
+      hire: 'assets/demo-hire.mp4',
+      contact: 'assets/demo-contact.mp4',
+      signals: 'assets/demo-signals.mp4',
+      more_info: 'assets/demo-more_info.mp4',
+      workers: 'assets/demo-workers.mp4',
+      dashboard: 'assets/demo-dashboard.mp4'
+    };
+    
     function playAvatarVideo(stepIndex) {
       const src = STEP_VIDEOS[stepIndex];
       if (!src) return;
@@ -340,7 +351,7 @@
     }
 
     // ─── Speaking (HeyGen video for scripts, TTS for chat) ────
-    async function speak(text, videoStep) {
+    async function speak(text, videoStep, isChatResponse) {
       const caption = document.getElementById('caption');
       const frame = document.getElementById('videoFrame');
       const eq = document.getElementById('eq');
@@ -363,9 +374,25 @@
       statusLabel.textContent = 'SPEAKING';
       isSpeaking = true;
 
-      if (videoStep !== undefined && STEP_VIDEOS[videoStep]) {
+      // Determine video source
+      let videoSrc = null;
+      if (isChatResponse && CHAT_VIDEOS[videoStep]) {
+        videoSrc = CHAT_VIDEOS[videoStep];
+      } else if (videoStep !== undefined && STEP_VIDEOS[videoStep]) {
+        videoSrc = STEP_VIDEOS[videoStep];
+      }
+
+      if (videoSrc) {
         // Play HeyGen talking-head video (has embedded audio)
-        playAvatarVideo(videoStep);
+        avatarVideo.src = videoSrc;
+        avatarVideo.muted = false;
+        avatarVideo.loop = false;
+        avatarVideo.play().catch(() => {
+          avatarVideo.muted = true;
+          avatarVideo.play().then(() => {
+            setTimeout(() => { avatarVideo.muted = false; }, 100);
+          }).catch(() => {});
+        });
         
         // Wait for video to end
         await new Promise((resolve) => {
@@ -373,13 +400,12 @@
           const done = () => { if (!resolved) { resolved = true; resolve(); } };
           avatarVideo.onended = done;
           avatarVideo.onerror = done;
-          setTimeout(done, 45000); // safety timeout
+          setTimeout(done, 45000);
         });
       } else {
-        // Chat response — use TTS audio (neural voice via our proxy)
+        // TTS fallback for dynamic LLM responses
         try {
           const audio = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
-          // Play the idle video muted while TTS speaks
           playIdleVideo();
           
           await new Promise((resolve) => {
@@ -400,8 +426,6 @@
       eq.classList.remove('active');
       statusLabel.textContent = 'LIVE';
       isSpeaking = false;
-      
-      // Loop the video silently as idle
       playIdleVideo();
     }
 
@@ -444,18 +468,49 @@
       chatMessages.push({ role: 'user', content: text });
 
       const lower = text.toLowerCase();
+      
+      // Route to pre-generated video responses
+      let videoKey = null;
+      let responseText = null;
+      let quickRepliesAfter = [];
+      
       if (lower.includes('pricing') || lower.includes('cost') || lower.includes('price') || lower.includes('how much')) {
-        await speak("We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?");
-        showQuickReplies(['Yes, contact me','Show me the workers','Keep exploring']);
+        videoKey = 'pricing';
+        responseText = "We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?";
+        quickRepliesAfter = ['Yes, contact me','Show me the workers','Keep exploring'];
       } else if (lower.includes('hire') || lower.includes('start') || lower.includes('sign up') || lower.includes('begin')) {
-        await speak("You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.");
-        showQuickReplies(['Open marketplace','Show dashboard','Talk to someone']);
+        videoKey = 'hire';
+        responseText = "You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.";
+        quickRepliesAfter = ['Open marketplace','Show dashboard','Talk to someone'];
       } else if (lower.includes('contact') || lower.includes('human') || lower.includes('someone') || lower.includes('talk to') || lower.includes('email')) {
-        await speak("I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!");
-        showQuickReplies(['Hire a worker','Show dashboard','Back to demo']);
+        videoKey = 'contact';
+        responseText = "I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!";
+        quickRepliesAfter = ['Hire a worker','Show dashboard','Back to demo'];
+      } else if (lower.includes('signal') || lower.includes('buying signal') || lower.includes('trigger')) {
+        videoKey = 'signals';
+        responseText = "We track buying signals like job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher agent enriches the account and the SDR agent writes a signal-driven email.";
+        quickRepliesAfter = ['Show me pricing','How do emails work?','Hire a worker'];
+      } else if (lower.includes('worker') || lower.includes('agent') || lower.includes('team') || lower.includes('employee')) {
+        videoKey = 'workers';
+        responseText = "We have 7 AI workers available: Marcus the Manager, Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each one is hired through an onboarding flow just like a real employee.";
+        quickRepliesAfter = ['How much does it cost?','Show me the dashboard','Hire a worker'];
+      } else if (lower.includes('dashboard') || lower.includes('mission control') || lower.includes('monitor')) {
+        videoKey = 'dashboard';
+        responseText = "Mission Control is your command center. You can see live campaign metrics, agent status, heartbeat summaries, and the concierge activity. Everything runs autonomously with a heartbeat every 30 minutes.";
+        quickRepliesAfter = ['Show me pricing','Tell me about the workers','Hire a worker'];
+      } else if (lower.includes('more') || lower.includes('what is') || lower.includes('how does') || lower.includes('explain')) {
+        videoKey = 'more_info';
+        responseText = "A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how. No micromanagement required.";
+        quickRepliesAfter = ['Show me pricing','What signals do you track?','Hire a worker'];
       } else if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
         currentStep++;
         runStep();
+        return;
+      }
+      
+      if (videoKey && CHAT_VIDEOS[videoKey]) {
+        await speak(responseText, videoKey, true);
+        showQuickReplies(quickRepliesAfter);
       } else {
         // Natural conversation via concierge API
         try {
