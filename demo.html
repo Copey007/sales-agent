@@ -368,10 +368,9 @@
     startBlinking();
 
     function googleTTSUrl(text) {
-      // Google Translate TTS — natural voice, free, returns MP3
-      // Split into chunks of 200 chars if needed, use first chunk
+      // Use our TTS proxy to bypass CORS — returns audio/mpeg
       const chunk = text.slice(0, 200);
-      return 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent(chunk) + '&tl=en&client=tw-ob';
+      return API + '/api/tts?text=' + encodeURIComponent(chunk) + '&lang=en';
     }
 
     async function speakScript(text) {
