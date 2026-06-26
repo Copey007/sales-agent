@@ -56,7 +56,7 @@ export default async (req, context) => {
 export const config = { path: "/api/avatar-session" };
 
 async function startSession(apiKey, body, corsHeaders) {
-  const avatarId = body.avatar_id || '8175dfc2-785e-4b2d-b8f4-77f8838e3e74'; // Elenora Tech Expert
+  const avatarId = body.avatar_id || '8175dfc2-7858-49d6-b5fa-0c135d1c4bad'; // Elenora Tech Expert
   
   // Step 1: Create session token
   const tokenBody = JSON.stringify({
