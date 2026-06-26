@@ -13,259 +13,228 @@
       --green:#41ff9f; --green-dim:rgba(65,255,159,.06);
       --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
       --line:rgba(201,162,39,.15); --line-2:rgba(255,255,255,.06);
-      --blue:#5b9fff; --purple:#b86fff;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column;background:radial-gradient(circle at 30% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
 
-    /* ─── Top bar ─────────────────────────────────────── */
-    .topbar{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
-    .topbar img{height:28px;width:auto}
+    .topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
+    .topbar img{height:26px;width:auto}
     .topbar .spacer{flex:1}
-    .lang-select{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-3);color:var(--soft);font-size:.72rem;font-family:inherit;cursor:pointer}
+    .lang-select{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel-3);color:var(--soft);font-size:.7rem;cursor:pointer}
 
-    /* ─── Main split layout ──────────────────────────── */
     .main{flex:1;display:flex;overflow:hidden}
 
-    /* Left: AI agent video area */
+    /* ─── Agent stage (left) ─────────────────────────── */
     .agent-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;min-width:300px}
-    .agent-frame{width:100%;max-width:480px;aspect-ratio:4/3;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
-    .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.12);border-color:rgba(65,255,159,.3)}
 
-    /* Avatar — lifelike animated portrait */
-    .agent-frame{width:100%;max-width:480px;aspect-ratio:3/4;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);box-shadow:0 0 48px rgba(201,162,39,.10);position:relative;display:flex;align-items:center;justify-content:center}
-    .agent-frame.speaking{box-shadow:0 0 48px rgba(65,255,159,.15);border-color:rgba(65,255,159,.4)}
+    /* Video frame — fills with the portrait, looks like a video call */
+    .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:linear-gradient(180deg,#0d1117,#050508);border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
+    .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
 
-    .agent-portrait{width:100%;height:100%;position:relative;overflow:hidden;border-radius:24px}
-    .agent-portrait img{width:100%;height:100%;object-fit:cover;animation:breathe 4s ease-in-out infinite}
-    .agent-frame.speaking .agent-portrait img{animation:talk 0.3s ease-in-out infinite}
+    .portrait{width:100%;height:100%;position:relative;overflow:hidden}
+    .portrait img{width:100%;height:100%;object-fit:cover;object-position:center top;transition:filter .3s}
 
-    /* Subtle breathing — slow scale + vertical drift */
-    @keyframes breathe{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.015) translateY(-2px)}}
-    /* Talking — faster, slightly larger movement simulating head movement while speaking */
-    @keyframes talk{0%,100%{transform:scale(1.02) translateY(0) rotate(-0.5deg)}25%{transform:scale(1.04) translateY(-2px) rotate(0.5deg)}50%{transform:scale(1.01) translateY(1px) rotate(-0.3deg)}75%{transform:scale(1.03) translateY(-1px) rotate(0.3deg)}}
+    /* Idle — subtle breathing */
+    .video-frame:not(.speaking) .portrait img{animation:breathe 5s ease-in-out infinite}
+    @keyframes breathe{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.01) translateY(-1px)}}
 
-    /* Blinking overlay — subtle dark sweep over the eyes area */
-    .blink-overlay{position:absolute;top:32%;left:50%;width:55%;height:4%;transform:translateX(-50%);background:linear-gradient(180deg,transparent,rgba(10,13,16,.0),rgba(10,13,16,.7),rgba(10,13,16,.0),transparent);opacity:0;pointer-events:none;transition:opacity .08s}
-    .blink-overlay.blink{opacity:1;transition:opacity .05s}
+    /* Speaking — head sways + subtle zoom (simulates live video) */
+    .video-frame.speaking .portrait img{animation:speak-motion 0.6s ease-in-out infinite}
+    @keyframes speak-motion{
+      0%{transform:scale(1.03) translateY(0) rotate(0deg)}
+      25%{transform:scale(1.04) translateY(-2px) rotate(0.3deg)}
+      50%{transform:scale(1.02) translateY(1px) rotate(-0.2deg)}
+      75%{transform:scale(1.035) translateY(-1px) rotate(0.2deg)}
+      100%{transform:scale(1.03) translateY(0) rotate(0deg)}
+    }
 
-    /* Speaking ring — animated glow around the frame */
-    .speak-ring{position:absolute;inset:-2px;border-radius:26px;pointer-events:none;opacity:0;transition:opacity .3s}
-    .agent-frame.speaking .speak-ring{opacity:1}
-    .speak-ring::before{content:'';position:absolute;inset:0;border-radius:26px;border:2px solid var(--green);animation:ring-pulse 1.5s ease-in-out infinite}
-    @keyframes ring-pulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.8;transform:scale(1.01)}}
+    /* Blink overlay — dark line that sweeps over eyes */
+    .blink{position:absolute;top:28%;left:50%;width:50%;height:3%;transform:translateX(-50%);background:linear-gradient(180deg,transparent 0%,rgba(5,5,8,.6) 45%,rgba(5,5,8,.9) 50%,rgba(5,5,8,.6) 55%,transparent 100%);opacity:0;pointer-events:none;transition:opacity .06s}
+    .blink.active{opacity:1}
 
-    /* Audio equalizer bars — show when speaking */
-    .eq-bars{display:flex;gap:3px;align-items:flex-end;height:16px;margin-top:8px;opacity:0;transition:opacity .3s}
-    .agent-frame.speaking ~ .eq-bars,.eq-bars.active{opacity:1}
-    .eq-bars span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq 0.4s ease-in-out infinite}
-    .eq-bars span:nth-child(2){animation-delay:.1s;animation-duration:.35s}
-    .eq-bars span:nth-child(3){animation-delay:.2s;animation-duration:.45s}
-    .eq-bars span:nth-child(4){animation-delay:.05s;animation-duration:.3s}
-    .eq-bars span:nth-child(5){animation-delay:.15s;animation-duration:.4s}
-    @keyframes eq{0%,100%{height:4px}50%{height:16px}}
+    /* Mouth glow — subtle warm glow at mouth position when speaking */
+    .mouth-glow{position:absolute;top:48%;left:50%;width:20%;height:8%;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,200,150,.15),transparent 70%);opacity:0;pointer-events:none;transition:opacity .15s}
+    .video-frame.speaking .mouth-glow{opacity:1;animation:mouth-pulse 0.25s ease-in-out infinite}
+    @keyframes mouth-pulse{0%,100%{transform:translateX(-50%) scaleY(0.8);opacity:.5}50%{transform:translateX(-50%) scaleY(1.2);opacity:1}}
 
-    .agent-label{margin-top:16px;font-size:.95rem;font-weight:700;color:var(--gold-2)}
-    .agent-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px;margin-top:3px}
-    .agent-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
-    @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+    /* Speaking ring */
+    .video-frame.speaking::after{content:'';position:absolute;inset:0;border-radius:20px;box-shadow:inset 0 0 30px rgba(65,255,159,.08);pointer-events:none}
 
-    .agent-caption{margin-top:16px;padding:12px 18px;background:var(--panel-2);border:1px solid var(--line);border-radius:16px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:480px;min-height:48px;text-align:center;transition:opacity .2s}
-    .agent-caption.typing{color:var(--muted)}
+    /* Status bar at bottom of video */
+    .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
+    .video-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:live-pulse 2s infinite}
+    @keyframes live-pulse{0%,100%{opacity:.5}50%{opacity:1}}
+    .video-status .name{font-size:.82rem;font-weight:600;color:var(--text)}
+    .video-status .label{font-size:.68rem;color:var(--green);text-transform:uppercase;letter-spacing:.05em;margin-left:auto}
 
-    /* See a Demo button — appears before the demo starts */
-    .demo-cta{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center}
-    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.95rem;cursor:pointer;transition:transform .2s;box-shadow:0 4px 20px rgba(201,162,39,.3)}
+    /* EQ bars */
+    .eq{display:flex;gap:3px;align-items:flex-end;height:14px;margin-top:10px;opacity:.3;transition:opacity .3s}
+    .eq.active{opacity:1}
+    .eq span{width:3px;height:4px;background:var(--green);border-radius:2px;animation:eq-bounce 0.35s ease-in-out infinite}
+    .eq span:nth-child(2){animation-delay:.08s;animation-duration:.3s}
+    .eq span:nth-child(3){animation-delay:.16s;animation-duration:.42s}
+    .eq span:nth-child(4){animation-delay:.04s;animation-duration:.28s}
+    .eq span:nth-child(5){animation-delay:.12s;animation-duration:.38s}
+    @keyframes eq-bounce{0%,100%{height:3px}50%{height:14px}}
+
+    /* Caption */
+    .caption{margin-top:14px;padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:420px;min-height:44px;text-align:center}
+    .caption.thinking{color:var(--muted)}
+    .caption .dots{animation:think 1.2s infinite}
+    @keyframes think{0%,100%{opacity:.3}50%{opacity:1}}
+
+    /* See a Demo button */
+    .demo-cta{position:absolute;bottom:30px;left:50%;transform:translateX(-50%)}
+    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;transition:transform .2s;box-shadow:0 4px 20px rgba(201,162,39,.3)}
     .see-demo-btn:hover{transform:scale(1.04)}
 
-    /* Right: product showcase + chat */
-    .showcase-panel{width:480px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.4)}
+    /* ─── Right panel ────────────────────────────────── */
+    .right-panel{width:440px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.3)}
+    .progress-dots{display:flex;gap:5px;justify-content:center;padding:8px 0;flex-shrink:0}
+    .pdot{width:5px;height:5px;border-radius:50%;background:var(--line-2);transition:all .3s}
+    .pdot.active{background:var(--gold);width:16px;border-radius:3px}
+    .pdot.done{background:var(--green)}
 
-    /* Product UI mockup area */
-    .showcase{flex:1;overflow-y:auto;padding:20px}
-    .showcase::-webkit-scrollbar{width:4px}
-    .showcase::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+    .showcase{flex:1;overflow-y:auto;padding:16px}
+    .showcase::-webkit-scrollbar{width:3px}
+    .showcase::-webkit-scrollbar-thumb{background:var(--line)}
 
     .mockup{display:none;animation:slideIn .4s ease}
     .mockup.active{display:block}
-    @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+    @keyframes slideIn{from{opacity:0;transform:translateX(15px)}to{opacity:1;transform:translateX(0)}}
+    .mockup-title{font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:600}
 
-    .mockup-title{font-size:.82rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;font-weight:600}
+    .mc-mockup{background:var(--panel-2);border:1px solid var(--line);border-radius:14px;padding:14px}
+    .mc-mockup .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+    .mc-mockup .stat{padding:9px;background:var(--panel-3);border-radius:9px;text-align:center}
+    .mc-mockup .stat .v{font-size:1.1rem;font-weight:800;color:var(--green)}
+    .mc-mockup .stat .l{font-size:.58rem;color:var(--muted);text-transform:uppercase}
+    .mc-mockup .bars{display:flex;gap:3px;height:34px;align-items:flex-end;margin-bottom:6px}
+    .mc-mockup .bar{flex:1;background:linear-gradient(180deg,var(--gold),var(--green));border-radius:3px 3px 0 0;min-height:6px}
+    .mc-mockup .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line-2);font-size:.7rem}
+    .mc-mockup .row .s{color:var(--green);font-weight:600}
 
-    /* Mission Control mockup */
-    .mc-mockup{background:var(--panel-2);border:1px solid var(--line);border-radius:16px;padding:16px}
-    .mc-mockup .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
-    .mc-mockup .stat{padding:10px;background:var(--panel-3);border-radius:10px;text-align:center}
-    .mc-mockup .stat .v{font-size:1.2rem;font-weight:800;color:var(--green)}
-    .mc-mockup .stat .l{font-size:.6rem;color:var(--muted);text-transform:uppercase}
-    .mc-mockup .bars{display:flex;gap:4px;height:40px;align-items:flex-end;margin-bottom:8px}
-    .mc-mockup .bar{flex:1;background:linear-gradient(180deg,var(--gold),var(--green));border-radius:3px 3px 0 0;min-height:8px;animation:growBar .8s ease}
-    @keyframes growBar{from{height:0}}
-    .mc-mockup .table-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line-2);font-size:.72rem}
-    .mc-mockup .table-row .name{color:var(--soft)}
-    .mc-mockup .table-row .status{color:var(--green);font-weight:600}
+    .wm-mockup{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .wm-card{padding:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;gap:8px;align-items:center}
+    .wm-card .av{width:28px;height:28px;border-radius:8px;overflow:hidden;flex-shrink:0}
+    .wm-card .av img{width:100%;height:100%;object-fit:cover}
+    .wm-card .info .n{font-size:.72rem;font-weight:600}
+    .wm-card .info .t{font-size:.62rem;color:var(--gold-2)}
 
-    /* Worker marketplace mockup */
-    .wm-mockup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .wm-card{padding:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;display:flex;gap:10px;align-items:center}
-    .wm-card .av{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:1rem;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
-    .wm-card .info .n{font-size:.78rem;font-weight:600}
-    .wm-card .info .t{font-size:.66rem;color:var(--gold-2)}
+    .es-mockup{display:flex;flex-direction:column;gap:7px}
+    .es-step{padding:9px 11px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;display:flex;gap:9px;align-items:center}
+    .es-step .num{width:22px;height:22px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--line);display:grid;place-items:center;font-size:.62rem;font-weight:700;color:var(--gold-2);flex-shrink:0}
+    .es-step .desc{font-size:.72rem;color:var(--soft)}
+    .es-step .meta{font-size:.58rem;color:var(--muted);margin-left:auto}
 
-    /* Email sequence mockup */
-    .es-mockup{display:flex;flex-direction:column;gap:8px}
-    .es-step{padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;gap:10px;align-items:center}
-    .es-step .num{width:24px;height:24px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--line);display:grid;place-items:center;font-size:.68rem;font-weight:700;color:var(--gold-2);flex-shrink:0}
-    .es-step .desc{font-size:.76rem;color:var(--soft)}
-    .es-step .meta{font-size:.62rem;color:var(--muted);margin-left:auto}
-
-    /* Chat input */
-    .chat-bar{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);flex-shrink:0}
-    .chat-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.85rem;outline:none;transition:border-color .2s}
-    .chat-bar input:focus{border-color:var(--gold)}
-    .chat-bar input::placeholder{color:var(--muted)}
-    .chat-bar button{padding:10px 16px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
-    .chat-bar button:hover{transform:scale(1.03)}
-    .chat-bar button:disabled{opacity:.4;cursor:wait}
-
-    /* Quick replies */
-    .quick-replies{display:flex;gap:6px;padding:0 16px 8px;flex-wrap:wrap;flex-shrink:0}
-    .qr{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
+    /* ─── Chat + input bar ───────────────────────────── */
+    .quick-replies{display:flex;gap:5px;padding:0 14px 6px;flex-wrap:wrap;flex-shrink:0}
+    .qr{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.7rem;cursor:pointer;transition:all .15s}
     .qr:hover{border-color:var(--gold);color:var(--gold-2);background:var(--gold-dim)}
 
-    /* Progress dots */
-    .progress-dots{display:flex;gap:6px;justify-content:center;padding:8px 0;flex-shrink:0}
-    .pdot{width:6px;height:6px;border-radius:50%;background:var(--line-2);transition:all .3s}
-    .pdot.active{background:var(--gold);width:20px;border-radius:3px}
-    .pdot.done{background:var(--green)}
+    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);flex-shrink:0;align-items:center}
+    .input-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.84rem;outline:none;transition:border-color .2s}
+    .input-bar input:focus{border-color:var(--gold)}
+    .input-bar input::placeholder{color:var(--muted)}
+    .mic-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:var(--panel-3);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1rem;transition:all .2s;flex-shrink:0}
+    .mic-btn:hover{border-color:var(--gold);color:var(--gold-2)}
+    .mic-btn.listening{background:var(--red,#ff5c7a);border-color:var(--red,#ff5c7a);color:#fff;animation:mic-pulse 1s infinite}
+    @keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.3)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
+    .send-btn{width:40px;height:40px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;transition:transform .15s;flex-shrink:0}
+    .send-btn:hover{transform:scale(1.05)}
+    .send-btn:disabled{opacity:.4;cursor:wait}
 
-    /* Bottom CTA bar */
-    .cta-bar{padding:12px 16px;border-top:1px solid var(--line);background:rgba(5,5,8,.7);display:flex;gap:8px;flex-shrink:0}
+    .cta-bar{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px;flex-shrink:0}
     .cta-bar a{flex:1}
-    .cta-bar button{width:100%;padding:10px;border:0;border-radius:12px;font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
-    .cta-bar button:hover{transform:scale(1.01)}
+    .cta-bar button{width:100%;padding:9px;border:0;border-radius:10px;font-weight:700;font-size:.78rem;cursor:pointer}
     .cta-bar .primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
     .cta-bar .secondary{background:var(--panel-3);color:var(--soft);border:1px solid var(--line)}
 
-    /* Embed badge */
-    .embed-badge{position:fixed;bottom:8px;right:12px;font-size:.62rem;color:var(--muted);background:rgba(5,5,8,.6);padding:4px 10px;border-radius:6px;border:1px solid var(--line-2);z-index:50}
+    .embed-badge{position:fixed;bottom:6px;right:10px;font-size:.58rem;color:var(--muted);background:rgba(5,5,8,.6);padding:3px 8px;border-radius:5px;z-index:50}
 
-    @media(max-width:900px){
-      .main{flex-direction:column}
-      .showcase-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}
-      .agent-stage{padding:12px}
-      .agent-frame{max-width:300px}
-    }
+    @media(max-width:860px){.main{flex-direction:column}.right-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}}
   </style>
 </head>
 <body>
-  <!-- Top bar with logo + language -->
   <div class="topbar">
     <img src="assets/agent-logo.svg" alt="A-Gent" />
     <div class="spacer"></div>
-    <select class="lang-select" id="langSelect">
-      <option value="en">EN</option>
-      <option value="es">ES</option>
-      <option value="fr">FR</option>
-      <option value="de">DE</option>
-    </select>
+    <select class="lang-select" id="langSelect"><option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option></select>
   </div>
 
   <div class="main">
-    <!-- Left: AI Agent stage -->
+    <!-- Agent video stage -->
     <div class="agent-stage">
-      <div class="agent-frame" id="agentFrame">
-        <div class="speak-ring"></div>
-        <div class="agent-portrait">
-          <img src="assets/demo-agent.png" alt="A-Gent Demo Agent" />
-          <div class="blink-overlay" id="blinkOverlay"></div>
+      <div class="video-frame" id="videoFrame">
+        <div class="portrait">
+          <img src="assets/demo-agent.png" alt="A-Gent Demo Agent" id="portraitImg" />
+          <div class="blink" id="blink"></div>
+          <div class="mouth-glow"></div>
+        </div>
+        <div class="video-status">
+          <div class="dot"></div>
+          <div class="name">A-Gent Demo Agent</div>
+          <div class="label" id="statusLabel">LIVE</div>
         </div>
       </div>
-      <div class="eq-bars" id="eqBars"><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="agent-label" id="agentLabel">A-Gent Demo Agent</div>
-      <div class="agent-status">Online · Ready to demo</div>
-      <div class="agent-caption" id="caption">Click "See a Demo" to start your interactive walkthrough</div>
-
+      <div class="eq" id="eq"><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="caption" id="caption">Click "See a Demo" to start your interactive walkthrough</div>
       <div class="demo-cta" id="demoCta">
         <button class="see-demo-btn" id="startBtn" onclick="startDemo()">▶ See a Demo</button>
       </div>
     </div>
 
-    <!-- Right: Product showcase + chat -->
-    <div class="showcase-panel">
+    <!-- Right panel -->
+    <div class="right-panel">
       <div class="progress-dots" id="progressDots"></div>
       <div class="showcase" id="showcase">
-        <!-- Mockup 1: Welcome -->
         <div class="mockup active" id="mockup-welcome">
           <div class="mockup-title">Welcome to A-Gent</div>
-          <div style="padding:20px;text-align:center">
-            <div style="font-size:3rem;margin-bottom:12px">🚀</div>
-            <div style="font-size:.95rem;color:var(--text);font-weight:600;margin-bottom:8px">Autonomous AI Sales Workforce</div>
-            <div style="font-size:.82rem;color:var(--soft);line-height:1.6">AI workers that detect buying signals, run outbound sequences, and manage your pipeline — 24/7.</div>
+          <div style="padding:16px;text-align:center">
+            <div style="font-size:2.5rem;margin-bottom:10px">🚀</div>
+            <div style="font-size:.9rem;color:var(--text);font-weight:600;margin-bottom:6px">Autonomous AI Sales Workforce</div>
+            <div style="font-size:.8rem;color:var(--soft);line-height:1.5">AI workers that detect buying signals, run outbound sequences, and manage your pipeline — 24/7.</div>
           </div>
         </div>
-
-        <!-- Mockup 2: Mission Control -->
         <div class="mockup" id="mockup-mission">
-          <div class="mockup-title">📊 Mission Control Dashboard</div>
+          <div class="mockup-title">📊 Mission Control</div>
           <div class="mc-mockup">
-            <div class="grid">
-              <div class="stat"><div class="v">100</div><div class="l">Contacts</div></div>
-              <div class="stat"><div class="v">154</div><div class="l">Sent</div></div>
-              <div class="stat"><div class="v">454</div><div class="l">Queued</div></div>
-            </div>
-            <div class="bars">
-              <div class="bar" style="height:60%"></div>
-              <div class="bar" style="height:80%"></div>
-              <div class="bar" style="height:45%"></div>
-              <div class="bar" style="height:90%"></div>
-              <div class="bar" style="height:70%"></div>
-              <div class="bar" style="height:55%"></div>
-              <div class="bar" style="height:85%"></div>
-            </div>
-            <div class="table-row"><span class="name">SalesNexus — Craig Klein</span><span class="status">ACTIVE</span></div>
-            <div class="table-row"><span class="name">Authentise — Andre Wegner</span><span class="status">ACTIVE</span></div>
-            <div class="table-row"><span class="name">StratusLIVE — Jim Funari</span><span class="status">ACTIVE</span></div>
+            <div class="grid"><div class="stat"><div class="v">100</div><div class="l">Contacts</div></div><div class="stat"><div class="v">154</div><div class="l">Sent</div></div><div class="stat"><div class="v">454</div><div class="l">Queued</div></div></div>
+            <div class="bars"><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:90%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:85%"></div></div>
+            <div class="row"><span>SalesNexus — Craig Klein</span><span class="s">ACTIVE</span></div>
+            <div class="row"><span>Authentise — Andre Wegner</span><span class="s">ACTIVE</span></div>
+            <div class="row"><span>StratusLIVE — Jim Funari</span><span class="s">ACTIVE</span></div>
           </div>
         </div>
-
-        <!-- Mockup 3: Worker Marketplace -->
         <div class="mockup" id="mockup-workers">
-          <div class="mockup-title">👥 Hire Your AI Workforce</div>
+          <div class="mockup-title">👥 AI Workforce</div>
           <div class="wm-mockup">
-            <div class="wm-card"><div class="av">🔬</div><div class="info"><div class="n">Sarah Chen</div><div class="t">Sales Researcher</div></div></div>
-            <div class="wm-card"><div class="av">✉️</div><div class="info"><div class="n">James Calloway</div><div class="t">Sales Dev Rep</div></div></div>
-            <div class="wm-card"><div class="av">⚙️</div><div class="info"><div class="n">Priya Sharma</div><div class="t">RevOps Manager</div></div></div>
-            <div class="wm-card"><div class="av">🎧</div><div class="info"><div class="n">Maria Rodriguez</div><div class="t">Support Specialist</div></div></div>
-            <div class="wm-card"><div class="av">🎯</div><div class="info"><div class="n">David Okafor</div><div class="t">Success Manager</div></div></div>
-            <div class="wm-card"><div class="av">📱</div><div class="info"><div class="n">Emma Williams</div><div class="t">Social Media</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/sarah.png"/></div><div class="info"><div class="n">Sarah Chen</div><div class="t">Researcher</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/james.png"/></div><div class="info"><div class="n">James Calloway</div><div class="t">SDR</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/priya.png"/></div><div class="info"><div class="n">Priya Sharma</div><div class="t">RevOps</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/maria.png"/></div><div class="info"><div class="n">Maria Rodriguez</div><div class="t">Support</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/david.png"/></div><div class="info"><div class="n">David Okafor</div><div class="t">Success</div></div></div>
+            <div class="wm-card"><div class="av"><img src="assets/emma.png"/></div><div class="info"><div class="n">Emma Williams</div><div class="t">Social</div></div></div>
           </div>
         </div>
-
-        <!-- Mockup 4: Email Sequence -->
         <div class="mockup" id="mockup-sequence">
-          <div class="mockup-title">✉️ Autonomous Outbound Sequences</div>
+          <div class="mockup-title">✉️ Outbound Sequences</div>
           <div class="es-mockup">
-            <div class="es-step"><div class="num">1</div><div class="desc">Signal-driven opening — references their buying signal</div><div class="meta">Day 0</div></div>
-            <div class="es-step"><div class="num">2</div><div class="desc">Follow-up — new angle, different signal</div><div class="meta">Day 3</div></div>
-            <div class="es-step"><div class="num">3</div><div class="desc">Value-add — insight or resource</div><div class="meta">Day 7</div></div>
+            <div class="es-step"><div class="num">1</div><div class="desc">Signal-driven opening</div><div class="meta">Day 0</div></div>
+            <div class="es-step"><div class="num">2</div><div class="desc">Follow-up — new angle</div><div class="meta">Day 3</div></div>
+            <div class="es-step"><div class="num">3</div><div class="desc">Value-add — insight</div><div class="meta">Day 7</div></div>
             <div class="es-step"><div class="num">4</div><div class="desc">Social proof — case study</div><div class="meta">Day 12</div></div>
-            <div class="es-step"><div class="num">5</div><div class="desc">Break-up — final value with CTA</div><div class="meta">Day 18</div></div>
+            <div class="es-step"><div class="num">5</div><div class="desc">Break-up — final CTA</div><div class="meta">Day 18</div></div>
           </div>
         </div>
       </div>
-
-      <!-- Quick replies -->
       <div class="quick-replies" id="quickReplies"></div>
-
-      <!-- Chat bar -->
-      <div class="chat-bar">
-        <input type="text" id="chatInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendChat()" />
-        <button id="sendBtn" onclick="sendChat()">Send</button>
+      <div class="input-bar">
+        <button class="mic-btn" id="micBtn" onclick="toggleMic()" title="Speak">🎤</button>
+        <input type="text" id="chatInput" placeholder="Type or speak..." onkeydown="if(event.key==='Enter')sendChat()" />
+        <button class="send-btn" id="sendBtn" onclick="sendChat()">↑</button>
       </div>
-
-      <!-- CTA bar -->
       <div class="cta-bar" id="ctaBar" style="display:none">
         <a href="https://aisdr.a-gent.co/workers.html" target="_blank"><button class="primary">🚀 Hire Workers</button></a>
         <a href="https://missioncontrol.a-gent.co" target="_blank"><button class="secondary">📊 Mission Control</button></a>
@@ -273,55 +242,61 @@
     </div>
   </div>
 
-  <div class="embed-badge">Powered by A-Gent · Embeddable</div>
+  <div class="embed-badge">Powered by A-Gent</div>
 
   <script>
-    const API = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
+    const API = window.location.origin;
+    const TTS_URL = API + '/api/tts';
     const CONCIERGE_URL = API + '/api/concierge';
 
     let demoStarted = false;
     let currentStep = 0;
     let chatMessages = [];
     let isSpeaking = false;
+    let audioCtx = null;
 
     const STEPS = [
-      {
-        mockup: 'mockup-welcome',
-        script: "Hi! I'm the A-Gent demo agent. I'll walk you through how our autonomous AI sales workforce can transform your pipeline. Let's start with the dashboard.",
-        quickReplies: ['Tell me more', 'Skip to pricing', 'How does prospecting work?']
-      },
-      {
-        mockup: 'mockup-mission',
-        script: "This is Mission Control — your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.",
-        quickReplies: ['How are emails written?', 'What about the AI workers?', 'Show me pricing']
-      },
-      {
-        mockup: 'mockup-workers',
-        script: "These are your AI workers. Each one has a real identity — Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees, with an onboarding flow.",
-        quickReplies: ['Can I hire one now?', 'How much does it cost?', 'What tools do they use?']
-      },
-      {
-        mockup: 'mockup-sequence',
-        script: "Here's how outbound works — a 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA. No generic templates.",
-        quickReplies: ['What signals do you track?', 'Show me pricing', 'Talk to someone']
-      }
+      { mockup:'mockup-welcome', script:"Hi! I'm the A-Gent demo agent. I'll walk you through how our autonomous AI sales workforce can transform your pipeline. Let's start with the dashboard.", quickReplies:['Tell me more','Skip to pricing','How does prospecting work?'] },
+      { mockup:'mockup-mission', script:"This is Mission Control — your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.", quickReplies:['How are emails written?','What about the AI workers?','Show me pricing'] },
+      { mockup:'mockup-workers', script:"These are your AI workers. Each one has a real identity — Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees, with an onboarding flow.", quickReplies:['Can I hire one now?','How much does it cost?','What tools do they use?'] },
+      { mockup:'mockup-sequence', script:"Here's how outbound works — a 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA. No generic templates.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
     ];
 
-    // ─── Demo flow ─────────────────────────────────────────────
+    // ─── Blinking (natural, random intervals) ─────────────────
+    function startBlinking() {
+      const blink = document.getElementById('blink');
+      function doBlink() {
+        blink.classList.add('active');
+        setTimeout(() => blink.classList.remove('active'), 100);
+        // Sometimes double-blink
+        if (Math.random() < 0.15) {
+          setTimeout(() => { blink.classList.add('active'); setTimeout(() => blink.classList.remove('active'), 100); }, 250);
+        }
+        setTimeout(doBlink, 2500 + Math.random() * 3000);
+      }
+      doBlink();
+    }
+    startBlinking();
+
+    // ─── Audio unlock (must be in click handler) ──────────────
+    function unlockAudio() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        // Play a tiny silent buffer to unlock
+        const buf = audioCtx.createBuffer(1, 1, 22050);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+      } catch(e) {}
+    }
+
+    // ─── Start demo ───────────────────────────────────────────
     function startDemo() {
       if (demoStarted) return;
       demoStarted = true;
-
-      // Unlock audio playback — must happen directly in the click handler
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (ctx.state === 'suspended') ctx.resume();
-        // Play a silent sound to unlock audio
-        const silence = ctx.createBufferSource();
-        silence.connect(ctx.destination);
-        silence.start();
-      } catch(e) {}
-
+      unlockAudio();
       document.getElementById('demoCta').style.display = 'none';
       document.getElementById('ctaBar').style.display = 'flex';
       currentStep = 0;
@@ -329,114 +304,89 @@
     }
 
     async function runStep() {
-      if (currentStep >= STEPS.length) {
-        showFinalCTA();
-        return;
-      }
-
+      if (currentStep >= STEPS.length) { showFinalCTA(); return; }
       const step = STEPS[currentStep];
       updateProgress();
       showMockup(step.mockup);
       showQuickReplies(step.quickReplies);
-
-      // Agent speaks the script
-      await speakScript(step.script);
-    }
-
-    function nextStep() {
-      currentStep++;
-      runStep();
+      await speak(step.script);
+      // Auto-advance after speaking, unless user is typing
+      if (!chatMessages.length || currentStep === 0) {
+        setTimeout(() => { if (!isSpeaking && demoStarted) { currentStep++; runStep(); } }, 2000);
+      }
     }
 
     function showFinalCTA() {
       updateProgress();
-      showMockup('mockup-welcome');
-      document.getElementById('mockup-welcome').innerHTML = `
-        <div class="mockup-title">Ready to get started?</div>
-        <div style="padding:30px 20px;text-align:center">
-          <div style="font-size:2.5rem;margin-bottom:12px">🎉</div>
-          <div style="font-size:1rem;color:var(--text);font-weight:700;margin-bottom:8px">Deploy your first AI worker in under 5 minutes</div>
-          <div style="font-size:.82rem;color:var(--soft);margin-bottom:20px">No credit card required. Set a goal, they figure out the how.</div>
-        </div>
-      `;
+      document.getElementById('showcase').innerHTML = `
+        <div class="mockup active">
+          <div class="mockup-title">Ready to get started?</div>
+          <div style="padding:24px 16px;text-align:center">
+            <div style="font-size:2.2rem;margin-bottom:10px">🎉</div>
+            <div style="font-size:.95rem;color:var(--text);font-weight:700;margin-bottom:6px">Deploy your first AI worker in under 5 minutes</div>
+            <div style="font-size:.8rem;color:var(--soft)">No credit card required. Set a goal, they figure out the how.</div>
+          </div>
+        </div>`;
       showQuickReplies([]);
-      speakScript("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control to see live campaigns. What would you like to do?");
+      speak("That's the A-Gent platform! You can hire your first AI worker right now, or explore Mission Control. What would you like to do?");
     }
 
-    // ─── Agent speaking (Google TTS + lifelike animation) ──────
-    // Uses Google Translate TTS — free, natural voice, returns MP3
-    // Chunks text at 200 chars to avoid URL length limits
-
-    let blinkInterval = null;
-    function startBlinking() {
-      const overlay = document.getElementById('blinkOverlay');
-      if (!overlay) return;
-      blinkInterval = setInterval(() => {
-        overlay.classList.add('blink');
-        setTimeout(() => overlay.classList.remove('blink'), 120);
-      }, 3000 + Math.random() * 2000); // blink every 3-5 seconds
-    }
-    startBlinking();
-
-    function googleTTSUrl(text) {
-      // Use our TTS proxy to bypass CORS — returns audio/mpeg
-      const chunk = text.slice(0, 200);
-      return API + '/api/tts?text=' + encodeURIComponent(chunk) + '&lang=en';
-    }
-
-    async function speakScript(text) {
+    // ─── Speaking (neural TTS + lifelike animation) ───────────
+    async function speak(text) {
       const caption = document.getElementById('caption');
-      const frame = document.getElementById('agentFrame');
-      const eqBars = document.getElementById('eqBars');
+      const frame = document.getElementById('videoFrame');
+      const eq = document.getElementById('eq');
+      const statusLabel = document.getElementById('statusLabel');
 
-      // Phase 1: Thinking (dots animation)
-      caption.className = 'agent-caption typing';
-      caption.textContent = '● ● ●';
+      // Phase 1: Thinking
+      caption.className = 'caption thinking';
+      caption.innerHTML = '<span class="dots">● ● ●</span>';
       frame.classList.remove('speaking');
-      eqBars.classList.remove('active');
+      eq.classList.remove('active');
+      statusLabel.textContent = 'THINKING';
 
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 900));
 
-      // Phase 2: Show text + start speaking
-      caption.className = 'agent-caption';
+      // Phase 2: Show text + speak
+      caption.className = 'caption';
       caption.textContent = text;
-
-      // Start speaking animation
       frame.classList.add('speaking');
-      eqBars.classList.add('active');
+      eq.classList.add('active');
+      statusLabel.textContent = 'SPEAKING';
       isSpeaking = true;
 
-      // Play audio via our TTS proxy
-      let audioPlayed = false;
+      // Play neural TTS audio via our proxy
       try {
-        const audioUrl = googleTTSUrl(text);
-        const audio = new Audio(audioUrl);
-
+        const audio = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
+        
         await new Promise((resolve) => {
-          audio.onended = () => { audioPlayed = true; resolve(); };
-          audio.onerror = resolve;
+          let resolved = false;
+          const done = () => { if (!resolved) { resolved = true; resolve(); } };
+          
+          audio.onended = done;
+          audio.onerror = done;
           audio.play().then(() => {
-            // Audio is playing — keep animation going until it ends
+            // Audio is playing — wait for it
           }).catch(() => {
-            // Autoplay blocked — keep animation for a timed duration
-            setTimeout(resolve, Math.min(text.length * 60, 8000));
+            // Autoplay blocked — timed fallback
+            setTimeout(done, Math.min(text.length * 55, 8000));
           });
-
-          // Safety timeout — don't block forever
-          setTimeout(resolve, 20000);
+          
+          // Safety timeout
+          setTimeout(done, 20000);
         });
       } catch(e) {
-        // Fallback — keep animation for a bit
-        await new Promise(r => setTimeout(r, Math.min(text.length * 60, 6000)));
+        await new Promise(r => setTimeout(r, Math.min(text.length * 55, 6000)));
       }
 
-      // Phase 3: Stop speaking
+      // Phase 3: Done speaking
       frame.classList.remove('speaking');
-      eqBars.classList.remove('active');
+      eq.classList.remove('active');
+      statusLabel.textContent = 'LIVE';
       isSpeaking = false;
     }
 
-    // ─── UI helpers ────────────────────────────────────────────
+    // ─── UI helpers ───────────────────────────────────────────
     function showMockup(id) {
       document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
       const el = document.getElementById(id);
@@ -444,26 +394,22 @@
     }
 
     function showQuickReplies(replies) {
-      const container = document.getElementById('quickReplies');
-      container.innerHTML = '';
+      const c = document.getElementById('quickReplies');
+      c.innerHTML = '';
       replies.forEach(text => {
-        const btn = document.createElement('button');
-        btn.className = 'qr';
-        btn.textContent = text;
-        btn.onclick = () => {
-          document.getElementById('chatInput').value = text;
-          sendChat();
-        };
-        container.appendChild(btn);
+        const b = document.createElement('button');
+        b.className = 'qr';
+        b.textContent = text;
+        b.onclick = () => { document.getElementById('chatInput').value = text; sendChat(); };
+        c.appendChild(b);
       });
     }
 
     function updateProgress() {
-      const dots = document.getElementById('progressDots');
-      const total = STEPS.length + 1; // +1 for final CTA
-      dots.innerHTML = Array.from({length: total}, (_, i) => {
-        if (i < currentStep) return '<div class="pdot done"></div>';
-        if (i === currentStep) return '<div class="pdot active"></div>';
+      const total = STEPS.length + 1;
+      document.getElementById('progressDots').innerHTML = Array.from({length:total},(_,i)=>{
+        if(i<currentStep) return '<div class="pdot done"></div>';
+        if(i===currentStep) return '<div class="pdot active"></div>';
         return '<div class="pdot"></div>';
       }).join('');
     }
@@ -472,49 +418,88 @@
     async function sendChat() {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
-      if (!text) return;
+      if (!text || isSpeaking) return;
       input.value = '';
       document.getElementById('sendBtn').disabled = true;
 
       chatMessages.push({ role: 'user', content: text });
 
-      // Check for navigation commands
       const lower = text.toLowerCase();
-      if (lower.includes('pricing') || lower.includes('cost') || lower.includes('price')) {
-        await speakScript("We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?");
-        showQuickReplies(['Yes, contact me', 'Show me the workers', 'Keep exploring']);
-      } else if (lower.includes('hire') || lower.includes('start') || lower.includes('sign up')) {
-        await speakScript("You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.");
-        showQuickReplies(['Open marketplace', 'Show me the dashboard', 'Talk to someone']);
-      } else if (lower.includes('skip') || lower.includes('next')) {
-        nextStep();
-      } else if (lower.includes('contact') || lower.includes('human') || lower.includes('someone') || lower.includes('talk to')) {
-        await speakScript("I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!");
-        showQuickReplies(['Hire a worker', 'Show dashboard', 'Back to demo']);
+      if (lower.includes('pricing') || lower.includes('cost') || lower.includes('price') || lower.includes('how much')) {
+        await speak("We're in early access and working with founding partners on custom pricing. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like to talk to our team about a specific quote?");
+        showQuickReplies(['Yes, contact me','Show me the workers','Keep exploring']);
+      } else if (lower.includes('hire') || lower.includes('start') || lower.includes('sign up') || lower.includes('begin')) {
+        await speak("You can hire your first AI worker right now! Click 'Hire Workers' below to browse our marketplace and onboard a worker in under 5 minutes.");
+        showQuickReplies(['Open marketplace','Show dashboard','Talk to someone']);
+      } else if (lower.includes('contact') || lower.includes('human') || lower.includes('someone') || lower.includes('talk to') || lower.includes('email')) {
+        await speak("I'd love to connect you with our team. Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!");
+        showQuickReplies(['Hire a worker','Show dashboard','Back to demo']);
+      } else if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
+        currentStep++;
+        runStep();
       } else {
-        // Send to concierge API for natural conversation
+        // Natural conversation via concierge API
         try {
           const res = await fetch(CONCIERGE_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'chat',
-              messages: chatMessages,
-              speak: true
-            })
+            body: JSON.stringify({ action: 'chat', messages: chatMessages, speak: false })
           });
           const data = await res.json();
           if (data.reply) {
-            await speakScript(data.reply);
+            await speak(data.reply);
             chatMessages.push({ role: 'bot', content: data.reply });
           }
         } catch(e) {
-          await speakScript("I'm having trouble connecting right now. Please try again or email mark@a-gent.co");
+          await speak("I'm having trouble connecting right now. Please try again.");
         }
       }
 
       document.getElementById('sendBtn').disabled = false;
       document.getElementById('chatInput').focus();
+    }
+
+    // ─── Speech-to-text (microphone input) ────────────────────
+    let recognition = null;
+    let isListening = false;
+
+    function toggleMic() {
+      if (isListening) {
+        recognition?.stop();
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert('Voice input not supported. Use Chrome or Edge.');
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      const micBtn = document.getElementById('micBtn');
+      micBtn.classList.add('listening');
+      isListening = true;
+
+      recognition.onresult = (event) => {
+        const text = event.results[0][0].transcript;
+        document.getElementById('chatInput').value = text;
+        sendChat();
+      };
+
+      recognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+      };
+
+      recognition.onend = () => {
+        micBtn.classList.remove('listening');
+        isListening = false;
+      };
+
+      recognition.start();
     }
 
     // Init

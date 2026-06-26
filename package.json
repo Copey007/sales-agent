@@ -19,6 +19,8 @@
   "license": "MIT",
   "dependencies": {
     "@netlify/blobs": "^10.7.9",
+    "edge-tts": "^1.0.1",
+    "msedge-tts": "^2.0.6",
     "resend": "^6.12.4"
   }
 }
