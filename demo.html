@@ -139,10 +139,8 @@
             frame.classList.remove('speaking');
             status.textContent = 'LIVE';
             busy = false;
-            // Loop silently as idle
-            video.muted = true;
-            video.loop = true;
-            video.play().catch(() => {});
+            // Pause on last frame — no looping
+            video.pause();
             resolve();
           };
 
