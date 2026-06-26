@@ -136,34 +136,15 @@
         </div>
         <div class="mockup" id="mockup-mission">
           <div class="mockup-title">📊 Mission Control</div>
-          <div class="mc-mockup">
-            <div class="grid"><div class="stat"><div class="v">100</div><div class="l">Contacts</div></div><div class="stat"><div class="v">154</div><div class="l">Sent</div></div><div class="stat"><div class="v">454</div><div class="l">Queued</div></div></div>
-            <div class="bars"><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:90%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:85%"></div></div>
-            <div class="row"><span>SalesNexus — Craig Klein</span><span class="s">ACTIVE</span></div>
-            <div class="row"><span>Authentise — Andre Wegner</span><span class="s">ACTIVE</span></div>
-            <div class="row"><span>StratusLIVE — Jim Funari</span><span class="s">ACTIVE</span></div>
-          </div>
+          <img src="assets/screenshot-mission-control.png" alt="Mission Control Dashboard" style="width:100%;border-radius:12px;border:1px solid var(--line)" />
         </div>
         <div class="mockup" id="mockup-workers">
           <div class="mockup-title">👥 AI Workforce</div>
-          <div class="wm-mockup">
-            <div class="wm-card"><div class="av"><img src="assets/sarah.png"/></div><div class="info"><div class="n">Sarah Chen</div><div class="t">Researcher</div></div></div>
-            <div class="wm-card"><div class="av"><img src="assets/james.png"/></div><div class="info"><div class="n">James Calloway</div><div class="t">SDR</div></div></div>
-            <div class="wm-card"><div class="av"><img src="assets/priya.png"/></div><div class="info"><div class="n">Priya Sharma</div><div class="t">RevOps</div></div></div>
-            <div class="wm-card"><div class="av"><img src="assets/maria.png"/></div><div class="info"><div class="n">Maria Rodriguez</div><div class="t">Support</div></div></div>
-            <div class="wm-card"><div class="av"><img src="assets/david.png"/></div><div class="info"><div class="n">David Okafor</div><div class="t">Success</div></div></div>
-            <div class="wm-card"><div class="av"><img src="assets/emma.png"/></div><div class="info"><div class="n">Emma Williams</div><div class="t">Social</div></div></div>
-          </div>
+          <img src="assets/screenshot-workers.png" alt="Worker Marketplace" style="width:100%;border-radius:12px;border:1px solid var(--line)" />
         </div>
-        <div class="mockup" id="mockup-sequence">
-          <div class="mockup-title">✉️ Outbound Sequences</div>
-          <div class="es-mockup">
-            <div class="es-step"><div class="num">1</div><div class="desc">Signal-driven opening</div><div class="meta">Day 0</div></div>
-            <div class="es-step"><div class="num">2</div><div class="desc">Follow-up — new angle</div><div class="meta">Day 3</div></div>
-            <div class="es-step"><div class="num">3</div><div class="desc">Value-add — insight</div><div class="meta">Day 7</div></div>
-            <div class="es-step"><div class="num">4</div><div class="desc">Social proof — case study</div><div class="meta">Day 12</div></div>
-            <div class="es-step"><div class="num">5</div><div class="desc">Break-up — final CTA</div><div class="meta">Day 18</div></div>
-          </div>
+        <div class="mockup" id="mockup-concierge">
+          <div class="mockup-title">💬 Concierge Widget</div>
+          <img src="assets/screenshot-concierge.png" alt="Concierge Chat" style="width:100%;border-radius:12px;border:1px solid var(--line)" />
         </div>
       </div>
       <div class="quick-replies" id="quickReplies"></div>
@@ -197,10 +178,9 @@
     let keepAliveInterval = null;
 
     const STEPS = [
-      { mockup:'mockup-welcome', script:"Hi! I'm the A-Gent demo agent. I'll walk you through how our autonomous AI sales workforce can transform your pipeline. Let's start with the dashboard.", quickReplies:['Tell me more','Skip to pricing','How does prospecting work?'] },
-      { mockup:'mockup-mission', script:"This is Mission Control, your command center. You can see live campaign metrics: 100 contacts, 154 emails sent, 454 queued. The system runs 24/7 without you touching it.", quickReplies:['How are emails written?','What about the AI workers?','Show me pricing'] },
-      { mockup:'mockup-workers', script:"These are your AI workers. Each one has a real identity. Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees.", quickReplies:['Can I hire one now?','How much does it cost?','What tools do they use?'] },
-      { mockup:'mockup-sequence', script:"Here is how outbound works. A 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
+      { mockup:'mockup-mission', script:"This is Mission Control, your command center. You can see live campaign metrics, agent status, and heartbeat summaries — all running autonomously 24/7.", quickReplies:['Show me the workers','How much does it cost?','What about the concierge?'] },
+      { mockup:'mockup-workers', script:"These are your AI workers. Each one has a real identity. Sarah finds prospects, James writes emails, Priya manages the queue. You hire them just like employees.", quickReplies:['Show me the concierge','How much does it cost?','Talk to someone'] },
+      { mockup:'mockup-concierge', script:"And this is the Concierge — an inbound widget that greets visitors, qualifies leads, and captures emails for your CRM. It's voice-enabled and embeddable on any website.", quickReplies:['Show me pricing','How do I get started?','Talk to someone'] }
     ];
 
     const GREETING = "Welcome to A-Gent! How can I help you today?";
@@ -518,6 +498,9 @@
       if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
         currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return;
       }
+      if (lower.match(/dashboard|mission control/)) showMockup('mockup-mission');
+      else if (lower.match(/worker|agent|team/)) showMockup('mockup-workers');
+      else if (lower.match(/concierge|chat|widget/)) showMockup('mockup-concierge');
 
       // Natural conversation via concierge API
       try {
@@ -555,7 +538,7 @@
     }
 
     // ─── Fallback to video mode (pre-recorded HeyGen videos WITH audio) ────
-    function fallbackToVideoMode() {
+    async function fallbackToVideoMode() {
       const video = document.getElementById('avatarVideo');
       video.src = 'assets/demo-step1.mp4';
       video.muted = false; video.loop = false;
@@ -613,19 +596,21 @@
         chatMessages.push({ role: 'user', content: text });
         const lower = text.toLowerCase();
         
-        let vkey = null, vtext = null, vreplies = [];
+        let vkey = null, vtext = null, vreplies = [], vmockup = null;
         if (lower.match(/pric|cost|how much/)) { vkey='pricing'; vtext="We're in early access. Most setups start at a fraction of what a single SDR would cost."; vreplies=['Yes, contact me','Show me the workers','Keep exploring']; }
         else if (lower.match(/hire|start|sign up|begin/)) { vkey='hire'; vtext="You can hire your first AI worker right now!"; vreplies=['Open marketplace','Show dashboard','Talk to someone']; }
         else if (lower.match(/contact|human|someone|talk to|email/)) { vkey='contact'; vtext="Email mark@a-gent.co and we'll get back to you within 24 hours."; vreplies=['Hire a worker','Show dashboard','Back to demo']; }
         else if (lower.match(/signal|trigger/)) { vkey='signals'; vtext="We track job changes, hiring spikes, funding, and more."; vreplies=['Show me pricing','How do emails work?','Hire a worker']; }
-        else if (lower.match(/worker|agent|team|employee/)) { vkey='workers'; vtext="We have 7 AI workers with real identities."; vreplies=['How much?','Show dashboard','Hire a worker']; }
-        else if (lower.match(/dashboard|mission control|monitor/)) { vkey='dashboard'; vtext="Mission Control is your command center with live metrics."; vreplies=['Show pricing','Tell me about workers','Hire a worker']; }
+        else if (lower.match(/worker|agent|team|employee/)) { vkey='workers'; vtext="We have 7 AI workers with real identities."; vreplies=['How much?','Show dashboard','Hire a worker']; vmockup='mockup-workers'; }
+        else if (lower.match(/dashboard|mission control|monitor/)) { vkey='dashboard'; vtext="Mission Control is your command center with live metrics."; vreplies=['Show pricing','Tell me about workers','Hire a worker']; vmockup='mockup-mission'; }
+        else if (lower.match(/concierge|chat|widget|inbound/)) { vkey='more_info'; vtext="The Concierge is an inbound widget that greets visitors and qualifies leads."; vreplies=['Show pricing','Tell me about workers','Hire a worker']; vmockup='mockup-concierge'; }
         else if (lower.match(/more|what is|how does|explain|platform|about/)) { vkey='more_info'; vtext="A-Gent deploys specialized AI workers that operate 24/7."; vreplies=['Show pricing','What signals?','Hire a worker','Show me a demo walkthrough']; }
         else if (lower.match(/walkthrough|demo|tour|show me/)) {
-          // Start the guided walkthrough
           currentStep = 0; runStep(); document.getElementById('sendBtn').disabled = false; return;
         }
         else if (lower.match(/next|skip|continue/)) { currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return; }
+
+        if (vmockup) showMockup(vmockup);
 
         if (vkey) {
           await speak(vtext, vkey);
