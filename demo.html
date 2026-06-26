@@ -32,22 +32,10 @@
     .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:linear-gradient(180deg,#0d1117,#050508);border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
     .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
 
-    .portrait{width:100%;height:100%;position:relative;overflow:hidden}
-    .portrait img{width:100%;height:100%;object-fit:cover;object-position:center top;transition:filter .3s}
-
-    /* Idle — subtle breathing */
-    .video-frame:not(.speaking) .portrait img{animation:breathe 5s ease-in-out infinite}
-    @keyframes breathe{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.01) translateY(-1px)}}
-
-    /* Speaking — head sways + subtle zoom (simulates live video) */
-    .video-frame.speaking .portrait img{animation:speak-motion 0.6s ease-in-out infinite}
-    @keyframes speak-motion{
-      0%{transform:scale(1.03) translateY(0) rotate(0deg)}
-      25%{transform:scale(1.04) translateY(-2px) rotate(0.3deg)}
-      50%{transform:scale(1.02) translateY(1px) rotate(-0.2deg)}
-      75%{transform:scale(1.035) translateY(-1px) rotate(0.2deg)}
-      100%{transform:scale(1.03) translateY(0) rotate(0deg)}
-    }
+    /* Portrait — fills the frame like a video call */
+    .portrait{width:100%;height:100%;position:relative;overflow:hidden;background:#0a0d10}
+    .portrait canvas{width:100%;height:100%;display:block}
+    .portrait img{display:none} /* hidden — drawn to canvas */
 
     /* Blink overlay — dark line that sweeps over eyes */
     .blink{position:absolute;top:28%;left:50%;width:50%;height:3%;transform:translateX(-50%);background:linear-gradient(180deg,transparent 0%,rgba(5,5,8,.6) 45%,rgba(5,5,8,.9) 50%,rgba(5,5,8,.6) 55%,transparent 100%);opacity:0;pointer-events:none;transition:opacity .06s}
@@ -168,9 +156,8 @@
     <div class="agent-stage">
       <div class="video-frame" id="videoFrame">
         <div class="portrait">
-          <img src="assets/demo-agent.png" alt="A-Gent Demo Agent" id="portraitImg" />
-          <div class="blink" id="blink"></div>
-          <div class="mouth-glow"></div>
+          <img src="assets/demo-agent.png" alt="A-Gent Demo Agent" id="portraitImg" crossorigin="anonymous" />
+          <canvas id="avatarCanvas"></canvas>
         </div>
         <div class="video-status">
           <div class="dot"></div>
@@ -262,21 +249,201 @@
       { mockup:'mockup-sequence', script:"Here's how outbound works — a 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA. No generic templates.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
     ];
 
-    // ─── Blinking (natural, random intervals) ─────────────────
-    function startBlinking() {
-      const blink = document.getElementById('blink');
-      function doBlink() {
-        blink.classList.add('active');
-        setTimeout(() => blink.classList.remove('active'), 100);
-        // Sometimes double-blink
-        if (Math.random() < 0.15) {
-          setTimeout(() => { blink.classList.add('active'); setTimeout(() => blink.classList.remove('active'), 100); }, 250);
-        }
-        setTimeout(doBlink, 2500 + Math.random() * 3000);
-      }
-      doBlink();
+    // ─── Canvas avatar renderer ───────────────────────────────
+    // Draws the portrait to canvas with real-time micro-movements:
+    // - Subtle breathing drift (idle)
+    // - Head sway synced to audio amplitude (speaking)
+    // - Eye blinks drawn directly on canvas
+    // - Mouth area darkening that pulses with audio (lip-sync)
+    
+    const canvas = document.getElementById('avatarCanvas');
+    const ctx = canvas.getContext('2d');
+    const portraitImg = document.getElementById('portraitImg');
+    let imgLoaded = false;
+    portraitImg.onload = () => { imgLoaded = true; resizeCanvas(); };
+    if (portraitImg.complete) { imgLoaded = true; resizeCanvas(); }
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * 2; // retina
+      canvas.height = rect.height * 2;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
     }
-    startBlinking();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Animation state
+    let animState = {
+      time: 0,
+      blinkPhase: 0,
+      nextBlink: 2 + Math.random() * 3,
+      audioLevel: 0,
+      headOffsetX: 0,
+      headOffsetY: 0,
+      mouthOpen: 0,
+      breathPhase: 0
+    };
+
+    // Audio analyser for lip-sync
+    let analyser = null;
+    let analyserData = null;
+
+    function setupAudioAnalyser(audioElement) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaElementSource(audioElement);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.6;
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        analyserData = new Uint8Array(analyser.frequencyBinCount);
+      } catch(e) {
+        analyser = null; // fallback — no lip-sync
+      }
+    }
+
+    function getAudioLevel() {
+      if (!analyser || !analyserData) return 0;
+      analyser.getByteFrequencyData(analyserData);
+      // Average the low-mid frequencies (voice range 100-3000Hz)
+      let sum = 0;
+      const start = 2, end = 30;
+      for (let i = start; i < end; i++) sum += analyserData[i];
+      return Math.min(1, (sum / (end - start)) / 180);
+    }
+
+    function renderAvatar(dt) {
+      if (!imgLoaded) return;
+      animState.time += dt;
+
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Get audio level if speaking
+      if (isSpeaking) {
+        animState.audioLevel = animState.audioLevel * 0.7 + getAudioLevel() * 0.3;
+      } else {
+        animState.audioLevel *= 0.9;
+      }
+
+      // Breathing (always active — subtle)
+      animState.breathPhase += dt * 0.0012;
+      const breathY = Math.sin(animState.breathPhase) * 3;
+      const breathScale = 1 + Math.sin(animState.breathPhase) * 0.005;
+
+      // Head movement (speaking — larger, audio-driven)
+      let swayX = 0, swayY = 0, swayRot = 0;
+      if (isSpeaking) {
+        // Natural head movement while speaking — slow sway + audio-driven micro-jitter
+        swayX = Math.sin(animState.time * 0.0015) * 6 + (Math.random() - 0.5) * animState.audioLevel * 4;
+        swayY = Math.sin(animState.time * 0.0011 + 1) * 3 + breathY;
+        swayRot = Math.sin(animState.time * 0.0013) * 0.4;
+      } else {
+        // Idle — just breathing
+        swayX = Math.sin(animState.time * 0.0008) * 2;
+        swayY = breathY;
+        swayRot = Math.sin(animState.time * 0.0006) * 0.15;
+      }
+
+      // Smooth interpolation
+      animState.headOffsetX = animState.headOffsetX * 0.85 + swayX * 0.15;
+      animState.headOffsetY = animState.headOffsetY * 0.85 + swayY * 0.15;
+
+      // Draw the portrait with movement
+      ctx.save();
+      const cx = w / 2, cy = h / 2;
+      ctx.translate(cx + animState.headOffsetX * 2, cy + animState.headOffsetY * 2);
+      ctx.rotate(swayRot * Math.PI / 180);
+      ctx.scale(breathScale, breathScale);
+
+      // Draw image covering full frame (cover fit)
+      const imgAspect = portraitImg.naturalWidth / portraitImg.naturalHeight;
+      const canvasAspect = w / h;
+      let drawW, drawH, drawX, drawY;
+      if (imgAspect > canvasAspect) {
+        drawH = h;
+        drawW = h * imgAspect;
+        drawX = -drawW / 2;
+        drawY = -drawH / 2;
+      } else {
+        drawW = w;
+        drawH = w / imgAspect;
+        drawX = -drawW / 2;
+        drawY = -drawH / 2;
+      }
+      // Zoom in slightly for a tighter crop (like a video call)
+      drawW *= 1.15; drawH *= 1.15;
+      drawX = -drawW / 2; drawY = -drawH / 2 - h * 0.05; // shift up to show face
+
+      ctx.drawImage(portraitImg, drawX, drawY, drawW, drawH);
+      ctx.restore();
+
+      // Blinking — draw dark band over eyes
+      animState.nextBlink -= dt / 1000;
+      if (animState.nextBlink <= 0) {
+        animState.blinkPhase = 1;
+        animState.nextBlink = 2 + Math.random() * 4;
+      }
+      if (animState.blinkPhase > 0) {
+        animState.blinkPhase -= dt / 150; // blink lasts ~150ms
+        const blinkAlpha = Math.sin(Math.max(0, animState.blinkPhase) * Math.PI);
+        // Eyes are at roughly 35% from top, centered
+        const eyeY = h * 0.35;
+        const eyeW = w * 0.4;
+        const eyeH = h * 0.025;
+        ctx.fillStyle = `rgba(8, 10, 14, ${blinkAlpha * 0.85})`;
+        ctx.beginPath();
+        ctx.ellipse(w / 2, eyeY, eyeW / 2, eyeH / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Lip-sync — darken mouth area proportional to audio level
+      if (animState.audioLevel > 0.02) {
+        animState.mouthOpen = animState.mouthOpen * 0.6 + animState.audioLevel * 0.4;
+      } else {
+        animState.mouthOpen *= 0.8;
+      }
+      
+      if (animState.mouthOpen > 0.02) {
+        // Mouth is at roughly 52% from top
+        const mouthY = h * 0.52;
+        const mouthW = w * 0.12 * (1 + animState.mouthOpen * 0.3);
+        const mouthH = h * 0.02 * (1 + animState.mouthOpen * 2);
+        
+        // Dark interior
+        ctx.fillStyle = `rgba(20, 10, 10, ${animState.mouthOpen * 0.6})`;
+        ctx.beginPath();
+        ctx.ellipse(w / 2 + animState.headOffsetX * 2, mouthY + animState.headOffsetY * 2, mouthW, mouthH, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Subtle warm glow around mouth
+        const grad = ctx.createRadialGradient(w/2, mouthY, 0, w/2, mouthY, mouthW * 3);
+        grad.addColorStop(0, `rgba(255, 200, 150, ${animState.mouthOpen * 0.15})`);
+        grad.addColorStop(1, 'rgba(255, 200, 150, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(w/2 - mouthW * 3, mouthY - mouthW * 3, mouthW * 6, mouthW * 6);
+      }
+
+      // Subtle vignette
+      const vignette = ctx.createRadialGradient(w/2, h/2, w*0.3, w/2, h/2, w*0.7);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Animation loop
+    let lastFrame = performance.now();
+    function animate(now) {
+      const dt = Math.min(50, now - lastFrame);
+      lastFrame = now;
+      renderAvatar(dt);
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+
+    // Old blinking system removed — canvas handles it now
 
     // ─── Audio unlock (must be in click handler) ──────────────
     function unlockAudio() {
@@ -356,17 +523,21 @@
       isSpeaking = true;
 
       // Play neural TTS audio via our proxy
+      let audioElement = null;
       try {
-        const audio = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
+        audioElement = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0, 300)) + '&voice=Aria');
+        
+        // Set up audio analyser for lip-sync (only once per element)
+        setupAudioAnalyser(audioElement);
         
         await new Promise((resolve) => {
           let resolved = false;
           const done = () => { if (!resolved) { resolved = true; resolve(); } };
           
-          audio.onended = done;
-          audio.onerror = done;
-          audio.play().then(() => {
-            // Audio is playing — wait for it
+          audioElement.onended = done;
+          audioElement.onerror = done;
+          audioElement.play().then(() => {
+            // Audio is playing — lip-sync driven by analyser
           }).catch(() => {
             // Autoplay blocked — timed fallback
             setTimeout(done, Math.min(text.length * 55, 8000));
