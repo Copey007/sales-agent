@@ -546,20 +546,91 @@
       recognition.start();
     }
 
-    // ─── Fallback to video mode ────────────────────────────────
+    // ─── Fallback to video mode (pre-recorded HeyGen videos WITH audio) ────
     function fallbackToVideoMode() {
       const video = document.getElementById('avatarVideo');
       video.src = 'assets/demo-step1.mp4';
-      video.muted = true; video.loop = true; video.play();
+      video.muted = false; video.loop = false;
+      video.play().catch(() => {
+        video.muted = true; video.play().then(() => setTimeout(() => video.muted = false, 200)).catch(() => {});
+      });
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('statusLabel').textContent = 'LIVE';
-      document.getElementById('demoCta').style.display = 'flex';
-      document.getElementById('startBtn').textContent = '▶ See a Demo';
-      document.getElementById('startBtn').onclick = () => { 
-        demoStarted = false; 
-        video.muted = false; video.loop = false;
-        startDemo(); 
+      document.getElementById('statusDot').classList.remove('connecting');
+      document.getElementById('demoCta').style.display = 'none';
+      document.getElementById('ctaBar').style.display = 'flex';
+      demoStarted = true;
+
+      // Override speak to use pre-recorded videos with audio
+      const STEP_VIDS = {0:'assets/demo-step1.mp4',1:'assets/demo-step2.mp4',2:'assets/demo-step3.mp4',3:'assets/demo-step4.mp4',4:'assets/demo-final.mp4'};
+      const CHAT_VIDS = {pricing:'assets/demo-pricing.mp4',hire:'assets/demo-hire.mp4',contact:'assets/demo-contact.mp4',signals:'assets/demo-signals.mp4',more_info:'assets/demo-more_info.mp4',workers:'assets/demo-workers.mp4',dashboard:'assets/demo-dashboard.mp4'};
+
+      window.speak = async function(text, videoStep) {
+        const caption = document.getElementById('caption');
+        const frame = document.getElementById('videoFrame');
+        const eq = document.getElementById('eq');
+        const sl = document.getElementById('statusLabel');
+        caption.className = 'caption thinking';
+        caption.innerHTML = '<span style="animation:think 1.2s infinite">● ● ●</span>';
+        frame.classList.remove('speaking'); eq.classList.remove('active'); sl.textContent = 'THINKING';
+        await new Promise(r => setTimeout(r, 800));
+        caption.className = 'caption'; caption.textContent = text;
+        frame.classList.add('speaking'); eq.classList.add('active'); sl.textContent = 'SPEAKING'; isSpeaking = true;
+
+        let src = null;
+        if (typeof videoStep === 'string' && CHAT_VIDS[videoStep]) src = CHAT_VIDS[videoStep];
+        else if (typeof videoStep === 'number' && STEP_VIDS[videoStep]) src = STEP_VIDS[videoStep];
+
+        if (src) {
+          video.src = src; video.muted = false; video.loop = false;
+          video.play().catch(() => { video.muted = true; video.play().then(() => setTimeout(() => video.muted = false, 200)).catch(() => {}); });
+          await new Promise((resolve) => { let d=false; const done=()=>{if(!d){d=true;resolve();}}; video.onended=done; video.onerror=done; setTimeout(done,45000); });
+        } else {
+          try {
+            const audio = new Audio(TTS_URL + '?text=' + encodeURIComponent(text.slice(0,300)) + '&voice=Aria');
+            video.loop = true; video.muted = true; video.play().catch(() => {});
+            await new Promise((resolve) => { let d=false; const done=()=>{if(!d){d=true;resolve();}}; audio.onended=done; audio.onerror=done; audio.play().then(()=>{}).catch(()=>setTimeout(done,Math.min(text.length*55,8000))); setTimeout(done,20000); });
+          } catch(e) { await new Promise(r => setTimeout(r, Math.min(text.length*55,6000))); }
+        }
+        frame.classList.remove('speaking'); eq.classList.remove('active'); sl.textContent = 'LIVE'; isSpeaking = false;
+        video.loop = true; video.muted = true; video.play().catch(() => {});
       };
+
+      // Override sendChat to use video responses for common questions
+      window.sendChat = async function() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text || isSpeaking) return;
+        input.value = ''; document.getElementById('sendBtn').disabled = true;
+        chatMessages.push({ role: 'user', content: text });
+        const lower = text.toLowerCase();
+        
+        let vkey = null, vtext = null, vreplies = [];
+        if (lower.match(/pric|cost|how much/)) { vkey='pricing'; vtext="We're in early access. Most setups start at a fraction of what a single SDR would cost."; vreplies=['Yes, contact me','Show me the workers','Keep exploring']; }
+        else if (lower.match(/hire|start|sign up|begin/)) { vkey='hire'; vtext="You can hire your first AI worker right now!"; vreplies=['Open marketplace','Show dashboard','Talk to someone']; }
+        else if (lower.match(/contact|human|someone|talk to|email/)) { vkey='contact'; vtext="Email mark@a-gent.co and we'll get back to you within 24 hours."; vreplies=['Hire a worker','Show dashboard','Back to demo']; }
+        else if (lower.match(/signal|trigger/)) { vkey='signals'; vtext="We track job changes, hiring spikes, funding, and more."; vreplies=['Show me pricing','How do emails work?','Hire a worker']; }
+        else if (lower.match(/worker|agent|team|employee/)) { vkey='workers'; vtext="We have 7 AI workers with real identities."; vreplies=['How much?','Show dashboard','Hire a worker']; }
+        else if (lower.match(/dashboard|mission control|monitor/)) { vkey='dashboard'; vtext="Mission Control is your command center with live metrics."; vreplies=['Show pricing','Tell me about workers','Hire a worker']; }
+        else if (lower.match(/more|what is|how does|explain/)) { vkey='more_info'; vtext="A-Gent deploys specialized AI workers that operate 24/7."; vreplies=['Show pricing','What signals?','Hire a worker']; }
+        else if (lower.match(/next|skip|continue/)) { currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return; }
+
+        if (vkey) {
+          await speak(vtext, vkey);
+          showQuickReplies(vreplies);
+        } else {
+          try {
+            const res = await fetch(CONCIERGE_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'chat',messages:chatMessages,speak:false}) });
+            const data = await res.json();
+            if (data.reply) { await speak(data.reply); chatMessages.push({role:'bot',content:data.reply}); showQuickReplies(['Show pricing','Tell me about workers','Hire a worker']); }
+          } catch(e) { await speak("I'm having trouble connecting."); }
+        }
+        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('chatInput').focus();
+      };
+
+      currentStep = 0;
+      runStep();
     }
 
     updateProgress();

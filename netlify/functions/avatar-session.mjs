@@ -58,6 +58,27 @@ export const config = { path: "/api/avatar-session" };
 async function startSession(apiKey, body, corsHeaders) {
   const avatarId = body.avatar_id || '8175dfc2-7858-49d6-b5fa-0c135d1c4bad'; // Elenora Tech Expert
   
+  // First, stop any existing sessions to avoid concurrency limit
+  try {
+    const listRes = await fetch('https://api.liveavatar.com/v1/sessions?type=active', {
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const sessions = listData?.data?.results || [];
+      for (const s of sessions) {
+        const sid = s.session_id || s.id;
+        if (sid) {
+          await fetch('https://api.liveavatar.com/v1/sessions/stop', {
+            method: 'POST',
+            headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+            body: JSON.stringify({ session_id: sid })
+          });
+        }
+      }
+    }
+  } catch(e) { /* non-fatal */ }
+  
   // Step 1: Create session token
   const tokenBody = JSON.stringify({
     avatar_id: avatarId,
