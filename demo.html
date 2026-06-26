@@ -203,6 +203,10 @@
       { mockup:'mockup-sequence', script:"Here is how outbound works. A 5-step sequence driven by real buying signals. Each email uses the GAP methodology: problem-centric, under 100 words, single CTA.", quickReplies:['What signals do you track?','Show me pricing','Talk to someone'] }
     ];
 
+    const GREETING = "Welcome to A-Gent! How can I help you today?";
+    const GREETING_VIDEO = 'assets/demo-greeting.mp4';
+    const GREETING_QUICK_REPLIES = ['Tell me about the platform','Show me the workers','How much does it cost?','Show me a demo walkthrough'];
+
     // ─── Start demo — connect to LiveAvatar ────────────────────
     async function startDemo() {
       if (demoStarted) return;
@@ -281,9 +285,10 @@
           sendWebSocket({ type: 'session.keep_alive', event_id: 'ka_' + Date.now() });
         }, 60000);
         
-        // Start the walkthrough
-        currentStep = 0;
-        runStep();
+        // Greet the user, then wait for input
+        showMockup('mockup-welcome');
+        await speak(GREETING);
+        showQuickReplies(GREETING_QUICK_REPLIES);
         
       } catch(e) {
         console.error('Connection failed:', e);
@@ -507,6 +512,9 @@
       chatMessages.push({ role: 'user', content: text });
 
       const lower = text.toLowerCase();
+      if (lower.match(/walkthrough|demo|tour|show me/) && !isSpeaking) {
+        currentStep = 0; runStep(); document.getElementById('sendBtn').disabled = false; return;
+      }
       if (lower.includes('next') || lower.includes('skip') || lower.includes('continue')) {
         currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return;
       }
@@ -563,7 +571,7 @@
 
       // Override speak to use pre-recorded videos with audio
       const STEP_VIDS = {0:'assets/demo-step1.mp4',1:'assets/demo-step2.mp4',2:'assets/demo-step3.mp4',3:'assets/demo-step4.mp4',4:'assets/demo-final.mp4'};
-      const CHAT_VIDS = {pricing:'assets/demo-pricing.mp4',hire:'assets/demo-hire.mp4',contact:'assets/demo-contact.mp4',signals:'assets/demo-signals.mp4',more_info:'assets/demo-more_info.mp4',workers:'assets/demo-workers.mp4',dashboard:'assets/demo-dashboard.mp4'};
+      const CHAT_VIDS = {pricing:'assets/demo-pricing.mp4',hire:'assets/demo-hire.mp4',contact:'assets/demo-contact.mp4',signals:'assets/demo-signals.mp4',more_info:'assets/demo-more_info.mp4',workers:'assets/demo-workers.mp4',dashboard:'assets/demo-dashboard.mp4',greeting:'assets/demo-greeting.mp4'};
 
       window.speak = async function(text, videoStep) {
         const caption = document.getElementById('caption');
@@ -612,7 +620,11 @@
         else if (lower.match(/signal|trigger/)) { vkey='signals'; vtext="We track job changes, hiring spikes, funding, and more."; vreplies=['Show me pricing','How do emails work?','Hire a worker']; }
         else if (lower.match(/worker|agent|team|employee/)) { vkey='workers'; vtext="We have 7 AI workers with real identities."; vreplies=['How much?','Show dashboard','Hire a worker']; }
         else if (lower.match(/dashboard|mission control|monitor/)) { vkey='dashboard'; vtext="Mission Control is your command center with live metrics."; vreplies=['Show pricing','Tell me about workers','Hire a worker']; }
-        else if (lower.match(/more|what is|how does|explain/)) { vkey='more_info'; vtext="A-Gent deploys specialized AI workers that operate 24/7."; vreplies=['Show pricing','What signals?','Hire a worker']; }
+        else if (lower.match(/more|what is|how does|explain|platform|about/)) { vkey='more_info'; vtext="A-Gent deploys specialized AI workers that operate 24/7."; vreplies=['Show pricing','What signals?','Hire a worker','Show me a demo walkthrough']; }
+        else if (lower.match(/walkthrough|demo|tour|show me/)) {
+          // Start the guided walkthrough
+          currentStep = 0; runStep(); document.getElementById('sendBtn').disabled = false; return;
+        }
         else if (lower.match(/next|skip|continue/)) { currentStep++; runStep(); document.getElementById('sendBtn').disabled = false; return; }
 
         if (vkey) {
@@ -630,7 +642,11 @@
       };
 
       currentStep = 0;
-      runStep();
+      
+      // Greet the user, then wait for input
+      showMockup('mockup-welcome');
+      await speak(GREETING, 'greeting');
+      showQuickReplies(GREETING_QUICK_REPLIES);
     }
 
     updateProgress();
