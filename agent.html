@@ -67,7 +67,7 @@
   </style>
 </head>
 <body>
-  <div class="stage" id="stage"><video id="avatar" autoplay playsinline></video></div>
+  <div class="stage" id="stage"><video id="avatar" autoplay playsinline onclick="interruptAvatar()" title="Tap to interrupt" style="cursor:pointer"></video></div>
   <div class="vignette"></div>
   <div class="brand-bg"><img id="brandBg" src="assets/agent-logo.svg" alt=""/></div>
   <div class="slide-panel" id="slidePanel"><button class="slide-close" onclick="hideSlide()" title="Hide slide">✕</button><img id="slideImg" alt=""/><iframe id="slideFrame" style="display:none" title="slide"></iframe></div>
@@ -113,7 +113,7 @@
   </div>
 
   <script type="module">
-    import { LiveAvatarSession, SessionEvent } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
+    import { LiveAvatarSession, SessionEvent, AgentEventsEnum } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
 
     const $ = (id) => document.getElementById(id);
     const video = $('avatar');
@@ -192,6 +192,11 @@
           console.warn('avatar session disconnected', reason);
           if (!started) fail('The session ended before connecting. Please try again.');
         });
+        // Real talking state — makes barge-in / interrupt reliable.
+        try {
+          session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; setStatus('Speaking'); });
+          session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speaking = false; setStatus('Live'); });
+        } catch (e) { console.warn('speak events unavailable', e); }
 
         await session.start();
         // Safety net: surface an error if the stream never becomes ready.
@@ -257,10 +262,11 @@
     async function speak(text) {
       const cap = $('caption'); setStatus('Speaking');
       cap.style.display = 'block'; cap.className = 'caption'; cap.textContent = text;
-      speaking = true;
-      try { await session.repeat(text); } catch (e) { console.warn('repeat failed', e); }
-      speaking = false; setStatus('Live');
+      speaking = true;                    // optimistic; AVATAR_SPEAK_ENDED clears it
+      try { session.repeat(text); } catch (e) { console.warn('repeat failed', e); }
     }
+    // Stop the avatar mid-sentence.
+    window.interruptAvatar = function () { if (speaking) { try { session.interrupt(); } catch {} } speaking = false; setStatus('Live'); };
 
     // ─── Conversation ────────────────────────────────────────────────────
     window.handleSend = function () {
@@ -314,18 +320,28 @@
       send(`My email is ${email}. Please have the team reach out to me.`);
     };
 
-    // ─── Voice input ─────────────────────────────────────────────────────
+    // ─── Voice input (Web Speech API) ─────────────────────────────────────
+    function showCaption(msg){ const cap = $('caption'); cap.style.display='block'; cap.className='caption'; cap.textContent = msg; }
     let rec = null, listening = false;
     window.toggleMic = function () {
-      if (listening) { rec?.stop(); return; }
+      if (listening) { try { rec?.stop(); } catch {} return; }
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) { alert('Voice input needs Chrome. You can type instead.'); return; }
+      if (!SR) { showCaption('Voice needs Chrome or Edge — you can type instead.'); return; }
       rec = new SR(); rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US';
-      const b = $('micBtn'); b.classList.add('listening'); listening = true;
+      const b = $('micBtn');
+      rec.onstart = () => { listening = true; b.classList.add('listening'); interruptAvatar(); setStatus('Listening'); };
       rec.onresult = (e) => { const t = e.results[0][0].transcript; if (t) send(t); };
-      rec.onerror = () => {};
-      rec.onend = () => { b.classList.remove('listening'); listening = false; };
-      rec.start();
+      rec.onerror = (e) => {
+        listening = false; b.classList.remove('listening');
+        const m = (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+          ? 'Microphone is blocked. Click the padlock in your address bar → allow Microphone, then tap the mic again.'
+          : e.error === 'no-speech' ? "Didn't hear anything — tap the mic and speak."
+          : e.error === 'audio-capture' ? 'No microphone found. Check your mic, then try again.'
+          : 'Mic error: ' + e.error;
+        showCaption(m);
+      };
+      rec.onend = () => { listening = false; b.classList.remove('listening'); if (!speaking) setStatus('Live'); };
+      try { rec.start(); } catch { listening = false; b.classList.remove('listening'); showCaption('Could not start the mic — tap it again.'); }
     };
 
     loadConfig();
