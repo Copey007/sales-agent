@@ -90,13 +90,13 @@ VALUES
 (
   'demo',
   'A-Gent Demo',
-  '42700a53-38ab-4485-b46f-26be6e0953dc',
-  'e948b062-7dce-4f2b-bcf6-98bd3511106b',
+  '65cca4cf-b7c8-4619-871f-84e2cf8b21d4',
+  '864a26b8-bfba-4435-9cc5-1dd593de5ca7',
   'FULL',
   'Hi! I''m a live AI agent demo. Ask me anything and I''ll answer in real time.',
   '["What can you do?","How does this work?","Show me a use case","Book a demo"]'::jsonb,
   'You are a friendly live AI agent demo for A-Gent, showcasing real-time conversational avatars for sales and support. Keep answers short and engaging, and invite the visitor to imagine this on their own website.',
-  '{"primary_color":"#c9a227","headline":"Meet a Live AI Agent","subcopy":"This is a real-time AI avatar you can talk to. Imagine it greeting every visitor on your site."}'::jsonb,
+  '{"primary_color":"#c9a227","headline":"Meet a Live AI Agent","subcopy":"This is a real-time AI avatar you can talk to. Imagine it greeting every visitor on your site.","logo_url":"assets/agent-logo-master.svg"}'::jsonb,
   3,
   500
 )
