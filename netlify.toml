@@ -27,6 +27,12 @@
   to = "/agent.html?slug=:slug"
   status = 200
 
+# Self-serve signup
+[[redirects]]
+  from = "/signup"
+  to = "/signup.html"
+  status = 200
+
 [[headers]]
   for = "/api/*"
   [headers.values]
