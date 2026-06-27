@@ -121,8 +121,12 @@
 
   <script>
     const API = window.location.origin + '/api/workforce';
+    // Supabase anon (public) — used only for the post-signup password grant.
+    const SB_URL = 'https://byospmliiokgrdjjxsde.supabase.co';
+    const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3NwbWxpaW9rZ3Jkamp4c2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjQ0NzUsImV4cCI6MjA5NTQwMDQ3NX0.KvzaEuEH9nRlBBSUOyg7kTKHvLFfR6CvmZbjVHZQ83I';
     let workers = [];
     let connectors = [];
+    let hireState = { company: '', goal: '', context: '' };
     let allDepts = [];
     let activeFilter = 'all';
 
@@ -230,6 +234,8 @@
       const company = document.getElementById('companyName')?.value?.trim();
       const goal = document.getElementById('workerGoal')?.value?.trim();
       if (!company || !goal) { alert('Please fill in company name and goal.'); return; }
+      // Capture the configured worker so it survives into account creation.
+      hireState = { company, goal, context: document.getElementById('workerContext')?.value?.trim() || '' };
 
       document.getElementById('hireContent').innerHTML = `
         <div class="modal-step">Step 2 of 3 — Tool Connection</div>
@@ -264,59 +270,108 @@
 
         <div class="btn-row">
           <button class="btn-secondary" onclick="renderHireStep1()">← Back</button>
-          <button class="btn-primary" onclick="renderHireStep3('${esc(company)}','${esc(goal)}')">Onboard →</button>
+          <button class="btn-primary" onclick="renderHireAccount()">Continue →</button>
         </div>
       `;
     }
 
-    async function renderHireStep3(company, goal) {
-      const context = document.getElementById('workerContext')?.value?.trim() || '';
-      const btnHtml = `<button class="btn-primary" disabled>Onboarding...</button>`;
+    // ── Step 3: create account → activate (carries the configured worker) ──────
+    function slugify(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,38); }
+
+    function renderHireAccount() {
+      const first = esc(hiredWorker.name.split(' ')[0]);
+      const suggested = slugify(hireState.company) || slugify(hiredWorker.name);
       document.getElementById('hireContent').innerHTML = `
-        <div class="modal-step">Step 3 of 3 — Activating</div>
-        <h2>Onboarding ${esc(hiredWorker.name.split(' ')[0])}...</h2>
-        <p class="sub">Setting up memory, loading company context, and preparing for first task.</p>
-        <div id="onboardStatus" style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">Activating ${esc(hiredWorker.name)}...</div>
+        <div class="modal-step">Step 3 of 3 — Activate</div>
+        <h2>Create your workspace to hire ${first}</h2>
+        <p class="sub">Your Mission Control workspace is <strong>free for 30 days</strong> — light up any module. A card is required to start; you won't be charged until day 31.</p>
+        <div class="worker-preview">
+          <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
+          <div class="info"><div class="n">${esc(hiredWorker.name)}</div><div class="t">${esc(hiredWorker.title)} · ${esc(hireState.company)}</div></div>
+        </div>
+        <div class="field"><label>Your name</label><input type="text" id="acName" placeholder="Jane Doe" /></div>
+        <div class="field"><label>Work email</label><input type="email" id="acEmail" placeholder="jane@company.com" /></div>
+        <div class="field"><label>Password</label><input type="password" id="acPassword" placeholder="At least 8 characters" /></div>
+        <div class="field"><label>Workspace handle</label><input type="text" id="acSlug" value="${esc(suggested)}" placeholder="your-company" />
+          <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Your live agent will live at aisdr.a-gent.co/a/<span id="acSlugEcho">${esc(suggested)}</span></div>
+        </div>
+        <div id="acMsg" style="font-size:.78rem;margin:4px 0 8px;min-height:18px"></div>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="renderHireStep2()">← Back</button>
+          <button class="btn-primary" id="acSubmit" onclick="submitHire()">Create workspace & hire ${first} →</button>
+        </div>
       `;
+      const sl = document.getElementById('acSlug');
+      sl.addEventListener('input', () => { sl.value = slugify(sl.value); document.getElementById('acSlugEcho').textContent = sl.value; });
+    }
 
-      // Actually onboard the worker via the workforce API
+    async function submitHire() {
+      const msg = document.getElementById('acMsg');
+      const name = document.getElementById('acName').value.trim();
+      const email = document.getElementById('acEmail').value.trim();
+      const password = document.getElementById('acPassword').value;
+      const slug = slugify(document.getElementById('acSlug').value);
+      msg.style.color = 'var(--muted)';
+      if (!name) { msg.style.color='var(--red)'; msg.textContent='Enter your name.'; return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.style.color='var(--red)'; msg.textContent='Enter a valid email.'; return; }
+      if (password.length < 8) { msg.style.color='var(--red)'; msg.textContent='Password must be at least 8 characters.'; return; }
+      if (slug.length < 3) { msg.style.color='var(--red)'; msg.textContent='Pick a workspace handle (3+ chars).'; return; }
+
+      const btn = document.getElementById('acSubmit');
+      btn.disabled = true; btn.textContent = 'Creating workspace…'; msg.textContent = 'Setting up your workspace…';
       try {
-        const res = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const signupRes = await fetch(window.location.origin + '/api/signup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'execute',
-            agent: hiredWorker.id,
-            objective: goal,
-            context: { company, goal, context, onboarded: true }
-          })
+            name, email, password, company: hireState.company, slug,
+            worker: { id: hiredWorker.id, name: hiredWorker.name, title: hiredWorker.title, avatar: hiredWorker.avatar },
+            goal: hireState.goal, context: hireState.context,
+          }),
         });
-        const result = await res.json();
+        const data = await signupRes.json();
+        if (!signupRes.ok) {
+          btn.disabled = false; btn.textContent = 'Create workspace & hire →';
+          msg.style.color = 'var(--red)';
+          msg.innerHTML = /already registered/i.test(data.error || '')
+            ? 'That email already has a workspace — <a href="https://missioncontrol.a-gent.co" style="color:var(--gold-2)">log in to Mission Control</a> to manage your team.'
+            : esc(data.error || 'Could not create workspace.');
+          return;
+        }
 
-        document.getElementById('onboardStatus').innerHTML = `
+        // Get a session token, then start the card-required trial checkout.
+        msg.textContent = 'Starting your 30-day trial…';
+        let token = null;
+        try {
+          const gr = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+            method: 'POST', headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          token = (await gr.json())?.access_token || null;
+        } catch {}
+
+        if (token) {
+          try {
+            const co = await fetch(window.location.origin + '/api/billing-checkout', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ success_url: 'https://missioncontrol.a-gent.co/?welcome=1', cancel_url: 'https://missioncontrol.a-gent.co/?billing=cancelled' }),
+            });
+            const cod = await co.json();
+            if (cod.url) { window.location.href = cod.url; return; } // → Stripe card capture
+          } catch {}
+        }
+
+        // Stripe not wired yet (or token hiccup) — workspace + worker are live; go manage.
+        document.getElementById('hireContent').innerHTML = `
           <div class="onboard-result">
-            <h3>✅ ${esc(hiredWorker.name)} is now active!</h3>
-            <p>${esc(hiredWorker.name.split(' ')[0])} has been onboarded to <strong>${esc(company)}</strong> and given the goal: "${esc(goal)}"</p>
-            <p style="margin-top:8px">First task result: ${result.success ? 'Completed successfully' : 'Queued for processing'}</p>
-            <div class="next">→ View ${esc(hiredWorker.name.split(' ')[0])} in Mission Control at missioncontrol.a-gent.co</div>
+            <h3>✅ ${esc(hiredWorker.name)} is hired!</h3>
+            <p>Your workspace <strong>${esc(hireState.company)}</strong> is live with a 30-day free trial. Manage ${esc(hiredWorker.name.split(' ')[0])} in Mission Control.</p>
           </div>
           <div class="btn-row" style="margin-top:16px">
-            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
-            <button class="btn-secondary" onclick="closeHire()">Close</button>
-          </div>
-        `;
-      } catch(e) {
-        document.getElementById('onboardStatus').innerHTML = `
-          <div class="onboard-result" style="background:rgba(255,92,122,.08);border-color:rgba(255,92,122,.2)">
-            <h3 style="color:var(--red)">⚠️ Onboarding queued</h3>
-            <p>${esc(hiredWorker.name)} has been assigned to your team. The first task will process shortly.</p>
-            <div class="next">→ View in Mission Control at missioncontrol.a-gent.co</div>
-          </div>
-          <div class="btn-row" style="margin-top:16px">
-            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
-            <button class="btn-secondary" onclick="closeHire()">Close</button>
-          </div>
-        `;
+            <a href="https://missioncontrol.a-gent.co/?welcome=1" style="flex:1"><button class="btn-primary">Go to Mission Control →</button></a>
+          </div>`;
+      } catch (e) {
+        btn.disabled = false; btn.textContent = 'Create workspace & hire →';
+        msg.style.color = 'var(--red)'; msg.textContent = 'Something went wrong. Please try again.';
       }
     }
 

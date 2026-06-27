@@ -53,6 +53,10 @@ export default async (req) => {
   const password = b.password || '';
   const company = (b.company || '').trim();
   const slug = (b.slug || '').trim().toLowerCase();
+  // Optional: a worker the visitor configured on the marketplace before signing up.
+  const worker = b.worker && typeof b.worker === 'object' ? b.worker : null;
+  const workerGoal = (b.goal || '').trim();
+  const workerContext = (b.context || '').trim();
 
   // ── Validate ────────────────────────────────────────────────────────────
   if (!name || !company) return json({ error: 'Name and company are required.' }, 400);
@@ -85,6 +89,16 @@ export default async (req) => {
     const tenant = (await sb(url, key, 'tenants', { slug, name: company, plan: 'trial', status: 'active' }))[0];
     await sb(url, key, 'memberships', { tenant_id: tenant.id, user_id: userId, role: 'owner' }, 'return=minimal');
 
+    // 2b) Start the 30-day trial clock (best-effort — column added by workforce-schema.sql)
+    const trialEnds = new Date(Date.now() + 30 * 86400000).toISOString();
+    try {
+      await fetch(`${url}/rest/v1/tenants?id=eq.${tenant.id}`, {
+        method: 'PATCH',
+        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ trial_ends_at: trialEnds }),
+      });
+    } catch (e) { console.warn('[signup] trial_ends_at:', e.message); }
+
     // 3) Avatar module entitlement + starter agent
     await sb(url, key, 'tenant_modules',
       { tenant_id: tenant.id, module: 'avatar', enabled: true, limits: { monthly_minutes: 100, max_concurrent: 2 } },
@@ -99,7 +113,32 @@ export default async (req) => {
       max_concurrent: 2, monthly_minute_cap: 100,
     }, 'return=minimal');
 
-    return json({ ok: true, slug, agent_url: `https://aisdr.a-gent.co/a/${slug}` });
+    // 4) If they configured a worker on the marketplace, persist the hire + enable
+    //    the matching module so it shows up in Mission Control → Workforce. Best-effort.
+    let hired = null;
+    if (worker?.id) {
+      const MODULE_MAP = { researcher: 'researcher', sdr: 'sdr', social: 'social', ops: 'sdr', support: 'concierge', success: 'crm', manager: 'workforce' };
+      const mod = MODULE_MAP[worker.id] || 'workforce';
+      try {
+        await sb(url, key, 'tenant_modules', { tenant_id: tenant.id, module: mod, enabled: true }, 'return=minimal').catch(() => {});
+        const row = await sb(url, key, 'workforce_hires', {
+          tenant_id: tenant.id,
+          worker_id: worker.id,
+          name: worker.name || worker.id,
+          title: worker.title || null,
+          avatar: worker.avatar || null,
+          goal: workerGoal || null,
+          context: workerContext || null,
+          company,
+          status: 'active',
+          last_activity: 'Hired',
+          last_active_at: new Date().toISOString(),
+        });
+        hired = Array.isArray(row) ? row[0] : row;
+      } catch (e) { console.warn('[signup] hire persist:', e.message); }
+    }
+
+    return json({ ok: true, slug, agent_url: `https://aisdr.a-gent.co/a/${slug}`, trial_ends_at: trialEnds, hired: !!hired });
   } catch (err) {
     console.error('[signup]', err.message);
     return json({ error: 'Something went wrong creating your account. Please try again.' }, 500);
