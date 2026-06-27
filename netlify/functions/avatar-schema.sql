@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS avatar_agents (
   greeting           TEXT,                                 -- first thing it says
   chips              JSONB DEFAULT '[]'::jsonb,            -- suggested prompts
   knowledge          TEXT,                                 -- inline knowledge base
+  slides             JSONB DEFAULT '[]'::jsonb,            -- [{id,title,url,triggers:[...]}] presentation slides
   -- Presentation
   theme              JSONB DEFAULT '{}'::jsonb,            -- logo_url, primary_color, headline, subcopy, og_image
   -- Lead routing

@@ -52,6 +52,7 @@ export function toPublicConfig(agent) {
     mode: agent.mode,
     greeting: agent.greeting,
     chips: agent.chips || [],
+    slides: agent.slides || [],
     theme: {
       primary_color: theme.primary_color || '#c9a227',
       headline: theme.headline || `Talk to ${agent.name}`,
