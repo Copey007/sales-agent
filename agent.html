@@ -25,6 +25,10 @@
     .slide-panel img,.slide-panel iframe{max-width:min(960px,93vw);max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:14px;border:1px solid var(--line);box-shadow:0 14px 70px rgba(0,0,0,.6);background:#0a0d10}
     .slide-panel iframe{width:min(960px,93vw);height:100%}
     .slide-close{position:absolute;top:66px;right:30px;z-index:16;pointer-events:auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:rgba(5,5,8,.85);color:var(--soft);cursor:pointer;font-size:1rem}
+    /* Presenter mode: avatar shrinks to a corner, slide takes the stage */
+    .stage{transition:right .35s ease,bottom .35s ease,width .35s ease,height .35s ease,border-radius .35s ease}
+    body.presenting .stage{inset:auto;right:20px;bottom:96px;width:clamp(220px,26vw,330px);height:clamp(300px,44vh,440px);border-radius:18px;border:1px solid var(--line);box-shadow:0 10px 50px rgba(0,0,0,.6);z-index:18}
+    body.presenting .slide-panel{padding:46px clamp(240px,30vw,380px) 150px 30px;justify-content:flex-start}
     .topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:12px;padding:14px 22px;background:linear-gradient(180deg,rgba(5,5,8,.7),transparent)}
     .topbar img{height:26px}.topbar .spacer{flex:1}
     .status{display:none;align-items:center;gap:7px;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--green);padding:5px 11px;border:1px solid rgba(65,255,159,.3);border-radius:999px;background:rgba(65,255,159,.06)}
@@ -281,17 +285,22 @@
     async function send(text) {
       if (speaking) { try { session.interrupt(); } catch {} }
       addMsg('user', text); messages.push({ role: 'user', content: text }); $('chips').innerHTML = '';
-      matchSlide(text);
+      const slide = matchSlide(text);
+      if (slide) showSlide(slide);
       const cap = $('caption'); cap.style.display = 'block'; cap.className = 'caption thinking'; cap.textContent = '● ● ●'; setStatus('Thinking');
       let reply = '';
-      try {
-        const res = await fetch('/api/concierge', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'chat', slug: SLUG, messages, speak: false }),
-        });
-        const data = await res.json();
-        reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
-      } catch (e) { reply = "I'm having a little trouble connecting right now. Mind trying again?"; }
+      if (slide && slide.narration && slide.narration.trim()) {
+        reply = slide.narration.trim();           // she presents/narrates the slide
+      } else {
+        try {
+          const res = await fetch('/api/concierge', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'chat', slug: SLUG, messages, speak: false }),
+          });
+          const data = await res.json();
+          reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
+        } catch (e) { reply = "I'm having a little trouble connecting right now. Mind trying again?"; }
+      }
       messages.push({ role: 'assistant', content: reply });
       addMsg('bot', reply); await speak(reply);
     }
@@ -307,19 +316,20 @@
     const slideTokens = (s) => ((s || '').toLowerCase().match(/[a-z0-9-]+/g) || []).filter(t => t.length > 2 && !SLIDE_STOP.has(t));
     function matchSlide(text){
       const slides = (cfg && cfg.slides) ? cfg.slides : [];
-      if (!slides.length) return;
+      if (!slides.length) return null;
       const q = (text || '').toLowerCase();
       const msg = new Set(slideTokens(q));
       // 1) a slide whose trigger phrase or any keyword matches the message
       for (const s of slides) {
         const trigs = s.triggers || [];
-        if (trigs.some(t => t && q.includes(String(t).toLowerCase()))) { showSlide(s); slideIdx = slides.indexOf(s) + 1; return; }
-        if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { showSlide(s); slideIdx = slides.indexOf(s) + 1; return; }
+        if (trigs.some(t => t && q.includes(String(t).toLowerCase()))) { slideIdx = slides.indexOf(s) + 1; return s; }
+        if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { slideIdx = slides.indexOf(s) + 1; return s; }
       }
       // 2) generic "present / show me the slides / next slide" -> cycle through them
       if (/\b(present|presentation|slides?|deck|next|overview)\b/.test(q) || q.includes('show me') || q.includes('show us') || q.includes('walk me through') || q.includes('pull up')) {
-        showSlide(slides[slideIdx % slides.length]); slideIdx++;
+        const s = slides[slideIdx % slides.length]; slideIdx++; return s;
       }
+      return null;
     }
     function showSlide(slide){
       const isPdf = /\.pdf(\?|$)/i.test(slide.url || '');
@@ -327,9 +337,10 @@
       if (isPdf){ img.style.display='none'; frame.style.display='block'; frame.src = slide.url + '#toolbar=0&navpanes=0&view=FitH'; }
       else { frame.style.display='none'; frame.src='about:blank'; img.style.display='block'; img.src = slide.url; }
       $('slidePanel').classList.add('show');
+      document.body.classList.add('presenting');     // avatar -> corner PiP
       console.log('[slide] presenting', slide.title || slide.url);
     }
-    window.hideSlide = function(){ $('slidePanel').classList.remove('show'); $('slideImg').src=''; $('slideFrame').src='about:blank'; };
+    window.hideSlide = function(){ $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); $('slideImg').src=''; $('slideFrame').src='about:blank'; };
     window.toggleSpeaker = function () { speakerOn = !speakerOn; video.muted = !speakerOn; const b = $('speakerBtn'); b.classList.toggle('off', !speakerOn); b.textContent = speakerOn ? '🔊' : '🔇'; };
     window.toggleDrawer = function (open) { $('drawer').classList.toggle('open', open); };
     window.submitLead = function () {
