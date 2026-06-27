@@ -139,7 +139,7 @@
     }
 
     let cfg = null;
-    let session = null, started = false, connecting = false, speaking = false, speakerOn = true;
+    let session = null, started = false, connecting = false, speaking = false, speakerOn = true, spokeOnce = false;
     let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
@@ -194,7 +194,7 @@
         });
         // Real talking state — makes barge-in / interrupt reliable.
         try {
-          session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; setStatus('Speaking'); });
+          session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; spokeOnce = true; setStatus('Speaking'); });
           session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speaking = false; setStatus('Live'); });
         } catch (e) { console.warn('speak events unavailable', e); }
 
@@ -220,7 +220,12 @@
       heartbeatTimer = setInterval(() => meter('heartbeat'), 20000);
       const greeting = cfg.greeting || `Hi! I'm ${cfg.name}. Ask me anything.`;
       addMsg('bot', greeting);
+      // Let the avatar fully initialize so the opening line isn't dropped, then
+      // retry once if she never actually started speaking it.
+      spokeOnce = false;
+      await new Promise(r => setTimeout(r, 700));
       await speak(greeting);
+      setTimeout(() => { if (started && !spokeOnce) { try { session.repeat(greeting); } catch {} } }, 1800);
       showChips(cfg.chips || []);
     }
 
