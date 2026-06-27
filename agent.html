@@ -65,6 +65,16 @@
   <div class="stage" id="stage"><video id="avatar" autoplay playsinline></video></div>
   <div class="vignette"></div>
   <div class="brand-bg"><img id="brandBg" src="assets/agent-logo.svg" alt=""/></div>
+
+  <!-- Framing tuner (only shows with ?tune=1) -->
+  <div id="tuner" style="display:none;position:fixed;top:54px;left:14px;z-index:60;background:rgba(10,13,16,.94);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.72rem;color:var(--soft);min-width:200px">
+    <div style="font-weight:600;color:var(--gold-2);margin-bottom:6px">Framing tuner</div>
+    <div>Zoom: <b id="tunerZoomVal">1.20</b>×</div>
+    <input id="tunerZoom" type="range" min="1" max="2.2" step="0.01" value="1.2" style="width:100%">
+    <div style="margin-top:8px">Vertical: <b id="tunerPanVal">30</b>%</div>
+    <input id="tunerPan" type="range" min="0" max="70" step="1" value="30" style="width:100%">
+    <div style="margin-top:8px;color:var(--muted)">Tell me these two numbers and I'll lock it in.</div>
+  </div>
   <div class="topbar">
     <img src="assets/agent-logo.svg" alt="" id="logo"/>
     <div class="spacer"></div>
@@ -101,7 +111,26 @@
 
     const $ = (id) => document.getElementById(id);
     const video = $('avatar');
-    const SLUG = new URLSearchParams(location.search).get('slug') || 'demo';
+    const params = new URLSearchParams(location.search);
+    const SLUG = params.get('slug') || 'demo';
+
+    // ── Framing: zoom + vertical pan (live-tunable via ?tune=1) ──────────
+    let frameZoom = parseFloat(params.get('zoom')) || 1.2;
+    let framePan = params.get('pan') != null ? parseFloat(params.get('pan')) : 30;
+    function applyFraming() {
+      video.style.transform = `scale(${frameZoom})`;
+      video.style.objectPosition = `center ${framePan}%`;
+    }
+    applyFraming();
+    if (params.has('tune')) {
+      const t = document.getElementById('tuner'); t.style.display = 'block';
+      const z = document.getElementById('tunerZoom'), zv = document.getElementById('tunerZoomVal');
+      const p = document.getElementById('tunerPan'), pv = document.getElementById('tunerPanVal');
+      z.value = frameZoom; zv.textContent = frameZoom.toFixed(2);
+      p.value = framePan; pv.textContent = framePan;
+      z.oninput = () => { frameZoom = parseFloat(z.value); zv.textContent = frameZoom.toFixed(2); applyFraming(); };
+      p.oninput = () => { framePan = parseFloat(p.value); pv.textContent = framePan; applyFraming(); };
+    }
 
     let cfg = null;
     let session = null, started = false, connecting = false, speaking = false, speakerOn = true;
