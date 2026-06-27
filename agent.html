@@ -326,7 +326,7 @@
         if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { slideIdx = slides.indexOf(s) + 1; return s; }
       }
       // 2) generic "present / show me the slides / next slide" -> cycle through them
-      if (/\b(present|presentation|slides?|deck|next|overview)\b/.test(q) || q.includes('show me') || q.includes('show us') || q.includes('walk me through') || q.includes('pull up')) {
+      if (/\b(present|presentation|slides?|deck|next|overview|continue)\b/.test(q) || q.includes('show me') || q.includes('show us') || q.includes('walk me through') || q.includes('pull up') || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next one')) {
         const s = slides[slideIdx % slides.length]; slideIdx++; return s;
       }
       return null;
