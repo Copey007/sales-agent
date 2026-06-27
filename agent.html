@@ -14,7 +14,7 @@
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 120% at 50% 30%,#0e1216 0%,#050508 70%)}
-    .stage video{width:100%;height:100%;object-fit:contain;object-position:center 30%;transform:scale(1.1);transform-origin:center center;opacity:0;transition:opacity .6s ease}
+    .stage video{width:100%;height:100%;object-fit:contain;object-position:center 25%;transform:scale(0.92);transform-origin:center center;opacity:0;transition:opacity .6s ease}
     .stage.live video{opacity:1}
     .vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(5,5,8,.65) 100%)}
     .brand-bg{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .8s ease}
@@ -115,8 +115,8 @@
     const SLUG = params.get('slug') || 'demo';
 
     // ── Framing: zoom + vertical pan (live-tunable via ?tune=1) ──────────
-    let frameZoom = parseFloat(params.get('zoom')) || 1.1;
-    let framePan = params.get('pan') != null ? parseFloat(params.get('pan')) : 30;
+    let frameZoom = parseFloat(params.get('zoom')) || 0.92;
+    let framePan = params.get('pan') != null ? parseFloat(params.get('pan')) : 25;
     function applyFraming() {
       video.style.transform = `scale(${frameZoom})`;
       video.style.objectPosition = `center ${framePan}%`;
