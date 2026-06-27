@@ -3,94 +3,137 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A-Gent — Interactive Demo</title>
+  <title>A-Gent — Talk to Your AI Agent</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--gold:#c9a227;--gold-2:#ffd86b;--green:#41ff9f;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--red:#ff5c7a}
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
-    body{display:flex;flex-direction:column;background:radial-gradient(circle at 30% 0%,rgba(201,162,39,.06),transparent 50%),var(--black)}
+    body{display:flex;flex-direction:column}
+    
     .topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);flex-shrink:0}
-    .topbar img{height:26px}
+    .topbar img{height:24px}
     .topbar .spacer{flex:1}
+    
     .main{flex:1;display:flex;overflow:hidden}
-    .agent-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;min-width:300px}
-    .video-frame{width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:#0a0d10;border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
-    .video-frame.speaking{border-color:rgba(65,255,159,.3)}
+    
+    /* Left: chat panel */
+    .chat-panel{width:380px;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel)}
+    .chat-header{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;font-size:.85rem;color:var(--gold-2)}
+    .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+    .chat-messages::-webkit-scrollbar{width:3px}
+    .chat-messages::-webkit-scrollbar-thumb{background:var(--line)}
+    .msg{max-width:85%;padding:10px 14px;border-radius:14px;font-size:.84rem;line-height:1.5}
+    .msg.bot{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+    .msg.user{align-self:flex-end;background:rgba(201,162,39,.12);border:1px solid var(--line);border-bottom-right-radius:4px}
+    
+    .topics{padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--line)}
+    .topic{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
+    .topic:hover{border-color:var(--gold);color:var(--gold-2)}
+    
+    .chat-input{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+    .chat-input input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.84rem;outline:none}
+    .chat-input input:focus{border-color:var(--gold)}
+    .chat-input input::placeholder{color:var(--muted)}
+    .send-btn{width:38px;height:38px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
+    .send-btn:disabled{opacity:.4}
+    
+    /* Right: avatar stage */
+    .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:20px}
+    
+    .video-frame{width:100%;max-width:500px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:var(--panel-2);border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
     .video-frame video{width:100%;height:100%;object-fit:cover}
-    .video-frame .start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,5,8,.85)}
-    .see-demo-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(201,162,39,.3)}
-    .see-demo-btn:hover{transform:scale(1.04)}
+    .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
+    
+    .start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,5,8,.85)}
+    .start-overlay h2{font-size:1.2rem;color:var(--text);font-weight:700}
+    .start-overlay p{font-size:.82rem;color:var(--soft);max-width:280px;text-align:center;line-height:1.5}
+    .start-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(201,162,39,.3)}
+    .start-btn:hover{transform:scale(1.04)}
+    
     .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
     .video-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
     @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
     .video-status .label{font-size:.68rem;color:var(--green);text-transform:uppercase;margin-left:auto}
-    .caption{margin-top:14px;padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:420px;min-height:44px;text-align:center}
+    
+    .caption{margin-top:14px;padding:12px 16px;background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:.85rem;color:var(--soft);line-height:1.5;max-width:500px;min-height:44px;text-align:center}
     .caption.thinking{color:var(--muted)}
-    .right-panel{width:440px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.3)}
-    .showcase{flex:1;overflow-y:auto;padding:16px}
-    .mockup{display:none}
-    .mockup.active{display:block}
-    .mockup-title{font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:600}
-    .mockup img{width:100%;border-radius:12px;border:1px solid var(--line)}
-    .quick-replies{display:flex;gap:5px;padding:0 14px 6px;flex-wrap:wrap}
-    .qr{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
-    .qr:hover{border-color:var(--gold);color:var(--gold-2)}
-    .input-bar{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:7px;background:rgba(5,5,8,.6);align-items:center}
-    .input-bar input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.84rem;outline:none}
-    .input-bar input:focus{border-color:var(--gold)}
-    .input-bar input::placeholder{color:var(--muted)}
-    .mic-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:50%;background:var(--panel-2);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
-    .mic-btn:hover{border-color:var(--gold);color:var(--gold-2)}
-    .mic-btn.listening{background:var(--red);border-color:var(--red);color:#fff;animation:mic-p 1s infinite}
-    @keyframes mic-p{0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,.3)}50%{box-shadow:0 0 0 8px rgba(255,92,122,0)}}
-    .send-btn{width:40px;height:40px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
-    .send-btn:hover{transform:scale(1.05)}
-    .send-btn:disabled{opacity:.4}
-    .cta-bar{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px}
-    .cta-bar a{flex:1}
-    .cta-bar button{width:100%;padding:9px;border:0;border-radius:10px;font-weight:700;font-size:.78rem;cursor:pointer}
-    .cta-bar .primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006}
-    .cta-bar .secondary{background:var(--panel-2);color:var(--soft);border:1px solid var(--line)}
-    @media(max-width:860px){.main{flex-direction:column}.right-panel{width:100%;border-left:0;border-top:1px solid var(--line);max-height:50vh}}
+    
+    /* Bottom control bar */
+    .controls{padding:10px 20px;border-top:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;gap:16px;flex-shrink:0}
+    .ctrl-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);color:var(--soft);cursor:pointer;font-size:.68rem;transition:all .15s}
+    .ctrl-btn:hover{border-color:var(--gold);color:var(--gold-2)}
+    .ctrl-btn .icon{font-size:1.2rem}
+    .ctrl-btn.mic.listening{background:var(--red);border-color:var(--red);color:#fff}
+    .ctrl-btn.end{border-color:rgba(255,92,122,.3);color:var(--red)}
+    .ctrl-btn.end:hover{background:rgba(255,92,122,.1)}
+    .ctrl-btn.cta{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;border:0;font-weight:600}
+    .ctrl-btn.speaker.off{opacity:.4}
+    
+    @media(max-width:768px){.main{flex-direction:column}.chat-panel{width:100%;border-right:0;border-bottom:1px solid var(--line);max-height:40vh}.stage{flex:1}}
   </style>
 </head>
 <body>
-  <div class="topbar"><img src="assets/agent-logo.svg" alt="A-Gent"/><div class="spacer"></div></div>
+  <div class="topbar">
+    <img src="assets/agent-logo.svg" alt="A-Gent"/>
+    <div class="spacer"></div>
+    <span style="font-size:.72rem;color:var(--muted)">Powered by A-Gent</span>
+  </div>
+  
   <div class="main">
-    <div class="agent-stage">
+    <!-- Chat panel -->
+    <div class="chat-panel">
+      <div class="chat-header">💬 Chat</div>
+      <div class="chat-messages" id="messages"></div>
+      <div class="topics" id="topics"></div>
+      <div class="chat-input">
+        <input type="text" id="input" placeholder="Type here..." onkeydown="if(event.key==='Enter')send()"/>
+        <button class="send-btn" id="send" onclick="send()">↑</button>
+      </div>
+    </div>
+    
+    <!-- Avatar stage -->
+    <div class="stage">
       <div class="video-frame" id="frame">
         <video id="avatar" autoplay playsinline></video>
         <div class="start-overlay" id="overlay">
-          <div style="font-size:.85rem;color:var(--muted)">Click to start your demo</div>
-          <button class="see-demo-btn" onclick="start()">▶ Start Demo</button>
+          <h2>Talk to Your AI Agent</h2>
+          <p>Ask anything you'd ask a human. I can answer questions, walk you through the platform, and show you our AI workforce.</p>
+          <button class="start-btn" onclick="start()">▶ Start Conversation</button>
         </div>
-        <div class="video-status"><div class="dot"></div><div style="font-size:.82rem;font-weight:600">A-Gent Demo Agent</div><div class="label" id="status">OFFLINE</div></div>
+        <div class="video-status" id="vstatus" style="display:none">
+          <div class="dot"></div>
+          <div style="font-size:.78rem;font-weight:600">A-Gent Agent</div>
+          <div class="label" id="status">LIVE</div>
+        </div>
       </div>
-      <div class="caption" id="caption">Click "Start Demo" to begin</div>
+      <div class="caption" id="caption" style="display:none"></div>
     </div>
-    <div class="right-panel">
-      <div class="showcase" id="showcase">
-        <div class="mockup active" id="m-welcome"><div class="mockup-title">Welcome</div><div style="padding:20px;text-align:center"><div style="font-size:2.5rem">🚀</div><div style="font-size:.9rem;font-weight:600;margin-top:8px">Autonomous AI Sales Workforce</div></div></div>
-        <div class="mockup" id="m-mission"><div class="mockup-title">📊 Mission Control</div><img src="assets/screenshot-mission-control.png"/></div>
-        <div class="mockup" id="m-workers"><div class="mockup-title">👥 AI Workforce</div><img src="assets/screenshot-workers.png"/></div>
-        <div class="mockup" id="m-concierge"><div class="mockup-title">💬 Concierge</div><img src="assets/screenshot-concierge.png"/></div>
-      </div>
-      <div class="quick-replies" id="qr"></div>
-      <div class="input-bar">
-        <button class="mic-btn" id="mic" onclick="toggleMic()">🎤</button>
-        <input type="text" id="input" placeholder="Type or speak..." onkeydown="if(event.key==='Enter')send()"/>
-        <button class="send-btn" id="send" onclick="send()">↑</button>
-      </div>
-      <div class="cta-bar" id="cta" style="display:none">
-        <a href="https://aisdr.a-gent.co/workers.html" target="_blank"><button class="primary">🚀 Hire Workers</button></a>
-        <a href="https://missioncontrol.a-gent.co" target="_blank"><button class="secondary">📊 Mission Control</button></a>
-      </div>
-    </div>
+  </div>
+  
+  <!-- Bottom controls -->
+  <div class="controls" id="controls" style="display:none">
+    <button class="ctrl-btn cta" onclick="window.open('https://aisdr.a-gent.co/workers.html','_blank')">
+      <span class="icon">🚀</span>Get in touch
+    </button>
+    <button class="ctrl-btn mic" id="micBtn" onclick="toggleMic()">
+      <span class="icon">🎤</span>Mic
+    </button>
+    <button class="ctrl-btn speaker" id="speakerBtn" onclick="toggleSpeaker()">
+      <span class="icon">🔊</span>Speaker
+    </button>
+    <button class="ctrl-btn end" onclick="endSession()">
+      <span class="icon">✕</span>End
+    </button>
   </div>
 
   <script>
     const video = document.getElementById('avatar');
+    let started = false;
+    let busy = false;
+    let speakerOn = true;
+    let messages = [];
+
     const V = {
       greeting: 'assets/demo-greeting.mp4',
       mission: 'assets/demo-dashboard.mp4',
@@ -104,18 +147,32 @@
       final: 'assets/demo-final.mp4'
     };
 
-    let started = false;
-    let busy = false;
-    let messages = [];
+    function addMsg(role, text) {
+      const d = document.createElement('div');
+      d.className = 'msg ' + role;
+      d.textContent = text;
+      document.getElementById('messages').appendChild(d);
+      document.getElementById('messages').scrollTop = 99999;
+    }
 
-    // Play a HeyGen video once with audio. When done, loop last frame muted.
+    function showTopics(topics) {
+      const c = document.getElementById('topics');
+      c.innerHTML = '';
+      topics.forEach(t => {
+        const b = document.createElement('button');
+        b.className = 'topic';
+        b.textContent = t;
+        b.onclick = () => { document.getElementById('input').value = t; send(); };
+        c.appendChild(b);
+      });
+    }
+
     function play(src, text) {
       return new Promise(resolve => {
         const cap = document.getElementById('caption');
         const frame = document.getElementById('frame');
         const status = document.getElementById('status');
 
-        // Thinking
         cap.className = 'caption thinking';
         cap.textContent = '● ● ●';
         status.textContent = 'THINKING';
@@ -130,7 +187,7 @@
 
           video.src = src;
           video.loop = false;
-          video.muted = false;
+          video.muted = !speakerOn;
 
           let done = false;
           const finish = () => {
@@ -139,7 +196,6 @@
             frame.classList.remove('speaking');
             status.textContent = 'LIVE';
             busy = false;
-            // Pause on last frame — no looping
             video.pause();
             resolve();
           };
@@ -147,67 +203,68 @@
           video.onended = finish;
           video.onerror = finish;
           video.play().then(() => {}).catch(() => {
-            // Autoplay blocked — try muted then unmute
             video.muted = true;
-            video.play().then(() => setTimeout(() => video.muted = false, 300)).catch(() => setTimeout(finish, 5000));
+            video.play().then(() => {
+              if (speakerOn) setTimeout(() => video.muted = false, 300);
+            }).catch(() => setTimeout(finish, 5000));
           });
-          setTimeout(finish, 45000); // safety
+          setTimeout(finish, 45000);
         }, 600);
       });
     }
 
-    // Start
     function start() {
       if (started) return;
       started = true;
       document.getElementById('overlay').style.display = 'none';
-      document.getElementById('cta').style.display = 'flex';
-      document.getElementById('status').textContent = 'LIVE';
+      document.getElementById('vstatus').style.display = 'flex';
+      document.getElementById('caption').style.display = 'block';
+      document.getElementById('controls').style.display = 'flex';
 
-      // Greet
-      play(V.greeting, 'Welcome to A-Gent! How can I help you today?').then(() => {
-        qr(['Tell me about the platform', 'Show me the workers', 'Show me Mission Control', 'How much does it cost?']);
+      addMsg('bot', "Hey, I'm your A-Gent agent. Great to meet you! I can answer questions, walk you through our platform, and show you our AI workforce. What brought you here today?");
+
+      play(V.greeting, "Hey, I'm your A-Gent agent. Great to meet you! What brought you here today?").then(() => {
+        showTopics(['Get an overview', 'Show me the workers', 'Show me Mission Control', 'How much does it cost?', 'Talk to someone']);
       });
     }
 
-    // Send message
     async function send() {
       const input = document.getElementById('input');
       const text = input.value.trim();
       if (!text || busy) return;
       input.value = '';
       document.getElementById('send').disabled = true;
+      addMsg('user', text);
       messages.push({ role: 'user', content: text });
 
       const l = text.toLowerCase();
       let v = null, t = null, r = [], m = null;
 
       if (l.match(/pric|cost|how much/)) { v='pricing'; t="We're in early access. Most setups start at a fraction of what a single SDR would cost — and the AI works 24/7. Would you like a quote?"; r=['Yes, contact me','Show me the workers','Show me Mission Control']; }
-      else if (l.match(/hire|start|sign up|begin|get started/)) { v='hire'; t="You can hire your first AI worker right now! Click Hire Workers below to browse the marketplace."; r=['Open marketplace','Show Mission Control','Talk to someone']; }
-      else if (l.match(/contact|human|someone|talk to|email/)) { v='contact'; t="Email mark@a-gent.co and we'll get back to you within 24 hours."; r=['Hire a worker','Show me the workers','Show me Mission Control']; }
-      else if (l.match(/signal|trigger/)) { v='signals'; t="We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control']; }
-      else if (l.match(/worker|agent|team|employee|workforce/)) { v='workers'; t="We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Where would you like to go next?"; r=['How much?','Show me Mission Control','Show me the concierge','Hire a worker']; m='m-workers'; }
-      else if (l.match(/dashboard|mission control|monitor/)) { v='mission'; t="Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7. Where would you like to go next?"; r=['Show me the workers','Show me the concierge','How much?','Talk to someone']; m='m-mission'; }
-      else if (l.match(/concierge|chat|widget|inbound/)) { v='concierge'; t="The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']; m='m-concierge'; }
-      else if (l.match(/more|what is|how does|explain|platform|about|help/)) { v='platform'; t="A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Show me the concierge']; }
-
-      if (m) showMockup(m);
+      else if (l.match(/hire|start|sign up|begin|get started/)) { v='hire'; t="You can hire your first AI worker right now! I can take you to the marketplace."; r=['Open marketplace','Show Mission Control','Talk to someone']; }
+      else if (l.match(/contact|human|someone|talk to|email/)) { v='contact'; t="Email mark@a-gent.co and we'll get back to you within 24 hours. Or you can hire a worker now and start immediately!"; r=['Hire a worker','Show me the workers','Show me Mission Control']; }
+      else if (l.match(/signal|trigger/)) { v='signals'; t="We track job changes, hiring spikes, funding announcements, leadership moves, and event attendance. When a signal fires, the Researcher enriches the account and the SDR writes a signal-driven email. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control']; }
+      else if (l.match(/worker|agent|team|employee|workforce/)) { v='workers'; t="We have 7 AI workers — Sarah the Researcher, James the SDR, Priya in RevOps, Maria in Support, David in Success, and Emma in Social. Each hired through an onboarding flow. Where would you like to go next?"; r=['How much?','Show me Mission Control','Show me the concierge','Hire a worker']; }
+      else if (l.match(/dashboard|mission control|monitor/)) { v='mission'; t="Mission Control is your command center. Live campaign metrics, agent status, heartbeat summaries — all running autonomously 24/7. Where would you like to go next?"; r=['Show me the workers','Show me the concierge','How much?','Talk to someone']; }
+      else if (l.match(/concierge|chat|widget|inbound/)) { v='concierge'; t="The Concierge is an inbound widget that greets visitors, qualifies leads, and captures emails. It's voice-enabled and embeddable on any website. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']; }
+      else if (l.match(/overview|what is|how does|explain|platform|about|help/)) { v='platform'; t="A-Gent deploys specialized AI workers that operate 24/7. Each worker has a real identity, persistent memory, and specific capabilities. You set the goal, they figure out the how. Where would you like to go next?"; r=['Show me pricing','Show me the workers','Show me Mission Control','Show me the concierge']; }
 
       if (v) {
+        addMsg('bot', t);
         await play(V[v], t);
-        qr(r);
+        showTopics(r);
       } else {
-        // Dynamic LLM response — play a generic video with the LLM text as caption
         try {
           const res = await fetch('/api/concierge', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'chat',messages:messages,speak:false}) });
           const data = await res.json();
           if (data.reply) {
-            // Use the platform video muted, with caption for the LLM response
+            addMsg('bot', data.reply);
             await play(V.platform, data.reply);
             messages.push({role:'bot',content:data.reply});
-            qr(['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']);
+            showTopics(['Show me pricing','Show me the workers','Show me Mission Control','Hire a worker']);
           }
         } catch(e) {
+          addMsg('bot', "I'm having trouble right now. Please try asking something else.");
           await play(V.platform, "I'm having trouble right now. Please try asking something else.");
         }
       }
@@ -216,21 +273,27 @@
       document.getElementById('input').focus();
     }
 
-    function showMockup(id) {
-      document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
-      document.getElementById(id)?.classList.add('active');
+    function toggleSpeaker() {
+      speakerOn = !speakerOn;
+      const btn = document.getElementById('speakerBtn');
+      btn.classList.toggle('off', !speakerOn);
+      btn.querySelector('.icon').textContent = speakerOn ? '🔊' : '🔇';
+      video.muted = !speakerOn;
     }
 
-    function qr(replies) {
-      const c = document.getElementById('qr');
-      c.innerHTML = '';
-      replies.forEach(text => {
-        const b = document.createElement('button');
-        b.className = 'qr';
-        b.textContent = text;
-        b.onclick = () => { document.getElementById('input').value = text; send(); };
-        c.appendChild(b);
-      });
+    function endSession() {
+      video.pause();
+      document.getElementById('controls').style.display = 'none';
+      document.getElementById('caption').style.display = 'none';
+      document.getElementById('vstatus').style.display = 'none';
+      document.getElementById('overlay').style.display = 'flex';
+      document.getElementById('overlay').querySelector('h2').textContent = 'Session Ended';
+      document.getElementById('overlay').querySelector('p').textContent = 'Thanks for chatting! You can start a new conversation anytime.';
+      document.getElementById('overlay').querySelector('button').textContent = '▶ Start Again';
+      started = false;
+      messages = [];
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('topics').innerHTML = '';
     }
 
     // Voice input
@@ -241,7 +304,7 @@
       if (!SR) { alert('Use Chrome for voice input.'); return; }
       rec = new SR();
       rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US';
-      const btn = document.getElementById('mic');
+      const btn = document.getElementById('micBtn');
       btn.classList.add('listening'); listening = true;
       rec.onresult = (e) => { document.getElementById('input').value = e.results[0][0].transcript; send(); };
       rec.onerror = () => {};
