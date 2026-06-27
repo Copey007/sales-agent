@@ -18,6 +18,28 @@
 
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { remember, recall } from './_supabase-memory.mjs';
+import { getAgentBySlug } from './_avatar-store.mjs';
+
+/**
+ * Resolve the system prompt + scoping for a given agent slug. Per-tenant
+ * agents bring their own persona + knowledge; absent a slug we fall back to
+ * the built-in A-Gent prompt so existing callers keep working.
+ */
+async function resolveAgent(slug) {
+  if (!slug) return { systemPrompt: SYSTEM_PROMPT, accountId: 'a-gent', name: 'A-Gent' };
+  try {
+    const agent = await getAgentBySlug(slug);
+    if (agent && agent.system_prompt) {
+      let prompt = agent.system_prompt;
+      if (agent.knowledge) prompt += `\n\nKnowledge base (use when relevant, never invent beyond it):\n${agent.knowledge}`;
+      prompt += '\n\nKeep replies to 2-3 sentences and always move the conversation forward with a question.';
+      return { systemPrompt: prompt, accountId: agent.slug, name: agent.name };
+    }
+  } catch (e) {
+    console.warn('[concierge] agent resolve failed, using default:', e.message);
+  }
+  return { systemPrompt: SYSTEM_PROMPT, accountId: slug || 'a-gent', name: 'A-Gent' };
+}
 
 export default async (req, context) => {
   const corsHeaders = {
@@ -142,13 +164,16 @@ async function handleStart(body, corsHeaders) {
 }
 
 async function handleChat(body, corsHeaders) {
-  const { messages = [], sessionId, speak = false, visitorEmail } = body;
+  const { messages = [], sessionId, speak = false, visitorEmail, slug = null } = body;
 
   if (!messages.length) {
     return new Response(JSON.stringify({ error: 'messages array is required' }), {
       status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
+
+  // Per-tenant persona + knowledge (falls back to the built-in A-Gent prompt)
+  const { systemPrompt, accountId } = await resolveAgent(slug);
 
   // Recall any previous context about this visitor
   let contextMemories = [];
@@ -166,7 +191,7 @@ async function handleChat(body, corsHeaders) {
 
   // Build the conversation
   const llmMessages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     ...messages.map(m => ({
       role: m.role || 'user',
       content: m.content
@@ -219,9 +244,10 @@ async function handleChat(body, corsHeaders) {
   try {
     await remember({
       agentId: 'concierge',
+      accountId,
       memoryType: 'note',
       content: `Concierge chat ${sessionId || 'unknown'}: Visitor said "${messages[messages.length - 1]?.content || ''}" → Agent replied "${reply.slice(0, 200)}"`,
-      metadata: { sessionId, visitorEmail },
+      metadata: { sessionId, visitorEmail, slug },
       embed: false
     });
   } catch (e) {

@@ -18,6 +18,15 @@
 [functions."workforce-heartbeat"]
   schedule = "*/30 * * * *"
 
+[functions."avatar-reaper"]
+  schedule = "*/5 * * * *"
+
+# Hosted per-tenant avatar pages: /a/<slug> -> agent.html?slug=<slug>
+[[redirects]]
+  from = "/a/:slug"
+  to = "/agent.html?slug=:slug"
+  status = 200
+
 [[headers]]
   for = "/api/*"
   [headers.values]

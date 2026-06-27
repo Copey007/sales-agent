@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent — Talk to a Live AI Agent</title>
+  <meta name="description" content="Have a real-time conversation with A-Gent's AI sales agent. Ask anything — it answers live, on video.">
+  <meta property="og:title" content="Talk to a Live AI Agent — A-Gent">
+  <meta property="og:description" content="A real-time AI sales agent you can actually talk to. Ask anything, get answers live.">
+  <meta property="og:type" content="website">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--gold:#c9a227;--gold-2:#ffd86b;--green:#41ff9f;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--red:#ff5c7a}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
+
+    /* Fullscreen avatar stage — the avatar is the hero */
+    .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 120% at 50% 30%,#0e1216 0%,#050508 70%)}
+    .stage video{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .6s ease}
+    .stage.live video{opacity:1}
+    .vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(5,5,8,.65) 100%)}
+
+    /* Top bar */
+    .topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:12px;padding:14px 22px;background:linear-gradient(180deg,rgba(5,5,8,.7),transparent)}
+    .topbar img{height:26px}
+    .topbar .spacer{flex:1}
+    .status{display:none;align-items:center;gap:7px;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--green);padding:5px 11px;border:1px solid rgba(65,255,159,.3);border-radius:999px;background:rgba(65,255,159,.06)}
+    .status .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+    /* Start overlay */
+    .overlay{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px;background:rgba(5,5,8,.78);backdrop-filter:blur(6px)}
+    .overlay h1{font-size:clamp(1.5rem,4vw,2.4rem);font-weight:800;letter-spacing:-.02em}
+    .overlay p{font-size:.95rem;color:var(--soft);max-width:420px;line-height:1.6}
+    .start-btn{margin-top:6px;padding:15px 34px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:1rem;cursor:pointer;box-shadow:0 6px 26px rgba(201,162,39,.35);transition:transform .15s}
+    .start-btn:hover{transform:scale(1.04)}
+    .start-btn:disabled{opacity:.6;cursor:wait;transform:none}
+    .overlay .err{color:var(--red);font-size:.82rem;max-width:420px;min-height:1em}
+    .overlay .tiny{color:var(--muted);font-size:.72rem}
+
+    /* Caption */
+    .caption{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:20;max-width:min(720px,90vw);padding:13px 20px;background:rgba(5,5,8,.72);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;font-size:.95rem;line-height:1.5;color:var(--text);text-align:center;display:none}
+    .caption.thinking{color:var(--muted)}
+
+    /* Suggested chips */
+    .chips{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:20;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:min(760px,94vw);padding:0 10px}
+    .chip{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(5,5,8,.6);backdrop-filter:blur(8px);color:var(--soft);font-size:.78rem;cursor:pointer;transition:all .15s}
+    .chip:hover{border-color:var(--gold);color:var(--gold-2)}
+
+    /* Bottom control dock */
+    .dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:25;display:none;align-items:center;gap:8px;padding:8px;background:rgba(10,13,16,.85);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:999px;box-shadow:0 8px 40px rgba(0,0,0,.5);max-width:94vw}
+    .dock input{width:min(360px,52vw);padding:11px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.88rem;outline:none}
+    .dock input:focus{border-color:var(--gold)}
+    .dock input::placeholder{color:var(--muted)}
+    .icon-btn{width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:var(--panel-2);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1.1rem;flex-shrink:0;transition:all .15s}
+    .icon-btn:hover{border-color:var(--gold);color:var(--gold-2)}
+    .icon-btn.send{background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);border:0}
+    .icon-btn.mic.listening{background:var(--red);border-color:var(--red);color:#fff;animation:pulse 1.2s infinite}
+    .icon-btn.speaker.off{opacity:.45}
+    .icon-btn.end{border-color:rgba(255,92,122,.35);color:var(--red)}
+    .icon-btn.end:hover{background:rgba(255,92,122,.12)}
+    .icon-btn.cta{width:auto;border-radius:999px;padding:0 16px;gap:6px;font-size:.8rem;font-weight:600;background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;border:0}
+
+    /* Transcript drawer */
+    .drawer{position:fixed;top:0;right:0;bottom:0;width:340px;max-width:88vw;z-index:35;background:rgba(10,13,16,.96);border-left:1px solid var(--line);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
+    .drawer.open{transform:none}
+    .drawer h3{padding:16px;font-size:.8rem;color:var(--gold-2);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    .drawer .close{cursor:pointer;color:var(--muted);font-size:1.1rem}
+    .messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px}
+    .msg{max-width:88%;padding:9px 13px;border-radius:13px;font-size:.83rem;line-height:1.5}
+    .msg.bot{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+    .msg.user{align-self:flex-end;background:rgba(201,162,39,.12);border:1px solid var(--line);border-bottom-right-radius:4px}
+    .lead{padding:12px 14px;border-top:1px solid var(--line);display:flex;gap:8px}
+    .lead input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);font-size:.82rem;outline:none}
+    .lead button{padding:0 14px;border:0;border-radius:10px;background:var(--gold);color:var(--black);font-weight:600;font-size:.8rem;cursor:pointer}
+
+    @media(max-width:600px){
+      .caption{bottom:160px}.chips{bottom:104px}
+      .dock input{width:46vw}
+    }
+  </style>
+</head>
+<body>
+  <!-- Avatar stage -->
+  <div class="stage" id="stage">
+    <video id="avatar" autoplay playsinline></video>
+  </div>
+  <div class="vignette"></div>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <img src="assets/agent-logo.svg" alt="A-Gent"/>
+    <div class="spacer"></div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusLabel">Live</span></div>
+  </div>
+
+  <!-- Start overlay -->
+  <div class="overlay" id="overlay">
+    <h1>Talk to a Live AI Agent</h1>
+    <p>Ask anything you'd ask a human. I answer in real time — questions, a walkthrough of the platform, or a look at our AI workforce.</p>
+    <button class="start-btn" id="startBtn" onclick="startSession()">▶ Start Conversation</button>
+    <div class="err" id="err"></div>
+    <div class="tiny">Voice or text. Works best in Chrome.</div>
+  </div>
+
+  <!-- Caption + chips + dock -->
+  <div class="caption" id="caption"></div>
+  <div class="chips" id="chips"></div>
+
+  <div class="dock" id="dock">
+    <input type="text" id="input" placeholder="Type a message…" onkeydown="if(event.key==='Enter')handleSend()"/>
+    <button class="icon-btn send" onclick="handleSend()" title="Send">↑</button>
+    <button class="icon-btn mic" id="micBtn" onclick="toggleMic()" title="Voice input">🎤</button>
+    <button class="icon-btn speaker" id="speakerBtn" onclick="toggleSpeaker()" title="Mute avatar">🔊</button>
+    <button class="icon-btn cta" onclick="toggleDrawer(true)" title="Transcript & contact">💬</button>
+    <button class="icon-btn end" onclick="endSession()" title="End">✕</button>
+  </div>
+
+  <!-- Transcript / lead drawer -->
+  <div class="drawer" id="drawer">
+    <h3>Transcript <span class="close" onclick="toggleDrawer(false)">✕</span></h3>
+    <div class="messages" id="messages"></div>
+    <div class="lead">
+      <input type="email" id="email" placeholder="Email — have the team reach out"/>
+      <button onclick="submitLead()">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { LiveAvatarSession } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
+
+    const $ = (id) => document.getElementById(id);
+    const video = $('avatar');
+
+    const GREETING = "Hey, great to meet you! I'm your A-Gent agent. I can answer questions, walk you through the platform, or show you our AI workforce. What brought you here today?";
+    const START_CHIPS = ['Give me an overview', 'Show me the AI workforce', "How's this different from a human SDR?", 'How much does it cost?', 'Book a demo'];
+
+    let session = null;
+    let started = false;
+    let speaking = false;
+    let speakerOn = true;
+    let keepAliveTimer = null;
+    let messages = [];
+
+    // ─── Session lifecycle ──────────────────────────────────────────────
+    window.startSession = async function () {
+      if (started) return;
+      const btn = $('startBtn');
+      btn.disabled = true; btn.textContent = 'Connecting…';
+      $('err').textContent = '';
+
+      try {
+        const res = await fetch('/api/avatar-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'FULL' }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.session_token) throw new Error(data.error || 'Could not start session');
+
+        session = new LiveAvatarSession(data.session_token, {});
+        await session.start();
+        try { session.attach(video); } catch (e) { console.warn('attach failed', e); }
+        video.muted = !speakerOn;
+
+        started = true;
+        $('overlay').style.display = 'none';
+        $('stage').classList.add('live');
+        $('status').style.display = 'flex';
+        $('dock').style.display = 'flex';
+        $('input').focus();
+
+        keepAliveTimer = setInterval(() => { try { session.keepAlive(); } catch {} }, 30000);
+
+        addMsg('bot', GREETING);
+        await speak(GREETING);
+        showChips(START_CHIPS);
+      } catch (err) {
+        console.error(err);
+        $('err').textContent = err.message || 'Failed to start. Please try again.';
+        btn.disabled = false; btn.textContent = '▶ Start Conversation';
+      }
+    };
+
+    window.endSession = async function () {
+      try { await session?.stop(); } catch {}
+      clearInterval(keepAliveTimer);
+      started = false; session = null; messages = [];
+      $('stage').classList.remove('live');
+      $('status').style.display = 'none';
+      $('dock').style.display = 'none';
+      $('caption').style.display = 'none';
+      $('chips').innerHTML = '';
+      $('messages').innerHTML = '';
+      toggleDrawer(false);
+      const o = $('overlay');
+      o.style.display = 'flex';
+      o.querySelector('h1').textContent = 'Thanks for chatting!';
+      o.querySelector('p').textContent = 'You can start a new conversation anytime.';
+      const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Again';
+    };
+
+    // ─── Speaking (FULL mode: avatar speaks text in its own voice) ───────
+    async function speak(text) {
+      const cap = $('caption');
+      setStatus('Speaking');
+      cap.style.display = 'block';
+      cap.className = 'caption';
+      cap.textContent = text;
+      speaking = true;
+      try {
+        await session.repeat(text);
+      } catch (e) {
+        console.warn('repeat failed', e);
+      }
+      speaking = false;
+      setStatus('Live');
+    }
+
+    // ─── Conversation ───────────────────────────────────────────────────
+    window.handleSend = async function () {
+      const input = $('input');
+      const text = input.value.trim();
+      if (!text || !started) return;
+      input.value = '';
+      send(text);
+    };
+
+    async function send(text) {
+      // Barge-in: if the avatar is talking, cut it off.
+      if (speaking) { try { session.interrupt(); } catch {} }
+
+      addMsg('user', text);
+      messages.push({ role: 'user', content: text });
+      $('chips').innerHTML = '';
+
+      const cap = $('caption');
+      cap.style.display = 'block';
+      cap.className = 'caption thinking';
+      cap.textContent = '● ● ●';
+      setStatus('Thinking');
+
+      let reply = '';
+      try {
+        const res = await fetch('/api/concierge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'chat', messages, speak: false }),
+        });
+        const data = await res.json();
+        reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
+      } catch (e) {
+        reply = "I'm having a little trouble connecting right now. Mind trying again?";
+      }
+
+      messages.push({ role: 'assistant', content: reply });
+      addMsg('bot', reply);
+      await speak(reply);
+    }
+
+    // ─── UI helpers ─────────────────────────────────────────────────────
+    function addMsg(role, text) {
+      const d = document.createElement('div');
+      d.className = 'msg ' + role;
+      d.textContent = text;
+      $('messages').appendChild(d);
+      $('messages').scrollTop = 99999;
+    }
+    function showChips(list) {
+      const c = $('chips'); c.innerHTML = '';
+      list.forEach((t) => {
+        const b = document.createElement('button');
+        b.className = 'chip'; b.textContent = t;
+        b.onclick = () => send(t);
+        c.appendChild(b);
+      });
+    }
+    function setStatus(label) { $('statusLabel').textContent = label; }
+
+    window.toggleSpeaker = function () {
+      speakerOn = !speakerOn;
+      video.muted = !speakerOn;
+      const b = $('speakerBtn');
+      b.classList.toggle('off', !speakerOn);
+      b.textContent = speakerOn ? '🔊' : '🔇';
+    };
+    window.toggleDrawer = function (open) { $('drawer').classList.toggle('open', open); };
+
+    window.submitLead = async function () {
+      const el = $('email');
+      const email = el.value.trim();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { el.focus(); return; }
+      el.value = ''; el.placeholder = 'Thanks — we’ll be in touch!';
+      send(`My email is ${email}. Please have the team reach out to me.`);
+    };
+
+    // ─── Voice input (Web Speech API) ───────────────────────────────────
+    let rec = null, listening = false;
+    window.toggleMic = function () {
+      if (listening) { rec?.stop(); return; }
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { alert('Voice input needs Chrome. You can type instead.'); return; }
+      rec = new SR();
+      rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US';
+      const b = $('micBtn');
+      b.classList.add('listening'); listening = true;
+      rec.onresult = (e) => { const t = e.results[0][0].transcript; if (t) send(t); };
+      rec.onerror = () => {};
+      rec.onend = () => { b.classList.remove('listening'); listening = false; };
+      rec.start();
+    };
+  </script>
+</body>
+</html>
