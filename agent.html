@@ -144,6 +144,7 @@
 
     let cfg = null;
     let session = null, started = false, connecting = false, speaking = false, speakerOn = true, spokeOnce = false;
+    let presenting = false, presentIdx = 0, deckStarted = false, lastNarrate = false;
     let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
@@ -199,7 +200,11 @@
         // Real talking state — makes barge-in / interrupt reliable.
         try {
           session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; spokeOnce = true; setStatus('Speaking'); });
-          session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => { speaking = false; setStatus('Live'); });
+          session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+            speaking = false; setStatus('Live');
+            // Auto-advance the deck once she finishes narrating a slide.
+            if (presenting && lastNarrate) { lastNarrate = false; setTimeout(() => { if (presenting) stepPresent(1); }, 800); }
+          });
         } catch (e) { console.warn('speak events unavailable', e); }
 
         await session.start();
@@ -283,8 +288,26 @@
       if (!text || !started) return; input.value = ''; send(text);
     };
     async function send(text) {
+      lastNarrate = false;                        // an interrupt must not auto-advance
       if (speaking) { try { session.interrupt(); } catch {} }
       addMsg('user', text); messages.push({ role: 'user', content: text }); $('chips').innerHTML = '';
+      const q = (text || '').toLowerCase();
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+
+      // ── Deck-walk controls ──────────────────────────────────────────────
+      if (slides.length) {
+        const isStart = /\b(present|presentation|deck|slideshow)\b/.test(q) || q.includes('walk me through') || q.includes('run through') || q.includes('go through') || q.includes('show me the slides') || q.includes('present the slides');
+        const isNext  = /\b(next|continue|resume)\b/.test(q) || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next slide');
+        const isBack  = /\b(back|previous)\b/.test(q) || q.includes('go back');
+        const isStop  = /\b(stop|pause|enough|exit)\b/.test(q) || q.includes('hold on');
+        if (presenting && isStop) { presenting = false; const l = 'Sure — what would you like to know?'; addMsg('bot', l); await speak(l); return; }
+        if (isStart) { startPresent(); return; }
+        if (isNext)  { if (!deckStarted) startPresent(); else { presenting = true; stepPresent(1); } return; }
+        if (isBack)  { presenting = true; stepPresent(-1); return; }
+      }
+
+      // Any other question stops an in-progress walk and answers normally.
+      presenting = false;
       const slide = matchSlide(text);
       if (slide) showSlide(slide);
       const cap = $('caption'); cap.style.display = 'block'; cap.className = 'caption thinking'; cap.textContent = '● ● ●'; setStatus('Thinking');
@@ -340,7 +363,29 @@
       document.body.classList.add('presenting');     // avatar -> corner PiP
       console.log('[slide] presenting', slide.title || slide.url);
     }
-    window.hideSlide = function(){ $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); $('slideImg').src=''; $('slideFrame').src='about:blank'; };
+    window.hideSlide = function(){ $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); presenting = false; $('slideImg').src=''; $('slideFrame').src='about:blank'; };
+
+    // ─── Auto-advancing deck walk ────────────────────────────────────────
+    function startPresent(){
+      const slides = (cfg && cfg.slides) ? cfg.slides : []; if (!slides.length) return;
+      deckStarted = true; presenting = true; presentIdx = 0; presentCurrent();
+    }
+    function presentCurrent(){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!presenting || presentIdx < 0 || presentIdx >= slides.length) { presenting = false; return; }
+      const s = slides[presentIdx];
+      showSlide(s); $('chips').innerHTML = '';
+      const line = (s.narration && s.narration.trim()) ? s.narration.trim() : `Here's ${s.title || 'the next slide'}.`;
+      addMsg('bot', line);
+      lastNarrate = true;            // tells the speak-ended handler to auto-advance
+      speak(line);
+    }
+    function stepPresent(dir){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const ni = presentIdx + dir;
+      if (ni >= slides.length) { presenting = false; lastNarrate = false; const l = "That's the end of the deck — happy to take any questions."; addMsg('bot', l); speak(l); return; }
+      presentIdx = Math.max(0, ni); presentCurrent();
+    }
     window.toggleSpeaker = function () { speakerOn = !speakerOn; video.muted = !speakerOn; const b = $('speakerBtn'); b.classList.toggle('off', !speakerOn); b.textContent = speakerOn ? '🔊' : '🔇'; };
     window.toggleDrawer = function (open) { $('drawer').classList.toggle('open', open); };
     window.submitLead = function () {
