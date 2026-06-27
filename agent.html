@@ -93,15 +93,15 @@
   </div>
 
   <script type="module">
-    import { LiveAvatarSession } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
+    import { LiveAvatarSession, SessionEvent } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
 
     const $ = (id) => document.getElementById(id);
     const video = $('avatar');
     const SLUG = new URLSearchParams(location.search).get('slug') || 'demo';
 
     let cfg = null;
-    let session = null, started = false, speaking = false, speakerOn = true;
-    let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null;
+    let session = null, started = false, connecting = false, speaking = false, speakerOn = true;
+    let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
     // ─── Load per-tenant config + theme the page ─────────────────────────
@@ -125,7 +125,8 @@
 
     // ─── Session lifecycle ───────────────────────────────────────────────
     window.startSession = async function () {
-      if (started) return;
+      if (started || connecting) return;
+      connecting = true;
       const btn = $('startBtn'); btn.disabled = true; btn.textContent = 'Connecting…'; $('err').textContent = '';
       try {
         const res = await fetch('/api/avatar-token', {
@@ -142,29 +143,48 @@
           throw new Error(msg);
         }
         sessionRow = data.session_row;
-        session = new LiveAvatarSession(data.session_token, {});
+        session = new LiveAvatarSession(data.session_token, { voiceChat: false, apiUrl: 'https://api.liveavatar.com' });
+
+        // The video/audio tracks only exist after the stream-ready event —
+        // attach + greet there, not right after start().
+        session.on(SessionEvent.SESSION_STREAM_READY, () => onStreamReady());
+        session.on(SessionEvent.SESSION_DISCONNECTED, (reason) => {
+          console.warn('avatar session disconnected', reason);
+          if (!started) fail('The session ended before connecting. Please try again.');
+        });
+
         await session.start();
-        try { session.attach(video); } catch (e) { console.warn('attach failed', e); }
-        video.muted = !speakerOn;
-
-        started = true; startedAt = Date.now();
-        $('overlay').style.display = 'none';
-        $('stage').classList.add('live'); $('status').style.display = 'flex';
-        $('dock').style.display = 'flex'; $('input').focus();
-
-        keepAliveTimer = setInterval(() => { try { session.keepAlive(); } catch {} }, 30000);
-        heartbeatTimer = setInterval(() => meter('heartbeat'), 20000);
-
-        const greeting = cfg.greeting || `Hi! I'm ${cfg.name}. Ask me anything.`;
-        addMsg('bot', greeting);
-        await speak(greeting);
-        showChips(cfg.chips || []);
+        // Safety net: surface an error if the stream never becomes ready.
+        readyTimeout = setTimeout(() => { if (!started) fail('Avatar stream did not start. Please retry.'); }, 25000);
       } catch (err) {
         console.error(err);
-        $('err').textContent = err.message || 'Failed to start. Please try again.';
-        btn.disabled = false; btn.textContent = '▶ Start Conversation';
+        fail(err.message || 'Failed to start. Please try again.');
       }
     };
+
+    async function onStreamReady() {
+      if (started) return;
+      clearTimeout(readyTimeout);
+      try { session.attach(video); } catch (e) { console.warn('attach failed', e); }
+      video.muted = !speakerOn;
+      started = true; connecting = false; startedAt = Date.now();
+      $('overlay').style.display = 'none';
+      $('stage').classList.add('live'); $('status').style.display = 'flex';
+      $('dock').style.display = 'flex'; $('input').focus();
+      keepAliveTimer = setInterval(() => { try { session.keepAlive(); } catch {} }, 30000);
+      heartbeatTimer = setInterval(() => meter('heartbeat'), 20000);
+      const greeting = cfg.greeting || `Hi! I'm ${cfg.name}. Ask me anything.`;
+      addMsg('bot', greeting);
+      await speak(greeting);
+      showChips(cfg.chips || []);
+    }
+
+    function fail(msg) {
+      connecting = false;
+      try { session?.stop(); } catch {}
+      $('err').textContent = msg;
+      const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Conversation';
+    }
 
     window.endSession = async function () {
       await meter('end');
