@@ -317,16 +317,17 @@
         if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { showSlide(s); slideIdx = slides.indexOf(s) + 1; return; }
       }
       // 2) generic "present / show me the slides / next slide" -> cycle through them
-      if (/\b(present|presentation|slides?|deck|next)\b/.test(q) || q.includes('show me')) {
+      if (/\b(present|presentation|slides?|deck|next|overview)\b/.test(q) || q.includes('show me') || q.includes('show us') || q.includes('walk me through') || q.includes('pull up')) {
         showSlide(slides[slideIdx % slides.length]); slideIdx++;
       }
     }
     function showSlide(slide){
       const isPdf = /\.pdf(\?|$)/i.test(slide.url || '');
       const img = $('slideImg'), frame = $('slideFrame');
-      if (isPdf){ img.style.display='none'; frame.style.display='block'; frame.src = slide.url; }
+      if (isPdf){ img.style.display='none'; frame.style.display='block'; frame.src = slide.url + '#toolbar=0&navpanes=0&view=FitH'; }
       else { frame.style.display='none'; frame.src='about:blank'; img.style.display='block'; img.src = slide.url; }
       $('slidePanel').classList.add('show');
+      console.log('[slide] presenting', slide.title || slide.url);
     }
     window.hideSlide = function(){ $('slidePanel').classList.remove('show'); $('slideImg').src=''; $('slideFrame').src='about:blank'; };
     window.toggleSpeaker = function () { speakerOn = !speakerOn; video.muted = !speakerOn; const b = $('speakerBtn'); b.classList.toggle('off', !speakerOn); b.textContent = speakerOn ? '🔊' : '🔇'; };
