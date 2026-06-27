@@ -90,8 +90,8 @@ VALUES
 (
   'demo',
   'A-Gent Demo',
-  '38ad67ed-98f0-407c-a2d2-4f0998b306fc',
-  'c466083f-30f0-465b-a836-0b77abfe7956',
+  '42700a53-38ab-4485-b46f-26be6e0953dc',
+  'e948b062-7dce-4f2b-bcf6-98bd3511106b',
   'FULL',
   'Hi! I''m a live AI agent demo. Ask me anything and I''ll answer in real time.',
   '["What can you do?","How does this work?","Show me a use case","Book a demo"]'::jsonb,
