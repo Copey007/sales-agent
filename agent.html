@@ -14,7 +14,7 @@
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 120% at 50% 30%,#0e1216 0%,#050508 70%)}
-    .stage video{width:100%;height:100%;object-fit:cover;object-position:center 30%;transform:scale(1.2);transform-origin:center 30%;opacity:0;transition:opacity .6s ease}
+    .stage video{width:100%;height:100%;object-fit:contain;object-position:center 30%;transform:scale(1.1);transform-origin:center center;opacity:0;transition:opacity .6s ease}
     .stage.live video{opacity:1}
     .vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(5,5,8,.65) 100%)}
     .brand-bg{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .8s ease}
@@ -70,7 +70,7 @@
   <div id="tuner" style="display:none;position:fixed;top:54px;left:14px;z-index:60;background:rgba(10,13,16,.94);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.72rem;color:var(--soft);min-width:200px">
     <div style="font-weight:600;color:var(--gold-2);margin-bottom:6px">Framing tuner</div>
     <div>Zoom: <b id="tunerZoomVal">1.20</b>×</div>
-    <input id="tunerZoom" type="range" min="1" max="2.2" step="0.01" value="1.2" style="width:100%">
+    <input id="tunerZoom" type="range" min="0.6" max="2.4" step="0.01" value="1.1" style="width:100%">
     <div style="margin-top:8px">Vertical: <b id="tunerPanVal">30</b>%</div>
     <input id="tunerPan" type="range" min="0" max="70" step="1" value="30" style="width:100%">
     <div style="margin-top:8px;color:var(--muted)">Tell me these two numbers and I'll lock it in.</div>
@@ -115,7 +115,7 @@
     const SLUG = params.get('slug') || 'demo';
 
     // ── Framing: zoom + vertical pan (live-tunable via ?tune=1) ──────────
-    let frameZoom = parseFloat(params.get('zoom')) || 1.2;
+    let frameZoom = parseFloat(params.get('zoom')) || 1.1;
     let framePan = params.get('pan') != null ? parseFloat(params.get('pan')) : 30;
     function applyFraming() {
       video.style.transform = `scale(${frameZoom})`;
