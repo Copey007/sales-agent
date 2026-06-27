@@ -180,7 +180,7 @@ async function callLLM(systemPrompt, userPrompt) {
   // Use OpenAI-compatible endpoint (configured via env vars)
   const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
     ? Netlify.env.get('OPENAI_API_KEY')
-    : (process.env.OPENAI_API_KEY || 'sk-iVJWw2GcvmPsr7AceUSTcf');
+    : process.env.OPENAI_API_KEY;
   const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
     ? Netlify.env.get('OPENAI_API_BASE')
     : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
