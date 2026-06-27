@@ -102,7 +102,23 @@ VALUES
 )
 ON CONFLICT (slug) DO NOTHING;
 
--- ── Lock down: service-role only (functions use the service-role key, which
--- bypasses RLS; anon/public get no direct table access). ─────────────────────
+-- ── Lock down (requires platform-schema.sql: auth_tenant_ids()) ──────────────
+-- Public avatar pages read config via service-role functions (which bypass
+-- RLS). Authenticated users manage only their tenant's agents; a super-admin
+-- claim grants god-view across all tenants. Anon gets nothing.
+CREATE OR REPLACE FUNCTION is_super_admin() RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'role') = 'super_admin', false);
+$$;
+
 ALTER TABLE avatar_agents   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE avatar_sessions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS avatar_agents_rw ON avatar_agents;
+CREATE POLICY avatar_agents_rw ON avatar_agents FOR ALL TO authenticated
+  USING (is_super_admin() OR tenant_id IN (SELECT auth_tenant_ids()))
+  WITH CHECK (is_super_admin() OR tenant_id IN (SELECT auth_tenant_ids()));
+
+DROP POLICY IF EXISTS avatar_sessions_read ON avatar_sessions;
+CREATE POLICY avatar_sessions_read ON avatar_sessions FOR SELECT TO authenticated
+  USING (is_super_admin() OR tenant_id IN (SELECT auth_tenant_ids()));
