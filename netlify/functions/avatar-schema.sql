@@ -101,3 +101,8 @@ VALUES
   500
 )
 ON CONFLICT (slug) DO NOTHING;
+
+-- ── Lock down: service-role only (functions use the service-role key, which
+-- bypasses RLS; anon/public get no direct table access). ─────────────────────
+ALTER TABLE avatar_agents   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE avatar_sessions ENABLE ROW LEVEL SECURITY;
