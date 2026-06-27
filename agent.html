@@ -302,11 +302,24 @@
     function setStatus(label) { $('statusLabel').textContent = label; }
 
     // ─── Presentation slides ─────────────────────────────────────────────
+    let slideIdx = 0;
+    const SLIDE_STOP = new Set(['show','when','asked','ask','or','and','the','an','are','about','can','could','would','please','for','this','that','its','our','will','tell','give','want','see','how','much','does','what','you','your','they','them','from','with','have','has']);
+    const slideTokens = (s) => ((s || '').toLowerCase().match(/[a-z0-9-]+/g) || []).filter(t => t.length > 2 && !SLIDE_STOP.has(t));
     function matchSlide(text){
-      const slides = cfg && cfg.slides ? cfg.slides : [];
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!slides.length) return;
       const q = (text || '').toLowerCase();
-      const hit = slides.find(s => (s.triggers || []).some(t => t && q.includes(String(t).toLowerCase())));
-      if (hit) showSlide(hit);
+      const msg = new Set(slideTokens(q));
+      // 1) a slide whose trigger phrase or any keyword matches the message
+      for (const s of slides) {
+        const trigs = s.triggers || [];
+        if (trigs.some(t => t && q.includes(String(t).toLowerCase()))) { showSlide(s); slideIdx = slides.indexOf(s) + 1; return; }
+        if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { showSlide(s); slideIdx = slides.indexOf(s) + 1; return; }
+      }
+      // 2) generic "present / show me the slides / next slide" -> cycle through them
+      if (/\b(present|presentation|slides?|deck|next)\b/.test(q) || q.includes('show me')) {
+        showSlide(slides[slideIdx % slides.length]); slideIdx++;
+      }
     }
     function showSlide(slide){
       const isPdf = /\.pdf(\?|$)/i.test(slide.url || '');
