@@ -339,7 +339,7 @@
         }
 
         // Get a session token, then start the card-required trial checkout.
-        msg.textContent = 'Starting your 30-day trial…';
+        msg.textContent = 'Starting your 15-day free trial…';
         let token = null;
         try {
           const gr = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
@@ -364,7 +364,7 @@
         document.getElementById('hireContent').innerHTML = `
           <div class="onboard-result">
             <h3>✅ ${esc(hiredWorker.name)} is hired!</h3>
-            <p>Your workspace <strong>${esc(hireState.company)}</strong> is live with a 30-day free trial. Manage ${esc(hiredWorker.name.split(' ')[0])} in Mission Control.</p>
+            <p>Your workspace <strong>${esc(hireState.company)}</strong> is live with a 15-day free trial. Manage ${esc(hiredWorker.name.split(' ')[0])} in Mission Control.</p>
           </div>
           <div class="btn-row" style="margin-top:16px">
             <a href="https://missioncontrol.a-gent.co/?welcome=1" style="flex:1"><button class="btn-primary">Go to Mission Control →</button></a>

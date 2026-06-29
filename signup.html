@@ -42,9 +42,9 @@
   <div class="card">
     <!-- form -->
     <div id="form">
-      <h1>Get your live AI agent</h1>
+      <h1>Start your 15-day free trial</h1>
       <div class="plan-pill" id="planPill" style="display:none"></div>
-      <p class="sub">A real-time AI avatar for your company — answering visitors live, on video. Live in under a minute.</p>
+      <p class="sub">Set up your workspace in under a minute. Card required, no charge for 15 days — cancel anytime before the trial ends.</p>
 
       <label>Company</label>
       <input id="company" type="text" placeholder="Acme Corp" autocomplete="organization"/>
@@ -57,7 +57,7 @@
       <label>Your agent's handle</label>
       <div class="handle"><span>aisdr.a-gent.co/a/</span><input id="slug" type="text" placeholder="acme" autocomplete="off"/></div>
 
-      <button class="btn" id="submit" onclick="submitSignup()">Create my AI agent →</button>
+      <button class="btn" id="submit" onclick="submitSignup()">Start 15-day free trial →</button>
       <div class="err" id="err"></div>
       <div class="fine">By signing up you agree to our terms. Already have an account? <a href="#">Sign in</a></div>
     </div>
@@ -65,15 +65,17 @@
     <!-- success -->
     <div class="success" id="success">
       <div class="check">🎉</div>
-      <h2>Your AI agent is live!</h2>
-      <p>Talk to it now, or share the link. You can customize the avatar, persona, and branding anytime.</p>
-      <div class="urlbox" id="agentUrl"></div>
-      <a class="go" id="goBtn" href="#" target="_blank">▶ Meet your agent</a>
+      <h2>Your workspace is live!</h2>
+      <p>Your 15-day free trial has started. Set up your AI agent, persona, and branding anytime — manage everything in Mission Control.</p>
+      <a class="go" id="goBtn" href="https://missioncontrol.a-gent.co/?welcome=1">▶ Go to Mission Control</a>
     </div>
   </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
+    const SB_URL = 'https://byospmliiokgrdjjxsde.supabase.co';
+    const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3NwbWxpaW9rZ3Jkamp4c2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjQ0NzUsImV4cCI6MjA5NTQwMDQ3NX0.KvzaEuEH9nRlBBSUOyg7kTKHvLFfR6CvmZbjVHZQ83I';
+    const TRIAL_DAYS = 15;
 
     // Selected plan (from offers page ?plan=...)
     const PLANS = {
@@ -98,25 +100,56 @@
 
     async function submitSignup() {
       const btn = $('submit'); $('err').textContent = '';
+      const email = $('email').value, password = $('password').value;
+      if (!$('company').value || !$('name').value || !email || !password || !$('slug').value) {
+        $('err').textContent = 'Please fill in all fields.'; return;
+      }
+      if (password.length < 8) { $('err').textContent = 'Password must be at least 8 characters.'; return; }
+
       const payload = {
         company: $('company').value, name: $('name').value,
-        email: $('email').value, password: $('password').value, slug: $('slug').value,
-        plan: planKey || null,
+        email, password, slug: $('slug').value, plan: planKey || null,
       };
-      btn.disabled = true; btn.textContent = 'Creating…';
+      btn.disabled = true; btn.textContent = 'Creating workspace…';
       try {
         const res = await fetch('/api/signup', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Signup failed.');
-        $('agentUrl').textContent = data.agent_url;
-        $('goBtn').href = data.agent_url;
+
+        // PLG: card-required 15-day free trial checkout (same motion as the other CTAs)
+        btn.textContent = 'Starting your 15-day free trial…';
+        let token = null;
+        try {
+          const gr = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+            method: 'POST', headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          token = (await gr.json())?.access_token || null;
+        } catch {}
+
+        if (token) {
+          try {
+            const co = await fetch('/api/billing-checkout', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({
+                trial_days: TRIAL_DAYS, plan: planKey || null,
+                success_url: 'https://missioncontrol.a-gent.co/?welcome=1',
+                cancel_url: 'https://missioncontrol.a-gent.co/?billing=cancelled',
+              }),
+            });
+            const cod = await co.json();
+            if (cod.url) { window.location.href = cod.url; return; } // → Stripe card capture
+          } catch {}
+        }
+
+        // Stripe not wired yet (or token hiccup) — workspace is live on trial; go manage.
         $('form').style.display = 'none';
         $('success').style.display = 'block';
       } catch (e) {
         $('err').textContent = e.message;
-        btn.disabled = false; btn.textContent = 'Create my AI agent →';
+        btn.disabled = false; btn.textContent = 'Start 15-day free trial →';
       }
     }
   </script>
