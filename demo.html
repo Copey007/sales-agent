@@ -6,7 +6,7 @@
   <title>A-Gent — Talk to Your AI Agent</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root{--black:#050508;--panel:#0a0d10;--panel-2:#0e1216;--gold:#c9a227;--gold-2:#ffd86b;--green:#41ff9f;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(201,162,39,.15);--red:#ff5c7a}
+    :root{--black:#0a0a0c;--panel:#131316;--panel-2:#1a1a1f;--gold:#c8b48c;--gold-2:#d4c9a8;--green:#7eb88a;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(200,180,140,.15);--red:#ff5c7a}
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column}
@@ -25,10 +25,10 @@
     .chat-messages::-webkit-scrollbar-thumb{background:var(--line)}
     .msg{max-width:85%;padding:10px 14px;border-radius:14px;font-size:.84rem;line-height:1.5}
     .msg.bot{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:4px}
-    .msg.user{align-self:flex-end;background:rgba(201,162,39,.12);border:1px solid var(--line);border-bottom-right-radius:4px}
+    .msg.user{align-self:flex-end;background:rgba(200,180,140,.12);border:1px solid var(--line);border-bottom-right-radius:4px}
     
     .topics{padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--line)}
-    .topic{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(201,162,39,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
+    .topic{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(200,180,140,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
     .topic:hover{border-color:var(--gold);color:var(--gold-2)}
     
     .chat-input{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
@@ -43,12 +43,12 @@
     
     .video-frame{width:100%;max-width:500px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;position:relative;background:var(--panel-2);border:1px solid var(--line);box-shadow:0 8px 40px rgba(0,0,0,.5)}
     .video-frame video{width:100%;height:100%;object-fit:cover}
-    .video-frame.speaking{border-color:rgba(65,255,159,.3);box-shadow:0 0 32px rgba(65,255,159,.08),0 8px 40px rgba(0,0,0,.5)}
+    .video-frame.speaking{border-color:rgba(126,184,138,.3);box-shadow:0 0 32px rgba(126,184,138,.08),0 8px 40px rgba(0,0,0,.5)}
     
     .start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,5,8,.85)}
     .start-overlay h2{font-size:1.2rem;color:var(--text);font-weight:700}
     .start-overlay p{font-size:.82rem;color:var(--soft);max-width:280px;text-align:center;line-height:1.5}
-    .start-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(201,162,39,.3)}
+    .start-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(200,180,140,.3)}
     .start-btn:hover{transform:scale(1.04)}
     
     .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
@@ -67,7 +67,7 @@
     .ctrl-btn.mic.listening{background:var(--red);border-color:var(--red);color:#fff}
     .ctrl-btn.end{border-color:rgba(255,92,122,.3);color:var(--red)}
     .ctrl-btn.end:hover{background:rgba(255,92,122,.1)}
-    .ctrl-btn.cta{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;border:0;font-weight:600}
+    .ctrl-btn.cta{background:linear-gradient(135deg,var(--green),#4e7d5a);color:#021006;border:0;font-weight:600}
     .ctrl-btn.speaker.off{opacity:.4}
     
     @media(max-width:768px){.main{flex-direction:column}.chat-panel{width:100%;border-right:0;border-bottom:1px solid var(--line);max-height:40vh}.stage{flex:1}}

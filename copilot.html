@@ -8,16 +8,16 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --black:#050508; --panel:#0a0d10; --panel-2:#0e1216;
-      --gold:#c9a227; --gold-2:#ffd86b; --gold-dim:rgba(201,162,39,.12);
-      --green:#41ff9f; --green-2:#a7ffd3; --green-dim:rgba(65,255,159,.08);
+      --black:#0a0a0c; --panel:#131316; --panel-2:#1a1a1f;
+      --gold:#c8b48c; --gold-2:#d4c9a8; --gold-dim:rgba(200,180,140,.12);
+      --green:#7eb88a; --green-2:#a7ffd3; --green-dim:rgba(126,184,138,.08);
       --red:#ff5c7a; --red-dim:rgba(255,92,122,.08);
       --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
-      --line:rgba(201,162,39,.18);
+      --line:rgba(200,180,140,.18);
     }
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif}
-    body{display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 20% 0%,rgba(201,162,39,.06),transparent 40%),var(--black)}
+    body{display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 20% 0%,rgba(200,180,140,.06),transparent 40%),var(--black)}
     
     .header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px)}
     .header-logo{max-height:30px;height:30px;width:auto}
@@ -75,7 +75,7 @@
     .controls input:focus{border-color:var(--gold)}
     .controls button{padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--soft);cursor:pointer;font-size:.72rem;font-weight:600}
     .controls button:hover{border-color:var(--gold);color:var(--gold-2)}
-    .controls button.primary{background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;border:0}
+    .controls button.primary{background:linear-gradient(135deg,var(--green),#4e7d5a);color:#021006;border:0}
     
     @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
     
