@@ -15,6 +15,7 @@
     .card{width:100%;max-width:440px;background:rgba(10,13,16,.7);border:1px solid var(--line);border-radius:20px;padding:30px 28px;box-shadow:0 16px 60px rgba(0,0,0,.5)}
     h1{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
     .sub{color:var(--soft);font-size:.9rem;line-height:1.5;margin-bottom:22px}
+    .plan-pill{display:inline-block;margin:4px 0 14px;padding:6px 14px;border:1px solid var(--line);background:rgba(200,180,140,.10);border-radius:999px;font-size:.8rem;font-weight:600;color:var(--gold-2)}
     label{display:block;font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}
     input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.92rem;outline:none}
     input:focus{border-color:var(--gold)}
@@ -42,6 +43,7 @@
     <!-- form -->
     <div id="form">
       <h1>Get your live AI agent</h1>
+      <div class="plan-pill" id="planPill" style="display:none"></div>
       <p class="sub">A real-time AI avatar for your company — answering visitors live, on video. Live in under a minute.</p>
 
       <label>Company</label>
@@ -73,6 +75,19 @@
   <script>
     const $ = (id) => document.getElementById(id);
 
+    // Selected plan (from offers page ?plan=...)
+    const PLANS = {
+      'live-agent': { label: 'Live Agent', price: '$499/month' },
+      'starter':    { label: 'Starter',    price: '$99/month' },
+    };
+    const planKey = new URLSearchParams(location.search).get('plan');
+    const selectedPlan = PLANS[planKey] || null;
+    if (selectedPlan) {
+      const pill = $('planPill');
+      pill.textContent = `Selected plan: ${selectedPlan.label} — ${selectedPlan.price}`;
+      pill.style.display = 'inline-block';
+    }
+
     // Auto-suggest a handle from the company name (until the user edits it).
     let slugEdited = false;
     $('slug').addEventListener('input', () => { slugEdited = true; });
@@ -86,6 +101,7 @@
       const payload = {
         company: $('company').value, name: $('name').value,
         email: $('email').value, password: $('password').value, slug: $('slug').value,
+        plan: planKey || null,
       };
       btn.disabled = true; btn.textContent = 'Creating…';
       try {
