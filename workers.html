@@ -7,93 +7,98 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root {
+    :root{
       --black:#0a0a0c; --panel:#131316; --panel-2:#1a1a1f; --panel-3:#232328;
       --gold:#c8b48c; --gold-2:#d4c9a8; --gold-dim:rgba(200,180,140,.10);
-      --green:#7eb88a; --green-dim:rgba(126,184,138,.06);
-      --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
-      --line:rgba(200,180,140,.15); --line-2:rgba(255,255,255,.06);
-      --blue:#5b9fff; --purple:#b86fff; --red:#ff5c7a;
+      --green:#7eb88a; --green-dim:rgba(126,184,138,.08);
+      --text:#f0f0f2; --soft:#a8a8ad; --muted:#8e8e93; --dim:#5c5c61;
+      --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.06);
+      --line-strong:rgba(255,255,255,.12); --line-accent:rgba(200,180,140,.16);
+      --blue:#5b9fff; --purple:#b86fff; --red:#d4625a;
+      --radius:12px; --radius-sm:8px;
+      --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.25);
+      --t:.2s cubic-bezier(.4,0,.2,1);
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    html,body{background:var(--black);color:var(--text);font-family:'Inter',sans-serif;min-height:100%}
-    body{background:radial-gradient(circle at 20% 0%,rgba(200,180,140,.08),transparent 50%),radial-gradient(circle at 80% 20%,rgba(126,184,138,.05),transparent 40%),var(--black)}
+    html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    html,body{background:var(--black);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;min-height:100%}
+    body{background:radial-gradient(900px 500px at 50% -10%,rgba(200,180,140,.05),transparent 60%),var(--black);line-height:1.5}
 
-    .hero{padding:60px 20px 40px;text-align:center}
-    .hero h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:800;background:linear-gradient(135deg,var(--gold-2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
-    .hero .logo{display:block;margin:0 auto 20px;max-width:280px;width:60%}
-    .hero p{font-size:1.1rem;color:var(--soft);max-width:600px;margin:0 auto}
-    .hero .stats{display:flex;justify-content:center;gap:40px;margin-top:30px}
+    .hero{padding:64px 20px 40px;text-align:center}
+    .hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:-.02em;color:var(--text);margin-bottom:14px}
+    .hero .logo{display:block;margin:0 auto 22px;max-width:240px;width:55%}
+    .hero p{font-size:1.05rem;color:var(--muted);max-width:600px;margin:0 auto;line-height:1.6}
+    .hero .stats{display:flex;justify-content:center;gap:48px;margin-top:32px}
     .hero .stat{text-align:center}
-    .hero .stat .num{font-size:2rem;font-weight:800;color:var(--gold-2)}
-    .hero .stat .label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+    .hero .stat .num{font-size:1.9rem;font-weight:700;color:var(--text)}
+    .hero .stat .label{font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;margin-top:2px}
 
-    .filters{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 20px 30px}
-    .filter{padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--soft);font-size:.82rem;cursor:pointer;transition:all .15s}
-    .filter:hover{border-color:var(--gold)}
-    .filter.active{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-2)}
+    .filters{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 20px 32px}
+    .filter{padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--soft);font-size:.82rem;font-weight:500;cursor:pointer;transition:all var(--t)}
+    .filter:hover{border-color:var(--line-strong);color:var(--text)}
+    .filter.active{background:var(--gold-dim);border-color:var(--line-accent);color:var(--gold-2)}
 
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;max-width:1200px;margin:0 auto;padding:0 20px 60px}
-    .card{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:20px;padding:24px;transition:transform .2s,border-color .2s,box-shadow .2s;cursor:pointer;position:relative;overflow:hidden}
-    .card:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 8px 32px rgba(200,180,140,.10)}
-    .card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent,rgba(200,180,140,.03),transparent);pointer-events:none}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;max-width:1140px;margin:0 auto;padding:0 20px 64px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;transition:transform var(--t),border-color var(--t),box-shadow var(--t);cursor:pointer;position:relative}
+    .card:hover{transform:translateY(-3px);border-color:var(--line-strong);box-shadow:var(--shadow)}
 
     .card-header{display:flex;align-items:center;gap:14px;margin-bottom:16px}
-    .card-avatar{width:64px;height:64px;border-radius:16px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(200,180,140,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0}
+    .card-avatar{width:60px;height:60px;border-radius:12px;overflow:hidden;display:grid;place-items:center;background:var(--panel-3);border:1px solid var(--line);flex-shrink:0}
     .card-avatar img{width:100%;height:100%;object-fit:cover}
-    .card-name{font-size:1.1rem;font-weight:700;color:var(--text)}
-    .card-title{font-size:.82rem;color:var(--gold-2);margin-top:2px}
-    .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+    .card-name{font-size:1.05rem;font-weight:600;color:var(--text);letter-spacing:-.01em}
+    .card-title{font-size:.82rem;color:var(--gold);margin-top:2px}
+    .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
     .card-status.idle{background:var(--green-dim);color:var(--green);border:1px solid rgba(126,184,138,.2)}
     .card-status.active{background:rgba(126,184,138,.15);color:var(--green)}
 
     .card-bio{font-size:.85rem;color:var(--soft);line-height:1.6;margin-bottom:16px}
 
-    .card-skills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
-    .skill{font-size:.68rem;padding:4px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--line-2);color:var(--soft)}
+    .card-skills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+    .skill{font-size:.68rem;padding:4px 10px;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid var(--line-2);color:var(--soft)}
 
-    .card-tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
-    .tool{font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:3px}
-    .tool::before{content:'🔌';font-size:.6rem}
+    .card-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+    .tool{font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:4px}
+    .tool::before{content:'\1F50C';font-size:.6rem}
 
     .card-footer{display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--line-2)}
-    .hire-btn{padding:8px 18px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
-    .hire-btn:hover{transform:scale(1.03)}
+    .hire-btn{padding:9px 18px;border:1px solid rgba(255,255,255,.8);border-radius:var(--radius-sm);background:#f5f5f7;color:#0a0a0c;font-weight:600;font-size:.82rem;cursor:pointer;transition:transform var(--t),box-shadow var(--t),background var(--t)}
+    .hire-btn:hover{background:#fff;transform:translateY(-1px);box-shadow:0 2px 8px rgba(255,255,255,.12)}
     .card-dept{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 
     /* Onboarding modal */
-    .modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(5,5,8,.92);backdrop-filter:blur(16px);overflow-y:auto}
+    .modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(8,8,10,.72);backdrop-filter:blur(14px);overflow-y:auto}
     .modal-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
-    .modal{width:min(560px,100%);background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);border-radius:24px;padding:32px;position:relative}
+    .modal{width:min(560px,100%);background:var(--panel);border:1px solid var(--line-strong);border-radius:16px;padding:32px;position:relative;box-shadow:var(--shadow)}
     .modal-close{position:absolute;top:16px;right:16px;background:none;border:0;color:var(--muted);font-size:1.4rem;cursor:pointer}
-    .modal-step{font-size:.68rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
-    .modal h2{font-size:1.4rem;font-weight:700;margin-bottom:8px}
-    .modal .sub{font-size:.85rem;color:var(--soft);margin-bottom:24px}
+    .modal-step{font-size:.68rem;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}
+    .modal h2{font-size:1.4rem;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+    .modal .sub{font-size:.88rem;color:var(--muted);margin-bottom:24px;line-height:1.5}
 
-    .worker-preview{display:flex;align-items:center;gap:14px;padding:16px;background:var(--panel-3);border-radius:16px;border:1px solid var(--line);margin-bottom:24px}
-    .worker-preview .av{width:48px;height:48px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(200,180,140,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .worker-preview{display:flex;align-items:center;gap:14px;padding:14px;background:var(--panel-2);border-radius:12px;border:1px solid var(--line);margin-bottom:24px}
+    .worker-preview .av{width:48px;height:48px;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:var(--panel-3);border:1px solid var(--line)}
     .worker-preview .av img{width:100%;height:100%;object-fit:cover}
-    .worker-preview .info .n{font-weight:700}
-    .worker-preview .info .t{font-size:.78rem;color:var(--gold-2)}
+    .worker-preview .info .n{font-weight:600}
+    .worker-preview .info .t{font-size:.78rem;color:var(--gold)}
 
     .field{margin-bottom:18px}
-    .field label{display:block;font-size:.78rem;color:var(--gold-2);margin-bottom:6px;font-weight:600}
-    .field input,.field textarea,.field select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.88rem;outline:none;transition:border-color .2s}
+    .field label{display:block;font-size:.74rem;color:var(--muted);margin-bottom:7px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+    .field input,.field textarea,.field select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.9rem;outline:none;transition:border-color var(--t)}
     .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--gold)}
     .field textarea{min-height:70px;resize:vertical}
 
     .btn-row{display:flex;gap:10px;margin-top:8px}
-    .btn-primary{flex:1;padding:14px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--green),#4e7d5a);color:#021006;font-weight:700;font-size:.9rem;cursor:pointer;transition:transform .15s}
-    .btn-primary:hover{transform:scale(1.01)}
-    .btn-primary:disabled{opacity:.5;cursor:wait}
-    .btn-secondary{padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--soft);font-weight:600;font-size:.9rem;cursor:pointer}
+    .btn-primary{flex:1;padding:14px;border:1px solid rgba(255,255,255,.8);border-radius:var(--radius-sm);background:#f5f5f7;color:#0a0a0c;font-weight:600;font-size:.92rem;cursor:pointer;transition:transform var(--t),box-shadow var(--t),background var(--t)}
+    .btn-primary:hover{background:#fff;transform:translateY(-1px);box-shadow:0 2px 8px rgba(255,255,255,.12)}
+    .btn-primary:disabled{opacity:.5;cursor:wait;transform:none}
+    .btn-secondary{padding:14px 20px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:rgba(255,255,255,.03);color:var(--text);font-weight:500;font-size:.92rem;cursor:pointer;transition:background var(--t),border-color var(--t)}
+    .btn-secondary:hover{background:rgba(255,255,255,.06)}
 
-    .onboard-result{padding:20px;background:var(--green-dim);border:1px solid rgba(126,184,138,.2);border-radius:16px;margin-top:16px}
+    .onboard-result{padding:18px;background:var(--green-dim);border:1px solid rgba(126,184,138,.2);border-radius:12px;margin-top:16px}
     .onboard-result h3{color:var(--green);font-size:.95rem;margin-bottom:8px}
     .onboard-result p{font-size:.82rem;color:var(--soft);line-height:1.5}
-    .onboard-result .next{margin-top:10px;font-size:.78rem;color:var(--gold-2)}
+    .onboard-result .next{margin-top:10px;font-size:.78rem;color:var(--gold)}
 
-    @media(max-width:600px){.hero .stats{gap:20px}.grid{grid-template-columns:1fr}}
+    @media(max-width:600px){.hero .stats{gap:24px}.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -284,7 +289,7 @@
       document.getElementById('hireContent').innerHTML = `
         <div class="modal-step">Step 3 of 3 — Activate</div>
         <h2>Create your workspace to hire ${first}</h2>
-        <p class="sub">Your Mission Control workspace is <strong>free for 30 days</strong> — light up any module. A card is required to start; you won't be charged until day 31.</p>
+        <p class="sub">Your Mission Control workspace is <strong>free for 15 days</strong> — light up any module. A card is required to start; you won't be charged until day 16.</p>
         <div class="worker-preview">
           <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
           <div class="info"><div class="n">${esc(hiredWorker.name)}</div><div class="t">${esc(hiredWorker.title)} · ${esc(hireState.company)}</div></div>
