@@ -302,6 +302,39 @@ async function getPendingTasks({ agentId, limit = 10 }) {
   return await res.json();
 }
 
+// ─── Hired Workers (the "Your Team" roster) ─────────────────────────────────────
+
+/**
+ * List hired-worker records. Hires are stored as agent_memory rows of
+ * memory_type 'hire'; this returns the latest hire per agent (deduped),
+ * optionally scoped to an account/company.
+ */
+async function listHires({ accountId = null, limit = 100 } = {}) {
+  ensureInit();
+  const { url, key } = getCredentials();
+  let filter = `memory_type=eq.hire&order=created_at.desc&limit=${limit}&select=agent_id,content,metadata,account_id,created_at`;
+  if (accountId) filter += `&account_id=eq.${encodeURIComponent(accountId)}`;
+  const res = await fetch(`${url}/rest/v1/agent_memory?${filter}`, {
+    headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
+  });
+  if (!res.ok) return [];
+  const rows = await res.json();
+  const seen = new Set();
+  const team = [];
+  for (const r of rows) {
+    const aid = (r.metadata && r.metadata.agent_id) || r.agent_id;
+    if (seen.has(aid)) continue;
+    seen.add(aid);
+    team.push({
+      agent_id: aid,
+      hired_at: (r.metadata && r.metadata.hired_at) || r.created_at,
+      account_id: r.account_id,
+      ...(r.metadata || {})
+    });
+  }
+  return team;
+}
+
 // ─── Export ────────────────────────────────────────────────────────────────────
 
 export {
@@ -312,5 +345,6 @@ export {
   alreadyKnow,
   createTask,
   updateTask,
-  getPendingTasks
+  getPendingTasks,
+  listHires
 };

@@ -186,17 +186,9 @@
     <p>Real AI coworkers — each with their own email, phone number, memory, and initiative. They work 24/7, without being asked. Set a goal, they figure out the how.</p>
     <div class="stats">
       <div class="stat"><div class="num" id="workerCount">—</div><div class="label">Workers Available</div></div>
-      <div class="stat"><div class="num" id="teamCount">0</div><div class="label">On Your Team</div></div>
+      <div class="stat"><div class="num">24/7</div><div class="label">Always Working</div></div>
       <div class="stat"><div class="num" id="connectorCount">—</div><div class="label">Tools Connected</div></div>
     </div>
-  </div>
-
-  <!-- Your Team -->
-  <div class="team hidden" id="teamSection">
-    <div class="section-head">
-      <h2>👥 Your Team <span class="pill" id="teamPill">0 active</span></h2>
-    </div>
-    <div class="team-row" id="teamRow"></div>
   </div>
 
   <div class="filters" id="filters"></div>
@@ -304,19 +296,10 @@
       },
     };
 
-    const TEAM_KEY = 'agent_team_v1';
-
     let workers = [];
     let connectors = [];
     let allDepts = [];
     let activeFilter = 'all';
-
-    // ─── Team persistence (localStorage) ───
-    function getTeam(){ try { return JSON.parse(localStorage.getItem(TEAM_KEY)) || []; } catch { return []; } }
-    function saveTeam(t){ localStorage.setItem(TEAM_KEY, JSON.stringify(t)); }
-    function isHired(id){ return getTeam().some(m => m.id === id); }
-    function addToTeam(member){ const t = getTeam().filter(m => m.id !== member.id); t.push(member); saveTeam(t); }
-    function removeFromTeam(id){ saveTeam(getTeam().filter(m => m.id !== id)); }
 
     // Each worker is a "real coworker" — give it its own email + direct line.
     function deriveEmail(w){ const f=((w.name||w.id).split(' ')[0]||'agent').toLowerCase().replace(/[^a-z]/g,''); return f+'@a-gent.co'; }
@@ -345,7 +328,6 @@
       filtersEl.innerHTML = `<button class="filter ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">All Workers</button>` +
         allDepts.map(d => `<button class="filter ${activeFilter===d?'active':''}" onclick="setFilter('${d}')">${capitalize(d)}</button>`).join('');
 
-      renderTeam();
       render();
     }
 
@@ -355,53 +337,13 @@
     function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
     function avHtml(w, cls){ return (w.avatar && w.avatar.includes('.')) ? `<div class="${cls}"><img src="${w.avatar}" alt="${esc(w.name)}" /></div>` : `<div class="${cls}">${w.avatar || '🤖'}</div>`; }
 
-    // ─── Your Team rendering + simulated live activity ───
-    let activityTimer = null;
-    function renderTeam(){
-      const team = getTeam();
-      const section = document.getElementById('teamSection');
-      document.getElementById('teamCount').textContent = team.length;
-      if (!team.length){ section.classList.add('hidden'); if(activityTimer){clearInterval(activityTimer);activityTimer=null;} return; }
-      section.classList.remove('hidden');
-      document.getElementById('teamPill').textContent = team.length + (team.length===1?' active':' active');
-      const row = document.getElementById('teamRow');
-      row.innerHTML = team.map(m => {
-        const w = workers.find(x => x.id === m.id) || m;
-        return `<div class="team-card" onclick="openProfile('${w.id}')">
-          ${avHtml(w,'av')}
-          <div class="tinfo">
-            <div class="n">${esc(w.name)}</div>
-            <div class="act"><span class="live-dot"></span><span class="act-text" data-id="${w.id}">On it…</span></div>
-          </div>
-        </div>`;
-      }).join('');
-      startActivity();
-    }
-
-    function startActivity(){
-      if (activityTimer) clearInterval(activityTimer);
-      const tick = () => {
-        document.querySelectorAll('.act-text').forEach(el => {
-          const w = workers.find(x => x.id === el.dataset.id);
-          const lines = (w && w.activity) || ['Working…'];
-          el.textContent = lines[Math.floor(Math.random()*lines.length)];
-        });
-      };
-      tick();
-      activityTimer = setInterval(tick, 3200);
-    }
-
     function render() {
       const filtered = activeFilter === 'all' ? workers : workers.filter(w => w.type === activeFilter);
       const grid = document.getElementById('grid');
       grid.innerHTML = filtered.map(w => {
-        const hired = isHired(w.id);
-        const statusBadge = hired
-          ? `<span class="card-status hired"><span class="live-dot"></span>Hired</span>`
-          : `<span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>`;
         return `
-        <div class="card ${hired?'is-hired':''}" onclick="openProfile('${w.id}')">
-          ${statusBadge}
+        <div class="card" onclick="openProfile('${w.id}')">
+          <span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>
           <div class="card-header">
             ${avHtml(w,'card-avatar')}
             <div>
@@ -418,7 +360,7 @@
           </div>
           <div class="card-footer">
             <span class="card-dept">${esc(w.type)}</span>
-            <button class="hire-btn ${hired?'ghost':''}" onclick="event.stopPropagation(); ${hired?`openProfile('${w.id}')`:`hire('${w.id}')`}">${hired?'View':'Hire '+esc(w.name.split(' ')[0])}</button>
+            <button class="hire-btn" onclick="event.stopPropagation(); hire('${w.id}')">Hire ${esc(w.name.split(' ')[0])}</button>
           </div>
         </div>`;
       }).join('');
@@ -430,15 +372,13 @@
       profileWorker = workers.find(w => w.id === id);
       if (!profileWorker) return;
       const w = profileWorker;
-      const hired = isHired(w.id);
-      const member = getTeam().find(m => m.id === w.id);
       document.getElementById('profileContent').innerHTML = `
         <div class="profile-hero">
           ${avHtml(w,'pav')}
           <div>
             <div class="pn">${esc(w.name)}</div>
             <div class="pt">${esc(w.title)} · <span style="color:var(--muted)">${esc(w.type)}</span></div>
-            <div class="pstat"><span class="live-dot"></span>${hired ? 'On your team' : 'Available to hire'}</div>
+            <div class="pstat"><span class="live-dot"></span>Available to hire</div>
           </div>
         </div>
         <p class="pbio">${esc(w.bio || w.description)}</p>
@@ -454,16 +394,6 @@
           </div>
           <div class="id-note">${esc(w.name.split(' ')[0])} works like a real coworker — reachable by email or phone, working 24/7 without being asked.</div>
         </div>
-
-        ${hired && member ? `
-        <div class="pblock">
-          <h3>🎯 Current assignment</h3>
-          <div class="task-chip"><strong>${esc(member.company)}</strong> — ${esc(member.goal)}</div>
-        </div>
-        <div class="pblock">
-          <h3><span class="live-dot"></span> Live activity</h3>
-          <div class="activity-feed">${(w.activity||[]).map((a,i)=>`<div class="activity-line">${esc(a)}<span class="t">${i===0?'now':i+'m ago'}</span></div>`).join('')}</div>
-        </div>` : ''}
 
         <div class="pblock">
           <h3>🧩 What ${esc(w.name.split(' ')[0])} handles</h3>
@@ -493,19 +423,12 @@
 
         <div class="btn-row">
           <button class="btn-secondary" onclick="closeProfile()">Close</button>
-          ${hired
-            ? `<button class="btn-secondary" style="border-color:var(--red);color:var(--red)" onclick="fireWorker('${w.id}')">Remove from team</button>
-               <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1;text-decoration:none"><button class="btn-primary" style="width:100%">Open Mission Control</button></a>`
-            : `<button class="btn-gold" onclick="closeProfile(); hire('${w.id}')">Hire ${esc(w.name.split(' ')[0])}</button>`}
+          <button class="btn-gold" onclick="closeProfile(); hire('${w.id}')">Hire ${esc(w.name.split(' ')[0])}</button>
         </div>
       `;
       document.getElementById('profileModal').classList.add('open');
     }
     function closeProfile(){ document.getElementById('profileModal').classList.remove('open'); profileWorker=null; }
-    function fireWorker(id){
-      removeFromTeam(id);
-      closeProfile(); renderTeam(); render();
-    }
 
     // ─── Hire / Onboarding Flow ────────────────────────────
     let hiredWorker = null;
@@ -625,33 +548,28 @@
       const lines = [...document.querySelectorAll('#progList .prog-line')];
       for (let i=0;i<lines.length;i++){ await new Promise(r=>setTimeout(r,520)); lines[i].classList.add('on'); }
 
-      // Best-effort real API call (no-op offline) — prototype persists locally regardless.
+      // Persist the hire server-side so the worker shows up in Mission Control.
       let apiOk = false;
       try {
         const res = await fetch(API, {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ action:'execute', agent:hiredWorker.id, objective:goal,
-            context:{ company, goal, context, tools:[...connectedTools], onboarded:true } })
+          body: JSON.stringify({ action:'hire', agent:hiredWorker.id, company, goal, context, tools:[...connectedTools] })
         });
         apiOk = res.ok;
       } catch {}
-
-      // Persist to "Your Team"
-      addToTeam({ id:hiredWorker.id, name:hiredWorker.name, company, goal, context, tools:[...connectedTools], hiredAt:new Date().toISOString() });
 
       document.getElementById('onboardStatus').innerHTML = `
         <div class="onboard-result">
           <h3>✅ ${esc(hiredWorker.name)} is now on your team!</h3>
           <p>${esc(hiredWorker.name.split(' ')[0])} has been onboarded to <strong>${esc(company)}</strong> with the goal: "${esc(goal)}"</p>
-          <p style="margin-top:8px">First task: ${apiOk ? 'dispatched to the live workforce' : 'queued — will run on next workforce cycle'}.</p>
-          <div class="next">→ Track ${esc(hiredWorker.name.split(' ')[0])} in your team above, or in Mission Control.</div>
+          <p style="margin-top:8px">${apiOk ? `${esc(hiredWorker.name.split(' ')[0])} is now active in your workforce.` : 'Saved — your worker will appear in Mission Control shortly.'}</p>
+          <div class="next">→ ${esc(hiredWorker.name.split(' ')[0])} now appears under <strong>Your Team</strong> in Mission Control.</div>
         </div>
         <div class="btn-row" style="margin-top:16px">
           <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1;text-decoration:none"><button class="btn-primary" style="width:100%">View in Mission Control</button></a>
           <button class="btn-secondary" onclick="finishHire()">Done</button>
         </div>
       `;
-      renderTeam(); render();
     }
 
     function finishHire(){ closeHire(); }

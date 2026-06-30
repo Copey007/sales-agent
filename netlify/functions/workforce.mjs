@@ -14,7 +14,7 @@
 
 import { initAgents, getAgent, listAgents, getAgentStatuses } from './_agent-registry.mjs';
 import { initConnectors, listConnectors, invoke } from './_mcp-connectors.mjs';
-import { remember, recall, getAccountMemories, getPendingTasks } from './_supabase-memory.mjs';
+import { remember, recall, getAccountMemories, getPendingTasks, listHires } from './_supabase-memory.mjs';
 
 export default async (req, context) => {
   const corsHeaders = {
@@ -57,6 +57,12 @@ export default async (req, context) => {
 
       case 'tasks':
         return await handleTasks(body, corsHeaders);
+
+      case 'hire':
+        return await handleHire(body, corsHeaders);
+
+      case 'team':
+        return await handleTeam(body, corsHeaders);
 
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -179,6 +185,66 @@ async function handleTasks(body, corsHeaders) {
   const { agentId } = body;
   const tasks = await getPendingTasks({ agentId: agentId || 'manager', limit: 20 });
   return new Response(JSON.stringify({ tasks, count: tasks.length }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders }
+  });
+}
+
+/**
+ * Hire a worker onto the team. Persists a hire record (the shared "Your Team"
+ * roster, surfaced in Mission Control) and marks the worker active.
+ */
+async function handleHire(body, corsHeaders) {
+  const { agent: agentId, company, goal, context = '', tools = [] } = body;
+  if (!agentId || !company || !goal) {
+    return new Response(JSON.stringify({ error: 'agent, company, and goal are required' }), {
+      status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  const agent = getAgent(agentId);
+  if (!agent) {
+    return new Response(JSON.stringify({ error: `Unknown agent: ${agentId}`, available: Object.keys(listAgents()) }), {
+      status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  const hiredAt = new Date().toISOString();
+  const accountId = String(company).toLowerCase().replace(/\s+/g, '_');
+  const profile = {
+    agent_id: agent.id, name: agent.name, title: agent.title, type: agent.type,
+    avatar: agent.avatar, bio: agent.bio, skills: agent.skills, tools: agent.tools
+  };
+
+  // Persist the hire to shared memory (no embedding — this is a structured record)
+  await remember({
+    agentId: agent.id,
+    accountId,
+    memoryType: 'hire',
+    embed: false,
+    content: `Hired ${agent.name} (${agent.title}) for ${company} — goal: ${goal}`,
+    metadata: { ...profile, company, goal, context, tools, status: 'active', hired_at: hiredAt }
+  });
+
+  // Reflect the hire in the live registry so the fleet shows the worker active
+  try { await agent.updateStatus('active', goal, `Hired by ${company}`); } catch (e) { /* best-effort */ }
+
+  return new Response(JSON.stringify({
+    success: true,
+    hired: { ...profile, company, goal, status: 'active', hired_at: hiredAt }
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders }
+  });
+}
+
+/**
+ * Return the hired-worker roster ("Your Team"), optionally scoped to a company.
+ */
+async function handleTeam(body, corsHeaders) {
+  const accountId = body.accountId ? String(body.accountId).toLowerCase().replace(/\s+/g, '_') : null;
+  const team = await listHires({ accountId, limit: 100 });
+  return new Response(JSON.stringify({ team, count: team.length }), {
     status: 200,
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
