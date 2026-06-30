@@ -22,8 +22,8 @@
     .brand-bg img{width:54vmin;max-width:620px;opacity:.16;filter:drop-shadow(0 0 40px rgba(0,0,0,.5))}
     .slide-panel{position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;padding:64px 28px 176px;pointer-events:none}
     .slide-panel.show{display:flex}
-    .slide-panel img,.slide-panel iframe{max-width:min(960px,93vw);max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:14px;border:1px solid var(--line);box-shadow:0 14px 70px rgba(0,0,0,.6);background:#131316}
-    .slide-panel iframe{width:min(960px,93vw);height:100%}
+    .slide-panel img,.slide-panel iframe,.slide-panel video{max-width:min(960px,93vw);max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:14px;border:1px solid var(--line);box-shadow:0 14px 70px rgba(0,0,0,.6);background:#131316}
+    .slide-panel iframe,.slide-panel video{width:min(960px,93vw);height:100%}
     .slide-close{position:absolute;top:66px;right:30px;z-index:16;pointer-events:auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:rgba(5,5,8,.85);color:var(--soft);cursor:pointer;font-size:1rem}
     /* Presenter mode: avatar shrinks to a corner, slide takes the stage */
     .stage{transition:right .35s ease,bottom .35s ease,width .35s ease,height .35s ease,border-radius .35s ease}
@@ -74,7 +74,7 @@
   <div class="stage" id="stage"><video id="avatar" autoplay playsinline onclick="interruptAvatar()" title="Tap to interrupt" style="cursor:pointer"></video></div>
   <div class="vignette"></div>
   <div class="brand-bg"><img id="brandBg" src="assets/agent-logo.svg" alt=""/></div>
-  <div class="slide-panel" id="slidePanel"><button class="slide-close" onclick="hideSlide()" title="Hide slide">✕</button><img id="slideImg" alt=""/><iframe id="slideFrame" style="display:none" title="slide"></iframe></div>
+  <div class="slide-panel" id="slidePanel"><button class="slide-close" onclick="hideSlide()" title="Hide slide">✕</button><img id="slideImg" alt=""/><iframe id="slideFrame" style="display:none" title="slide" allow="autoplay; fullscreen; picture-in-picture"></iframe><video id="slideVideo" style="display:none" playsinline controls></video></div>
 
   <!-- Framing tuner (only shows with ?tune=1) -->
   <div id="tuner" style="display:none;position:fixed;top:54px;left:14px;z-index:60;background:rgba(10,13,16,.94);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.72rem;color:var(--soft);min-width:200px">
@@ -354,16 +354,41 @@
       }
       return null;
     }
+    // Turn a YouTube / Vimeo watch URL into an autoplaying embed URL (null if neither).
+    function videoEmbed(url){
+      let m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0&modestbranding=1`;
+      m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+      if (m) return `https://player.vimeo.com/video/${m[1]}?autoplay=1`;
+      return null;
+    }
     function showSlide(slide){
-      const isPdf = /\.pdf(\?|$)/i.test(slide.url || '');
-      const img = $('slideImg'), frame = $('slideFrame');
-      if (isPdf){ img.style.display='none'; frame.style.display='block'; frame.src = slide.url + '#toolbar=0&navpanes=0&view=FitH'; }
-      else { frame.style.display='none'; frame.src='about:blank'; img.style.display='block'; img.src = slide.url; }
+      const url = slide.url || '';
+      const img = $('slideImg'), frame = $('slideFrame'), vid = $('slideVideo');
+      // reset all three media holders
+      img.style.display='none'; img.src='';
+      frame.style.display='none'; frame.src='about:blank';
+      vid.style.display='none'; try { vid.pause(); } catch {} vid.removeAttribute('src');
+      const embed = videoEmbed(url);
+      if (embed){                                              // YouTube / Vimeo demo clip
+        frame.style.display='block'; frame.src = embed;
+      } else if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)){      // hosted pre-recorded demo video
+        vid.style.display='block'; vid.src = url; vid.currentTime = 0;
+        const p = vid.play(); if (p && p.catch) p.catch(()=>{}); // autoplay (best-effort; controls available)
+      } else if (/\.pdf(\?|$)/i.test(url)){                    // PDF deck
+        frame.style.display='block'; frame.src = url + '#toolbar=0&navpanes=0&view=FitH';
+      } else {                                                 // image slide
+        img.style.display='block'; img.src = url;
+      }
       $('slidePanel').classList.add('show');
       document.body.classList.add('presenting');     // avatar -> corner PiP
-      console.log('[slide] presenting', slide.title || slide.url);
+      console.log('[slide] presenting', slide.title || url);
     }
-    window.hideSlide = function(){ $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); presenting = false; $('slideImg').src=''; $('slideFrame').src='about:blank'; };
+    window.hideSlide = function(){
+      $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); presenting = false;
+      $('slideImg').src=''; $('slideFrame').src='about:blank';
+      const vid = $('slideVideo'); try { vid.pause(); } catch {} vid.removeAttribute('src');
+    };
 
     // ─── Auto-advancing deck walk ────────────────────────────────────────
     function startPresent(){

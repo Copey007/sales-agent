@@ -80,7 +80,7 @@
     // Selected plan (from offers page ?plan=...)
     const PLANS = {
       'live-agent': { label: 'Live Agent', price: '$499/month' },
-      'starter':    { label: 'Starter',    price: '$99/month' },
+      'starter':    { label: 'Live Agent Starter', price: '$99/month' },
     };
     const planKey = new URLSearchParams(location.search).get('plan');
     const selectedPlan = PLANS[planKey] || null;

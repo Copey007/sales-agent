@@ -57,6 +57,8 @@ export default async (req) => {
   const worker = b.worker && typeof b.worker === 'object' ? b.worker : null;
   const workerGoal = (b.goal || '').trim();
   const workerContext = (b.context || '').trim();
+  // Optional: the offer plan the visitor picked (offers-demo.html → ?plan=…).
+  const plan = (b.plan || '').trim();
 
   // ── Validate ────────────────────────────────────────────────────────────
   if (!name || !company) return json({ error: 'Name and company are required.' }, 400);
@@ -86,11 +88,13 @@ export default async (req) => {
     const userId = userBody.id || userBody.user?.id;
 
     // 2) Tenant + owner membership
-    const tenant = (await sb(url, key, 'tenants', { slug, name: company, plan: 'trial', status: 'active' }))[0];
+    const tenant = (await sb(url, key, 'tenants', { slug, name: company, plan: plan || 'trial', status: 'active' }))[0];
     await sb(url, key, 'memberships', { tenant_id: tenant.id, user_id: userId, role: 'owner' }, 'return=minimal');
 
-    // 2b) Start the 30-day trial clock (best-effort — column added by workforce-schema.sql)
-    const trialEnds = new Date(Date.now() + 30 * 86400000).toISOString();
+    // 2b) Start the 15-day trial clock (best-effort — column added by workforce-schema.sql).
+    //     Matches the Stripe trial (billing-checkout trial_period_days) + all signup copy.
+    const TRIAL_DAYS = 15;
+    const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString();
     try {
       await fetch(`${url}/rest/v1/tenants?id=eq.${tenant.id}`, {
         method: 'PATCH',
