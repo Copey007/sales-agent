@@ -146,6 +146,7 @@
     let session = null, started = false, connecting = false, speaking = false, speakerOn = true, spokeOnce = false;
     let presenting = false, presentIdx = 0, deckStarted = false, lastNarrate = false;
     let curStep = -1;   // active Content Journey step index (-1 = none)
+    let pendingVideo = false;   // a clip waiting to play until the avatar's intro finishes
     let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
@@ -203,7 +204,9 @@
           session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; spokeOnce = true; setStatus('Speaking'); });
           session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
             speaking = false; setStatus('Live');
-            // Auto-advance the deck once she finishes narrating a slide.
+            // Journey: a video step's intro has finished — now play the clip (no talk-over).
+            if (pendingVideo) { pendingVideo = false; const sl = (cfg && cfg.slides) ? cfg.slides : []; const s = sl[curStep]; if (s) showSlide(s, true); }
+            // Auto-advance the deck once she finishes narrating a slide (legacy deck-walk).
             if (presenting && lastNarrate) { lastNarrate = false; setTimeout(() => { if (presenting) stepPresent(1); }, 800); }
           });
         } catch (e) { console.warn('speak events unavailable', e); }
@@ -289,7 +292,7 @@
       if (!text || !started) return; input.value = ''; send(text);
     };
     async function send(text) {
-      lastNarrate = false;                        // an interrupt must not auto-advance
+      lastNarrate = false; pendingVideo = false;  // an interrupt must not auto-advance or auto-play
       if (speaking) { try { session.interrupt(); } catch {} }
       addMsg('user', text); messages.push({ role: 'user', content: text }); $('chips').innerHTML = '';
       const q = (text || '').toLowerCase();
@@ -352,14 +355,21 @@
       if (!slides.length) return;
       if (i < 0) i = 0;
       if (i >= slides.length){ presenting = false; curStep = -1; hideSlide(); const l = "That's everything — happy to take any questions."; addMsg('bot', l); speak(l); return; }
-      curStep = i; presenting = true; lastNarrate = false;
+      curStep = i; presenting = true; lastNarrate = false; pendingVideo = false;
       const s = slides[i];
-      showSlide(s); $('chips').innerHTML = '';
-      // Speak the step's narration; for a video step with no narration, stay silent so the
-      // avatar doesn't talk over the clip's own audio (the clip carries the moment).
+      $('chips').innerHTML = '';
       const isVid = /youtu\.?be|vimeo\.com|\.(mp4|webm|mov|m4v)(\?|$)/i.test(s.url || '');
-      const line = (s.narration && s.narration.trim()) ? s.narration.trim() : (isVid ? '' : `Here's ${s.title || 'the next step'}.`);
-      if (line) { addMsg('bot', line); messages.push({ role: 'assistant', content: line }); speak(line); }
+      const narr = (s.narration && s.narration.trim()) ? s.narration.trim() : '';
+      if (isVid && narr) {
+        // Sequence: show the clip paused, speak the intro, then play it when the intro ends.
+        showSlide(s, false); pendingVideo = true;
+        addMsg('bot', narr); messages.push({ role: 'assistant', content: narr }); speak(narr);
+      } else {
+        // Image/PDF steps narrate normally; a video with no narration just plays (no talk-over).
+        showSlide(s);
+        const line = narr || (isVid ? '' : `Here's ${s.title || 'the next step'}.`);
+        if (line) { addMsg('bot', line); messages.push({ role: 'assistant', content: line }); speak(line); }
+      }
     }
     // A finished clip auto-advances the journey to the next step (unless the step waits for words).
     document.getElementById('slideVideo').addEventListener('ended', () => {
@@ -386,27 +396,30 @@
       }
       return null;
     }
-    // Turn a YouTube / Vimeo watch URL into an autoplaying embed URL (null if neither).
-    function videoEmbed(url){
+    // Turn a YouTube / Vimeo watch URL into an embed URL (null if neither). autoplay toggles auto-start.
+    function videoEmbed(url, autoplay = true){
+      const ap = autoplay ? 1 : 0;
       let m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
-      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0&modestbranding=1`;
+      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=${ap}&rel=0&modestbranding=1`;
       m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
-      if (m) return `https://player.vimeo.com/video/${m[1]}?autoplay=1`;
+      if (m) return `https://player.vimeo.com/video/${m[1]}?autoplay=${ap}`;
       return null;
     }
-    function showSlide(slide){
+    // autoplay=false defers a clip's playback (used when an avatar intro should finish first).
+    function showSlide(slide, autoplay = true){
       const url = slide.url || '';
       const img = $('slideImg'), frame = $('slideFrame'), vid = $('slideVideo');
       // reset all three media holders
       img.style.display='none'; img.src='';
       frame.style.display='none'; frame.src='about:blank';
       vid.style.display='none'; try { vid.pause(); } catch {} vid.removeAttribute('src');
-      const embed = videoEmbed(url);
+      const embed = videoEmbed(url, autoplay);
       if (embed){                                              // YouTube / Vimeo demo clip
         frame.style.display='block'; frame.src = embed;
       } else if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)){      // hosted pre-recorded demo video
         vid.style.display='block'; vid.src = url; vid.currentTime = 0;
-        const p = vid.play(); if (p && p.catch) p.catch(()=>{}); // autoplay (best-effort; controls available)
+        if (autoplay) { const p = vid.play(); if (p && p.catch) p.catch(()=>{}); }
+        else { try { vid.pause(); } catch {} }                 // deferred — plays after the intro
       } else if (/\.pdf(\?|$)/i.test(url)){                    // PDF deck
         frame.style.display='block'; frame.src = url + '#toolbar=0&navpanes=0&view=FitH';
       } else {                                                 // image slide
