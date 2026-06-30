@@ -19,7 +19,7 @@
     html,body{background:var(--black);color:var(--text);font-family:'Inter',sans-serif;min-height:100%}
     body{background:radial-gradient(circle at 20% 0%,rgba(201,162,39,.08),transparent 50%),radial-gradient(circle at 80% 20%,rgba(65,255,159,.05),transparent 40%),var(--black)}
 
-    .hero{padding:60px 20px 40px;text-align:center}
+    .hero{padding:60px 20px 30px;text-align:center}
     .hero h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:800;background:linear-gradient(135deg,var(--gold-2),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
     .hero .logo{display:block;margin:0 auto 20px;max-width:280px;width:60%}
     .hero p{font-size:1.1rem;color:var(--soft);max-width:600px;margin:0 auto}
@@ -28,7 +28,26 @@
     .hero .stat .num{font-size:2rem;font-weight:800;color:var(--gold-2)}
     .hero .stat .label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
 
-    .filters{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 20px 30px}
+    .wrap{max-width:1200px;margin:0 auto;padding:0 20px}
+
+    /* ─── Your Team ───────────────────────────────────────── */
+    .team{margin:10px auto 30px;max-width:1200px;padding:0 20px}
+    .team.hidden{display:none}
+    .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .section-head h2{font-size:1.15rem;font-weight:700;display:flex;align-items:center;gap:10px}
+    .section-head .pill{font-size:.66rem;font-weight:600;color:var(--green);background:var(--green-dim);border:1px solid rgba(65,255,159,.2);padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.08em}
+    .team-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .team-card{display:flex;gap:12px;align-items:center;padding:14px;border-radius:16px;background:linear-gradient(180deg,rgba(65,255,159,.05),var(--panel));border:1px solid rgba(65,255,159,.18);cursor:pointer;transition:border-color .2s,transform .2s}
+    .team-card:hover{border-color:var(--green);transform:translateY(-2px)}
+    .team-card .av{width:46px;height:46px;border-radius:12px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0;font-size:1.3rem}
+    .team-card .av img{width:100%;height:100%;object-fit:cover}
+    .team-card .tinfo{flex:1;min-width:0}
+    .team-card .tinfo .n{font-weight:700;font-size:.9rem}
+    .team-card .tinfo .act{font-size:.72rem;color:var(--soft);margin-top:3px;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 0 0 rgba(65,255,159,.5);animation:pulse 2s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(65,255,159,.5)}70%{box-shadow:0 0 0 7px rgba(65,255,159,0)}100%{box-shadow:0 0 0 0 rgba(65,255,159,0)}}
+
+    .filters{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 20px 24px}
     .filter{padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--soft);font-size:.82rem;cursor:pointer;transition:all .15s}
     .filter:hover{border-color:var(--gold)}
     .filter.active{background:var(--gold-dim);border-color:var(--gold);color:var(--gold-2)}
@@ -36,16 +55,18 @@
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;max-width:1200px;margin:0 auto;padding:0 20px 60px}
     .card{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:20px;padding:24px;transition:transform .2s,border-color .2s,box-shadow .2s;cursor:pointer;position:relative;overflow:hidden}
     .card:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 8px 32px rgba(201,162,39,.10)}
+    .card.is-hired{border-color:rgba(65,255,159,.3)}
     .card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent,rgba(201,162,39,.03),transparent);pointer-events:none}
 
     .card-header{display:flex;align-items:center;gap:14px;margin-bottom:16px}
-    .card-avatar{width:64px;height:64px;border-radius:16px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0}
+    .card-avatar{width:64px;height:64px;border-radius:16px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0;font-size:1.8rem}
     .card-avatar img{width:100%;height:100%;object-fit:cover}
     .card-name{font-size:1.1rem;font-weight:700;color:var(--text)}
     .card-title{font-size:.82rem;color:var(--gold-2);margin-top:2px}
-    .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+    .card-status{position:absolute;top:16px;right:16px;font-size:.62rem;padding:3px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600;display:flex;align-items:center;gap:5px}
     .card-status.idle{background:var(--green-dim);color:var(--green);border:1px solid rgba(65,255,159,.2)}
     .card-status.active{background:rgba(65,255,159,.15);color:var(--green)}
+    .card-status.hired{background:rgba(65,255,159,.15);color:var(--green);border:1px solid rgba(65,255,159,.35)}
 
     .card-bio{font-size:.85rem;color:var(--soft);line-height:1.6;margin-bottom:16px}
 
@@ -56,60 +77,138 @@
     .tool{font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:3px}
     .tool::before{content:'🔌';font-size:.6rem}
 
+    .card-id{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+    .card-id .cid{font-size:.72rem;color:var(--soft);display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .card-id .cid:first-child{color:var(--gold-2)}
+
     .card-footer{display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--line-2)}
     .hire-btn{padding:8px 18px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.82rem;cursor:pointer;transition:transform .15s}
     .hire-btn:hover{transform:scale(1.03)}
+    .hire-btn.ghost{background:transparent;border:1px solid var(--green);color:var(--green)}
     .card-dept{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 
-    /* Onboarding modal */
+    /* ─── Modal shell ─────────────────────────────────────── */
     .modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(5,5,8,.92);backdrop-filter:blur(16px);overflow-y:auto}
     .modal-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding:40px 20px}
     .modal{width:min(560px,100%);background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--gold);border-radius:24px;padding:32px;position:relative}
-    .modal-close{position:absolute;top:16px;right:16px;background:none;border:0;color:var(--muted);font-size:1.4rem;cursor:pointer}
+    .modal.wide{width:min(680px,100%)}
+    .modal-close{position:absolute;top:16px;right:16px;background:none;border:0;color:var(--muted);font-size:1.4rem;cursor:pointer;z-index:2}
     .modal-step{font-size:.68rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
     .modal h2{font-size:1.4rem;font-weight:700;margin-bottom:8px}
     .modal .sub{font-size:.85rem;color:var(--soft);margin-bottom:24px}
 
+    /* ─── Profile view ────────────────────────────────────── */
+    .profile-hero{display:flex;gap:18px;align-items:center;margin-bottom:22px}
+    .profile-hero .pav{width:84px;height:84px;border-radius:20px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.18),rgba(5,5,8,.6));border:1px solid var(--line);flex-shrink:0;font-size:2.2rem}
+    .profile-hero .pav img{width:100%;height:100%;object-fit:cover}
+    .profile-hero .pn{font-size:1.5rem;font-weight:800}
+    .profile-hero .pt{font-size:.9rem;color:var(--gold-2);margin-top:2px}
+    .profile-hero .pstat{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.7rem;color:var(--green);background:var(--green-dim);border:1px solid rgba(65,255,159,.2);padding:3px 10px;border-radius:999px}
+    .pbio{font-size:.9rem;color:var(--soft);line-height:1.65;margin-bottom:18px}
+    .id-block{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:18px;margin-bottom:22px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--gold-dim),transparent)}
+    .id-block .id-item{display:flex;align-items:center;gap:12px}
+    .id-block .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:rgba(201,162,39,.12);border:1px solid var(--line);font-size:1.05rem;flex-shrink:0}
+    .id-block .il{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .id-block .iv{font-size:.86rem;color:var(--gold-2);font-weight:600;text-decoration:none;word-break:break-all}
+    .id-block .iv:hover{text-decoration:underline}
+    .id-block .id-note{grid-column:1 / -1;font-size:.74rem;color:var(--muted);line-height:1.5;border-top:1px solid var(--line-2);padding-top:12px}
+    @media(max-width:540px){.id-block{grid-template-columns:1fr}}
+    .pblock{margin-bottom:22px}
+    .pblock h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-2);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+    .resp-list{list-style:none;display:grid;gap:8px}
+    .resp-list li{font-size:.85rem;color:var(--soft);padding-left:22px;position:relative;line-height:1.45}
+    .resp-list li::before{content:'▸';position:absolute;left:4px;color:var(--gold)}
+    .task-chips{display:flex;flex-direction:column;gap:8px}
+    .task-chip{font-size:.82rem;color:var(--soft);background:var(--panel-3);border:1px solid var(--line-2);border-radius:12px;padding:11px 14px;line-height:1.4}
+    .sample-out{background:var(--panel-3);border:1px solid var(--line);border-radius:14px;padding:16px;font-size:.82rem;line-height:1.6;color:var(--soft);white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .sample-out .so-label{font-family:'Inter',sans-serif;font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold-2);margin-bottom:8px;display:block}
+    .activity-feed{display:grid;gap:8px}
+    .activity-line{display:flex;align-items:center;gap:10px;font-size:.8rem;color:var(--soft);padding:9px 12px;background:rgba(255,255,255,.02);border:1px solid var(--line-2);border-radius:10px}
+    .activity-line .t{margin-left:auto;font-size:.68rem;color:var(--muted)}
+    .pskills{display:flex;flex-wrap:wrap;gap:6px}
+    .ptools{display:flex;flex-wrap:wrap;gap:8px}
+    .ptool{font-size:.74rem;color:var(--soft);background:var(--panel-3);border:1px solid var(--line-2);border-radius:9px;padding:6px 11px;display:flex;align-items:center;gap:6px}
+
+    /* ─── Onboarding ──────────────────────────────────────── */
     .worker-preview{display:flex;align-items:center;gap:14px;padding:16px;background:var(--panel-3);border-radius:16px;border:1px solid var(--line);margin-bottom:24px}
-    .worker-preview .av{width:48px;height:48px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line)}
+    .worker-preview .av{width:48px;height:48px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:radial-gradient(circle,rgba(201,162,39,.15),rgba(5,5,8,.6));border:1px solid var(--line);font-size:1.3rem}
     .worker-preview .av img{width:100%;height:100%;object-fit:cover}
     .worker-preview .info .n{font-weight:700}
     .worker-preview .info .t{font-size:.78rem;color:var(--gold-2)}
+
+    .steps-bar{display:flex;gap:6px;margin-bottom:20px}
+    .steps-bar .seg{flex:1;height:4px;border-radius:999px;background:var(--line-2)}
+    .steps-bar .seg.on{background:linear-gradient(90deg,var(--gold),var(--gold-2))}
 
     .field{margin-bottom:18px}
     .field label{display:block;font-size:.78rem;color:var(--gold-2);margin-bottom:6px;font-weight:600}
     .field input,.field textarea,.field select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-3);color:var(--text);font-family:inherit;font-size:.88rem;outline:none;transition:border-color .2s}
     .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--gold)}
     .field textarea{min-height:70px;resize:vertical}
+    .field .err{border-color:var(--red)!important}
+
+    .connect-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel-3);border-radius:12px;border:1px solid var(--line-2);margin-bottom:10px;transition:border-color .2s}
+    .connect-row.connected{border-color:rgba(65,255,159,.3)}
+    .connect-row .cricon{font-size:1.1rem}
+    .connect-row .crinfo{flex:1;min-width:0}
+    .connect-row .crinfo .crn{font-weight:600;font-size:.85rem}
+    .connect-row .crinfo .crs{font-size:.7rem;color:var(--muted)}
+    .connect-row.connected .crinfo .crs{color:var(--green)}
+    .connect-btn{padding:7px 14px;border:1px solid var(--gold);border-radius:9px;background:transparent;color:var(--gold-2);font-size:.74rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .connect-btn:hover{background:var(--gold-dim)}
+    .connect-btn.done{border-color:rgba(65,255,159,.3);color:var(--green);cursor:default;background:var(--green-dim)}
 
     .btn-row{display:flex;gap:10px;margin-top:8px}
     .btn-primary{flex:1;padding:14px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--green),#1b9d62);color:#021006;font-weight:700;font-size:.9rem;cursor:pointer;transition:transform .15s}
     .btn-primary:hover{transform:scale(1.01)}
     .btn-primary:disabled{opacity:.5;cursor:wait}
+    .btn-gold{flex:1;padding:14px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.9rem;cursor:pointer;transition:transform .15s}
+    .btn-gold:hover{transform:scale(1.01)}
     .btn-secondary{padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--panel-3);color:var(--soft);font-weight:600;font-size:.9rem;cursor:pointer}
+
+    .prog-line{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;background:var(--panel-3);border:1px solid var(--line-2);margin-bottom:8px;font-size:.84rem;color:var(--soft);opacity:.35;transition:opacity .3s}
+    .prog-line.on{opacity:1;border-color:var(--line)}
+    .prog-line .pdot{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);flex-shrink:0}
+    .prog-line.on .pdot{border-color:var(--green);background:var(--green);box-shadow:0 0 8px rgba(65,255,159,.5)}
 
     .onboard-result{padding:20px;background:var(--green-dim);border:1px solid rgba(65,255,159,.2);border-radius:16px;margin-top:16px}
     .onboard-result h3{color:var(--green);font-size:.95rem;margin-bottom:8px}
     .onboard-result p{font-size:.82rem;color:var(--soft);line-height:1.5}
     .onboard-result .next{margin-top:10px;font-size:.78rem;color:var(--gold-2)}
 
-    @media(max-width:600px){.hero .stats{gap:20px}.grid{grid-template-columns:1fr}}
+    @media(max-width:600px){.hero .stats{gap:20px}.grid{grid-template-columns:1fr}.profile-hero{flex-direction:column;text-align:center}}
   </style>
 </head>
 <body>
   <div class="hero">
     <img src="assets/agent-logo.svg" alt="A-Gent" class="logo" />
     <h1>Hire Your AI Workforce</h1>
-    <p>Autonomous AI workers that operate 24/7 — with their own identity, memory, and initiative. Set a goal, they figure out the how.</p>
+    <p>Real AI coworkers — each with their own email, phone number, memory, and initiative. They work 24/7, without being asked. Set a goal, they figure out the how.</p>
     <div class="stats">
       <div class="stat"><div class="num" id="workerCount">—</div><div class="label">Workers Available</div></div>
-      <div class="stat"><div class="num">24/7</div><div class="label">Always Working</div></div>
+      <div class="stat"><div class="num" id="teamCount">0</div><div class="label">On Your Team</div></div>
       <div class="stat"><div class="num" id="connectorCount">—</div><div class="label">Tools Connected</div></div>
     </div>
   </div>
 
+  <!-- Your Team -->
+  <div class="team hidden" id="teamSection">
+    <div class="section-head">
+      <h2>👥 Your Team <span class="pill" id="teamPill">0 active</span></h2>
+    </div>
+    <div class="team-row" id="teamRow"></div>
+  </div>
+
   <div class="filters" id="filters"></div>
   <div class="grid" id="grid"><div style="color:var(--muted);text-align:center;padding:40px">Loading workforce...</div></div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profileModal">
+    <div class="modal wide">
+      <button class="modal-close" onclick="closeProfile()">&times;</button>
+      <div id="profileContent"></div>
+    </div>
+  </div>
 
   <!-- Onboarding Modal -->
   <div class="modal-overlay" id="hireModal">
@@ -121,204 +220,441 @@
 
   <script>
     const API = window.location.origin + '/api/workforce';
+
+    // ─── Fallback workforce (mirrors netlify/functions/_agent-registry.mjs) ───
+    // Used when /api/workforce is unavailable so the prototype runs standalone.
+    const FALLBACK_WORKFORCE = [
+      { id:'manager', type:'manager', name:'Marcus Brightwell', title:'Mission Control Manager', status:'idle',
+        avatar:'assets/marcus.png',
+        bio:'Former Chief of Staff at a Series B SaaS startup. Marcus excels at breaking down complex objectives into actionable plans and coordinating specialist teams. He thinks in systems and never misses a detail.',
+        skills:['Strategic Planning','Task Decomposition','Team Coordination','OKR Management'], tools:['Slack','Notion','Asana'] },
+      { id:'researcher', type:'researcher', name:'Sarah Chen', title:'Sales Researcher', status:'idle',
+        avatar:'assets/sarah.png',
+        bio:'Ex-Gong.io research analyst. Sarah has a knack for finding the right decision-makers and spotting buying signals before anyone else. She treats every prospect list like a puzzle waiting to be solved.',
+        skills:['Prospect Sourcing','Signal Detection','Account Research','Email Enrichment','ICP Matching'], tools:['Hunter.io','Serper','LinkedIn','Crunchbase'] },
+      { id:'sdr', type:'sdr', name:'James Calloway', title:'Sales Development Rep', status:'idle',
+        avatar:'assets/james.png',
+        bio:"5 years at Outreach.io running top-of-funnel. James writes cold emails that actually get replies. He lives by the GAP methodology: signal, problem, credibility, single CTA. Under 100 words or it doesn't ship.",
+        skills:['Cold Email Writing','GAP Methodology','Sequence Management','Reply Handling','A/B Testing'], tools:['Resend','Gmail','Outlook','HubSpot'] },
+      { id:'ops', type:'ops', name:'Priya Sharma', title:'Revenue Operations Manager', status:'idle',
+        avatar:'assets/priya.png',
+        bio:'Ex-RevOps lead at Pipedrive. Priya keeps the engine running. She monitors send limits, queue depth, and system health so nothing falls through the cracks. If something breaks, she knows before you do.',
+        skills:['Queue Management','Daily Limit Enforcement','System Health','Deliverability','Compliance'], tools:['Netlify','Supabase','Datadog','Slack'] },
+      { id:'support', type:'support', name:'Maria Rodriguez', title:'Customer Support Specialist', status:'idle',
+        avatar:'assets/maria.png',
+        bio:'Ex-Intercom support lead. Maria has seen every customer question imaginable. She classifies inbound replies by sentiment, flags escalations before they become problems, and writes responses that make customers feel heard.',
+        skills:['Inbound Triage','Sentiment Classification','Escalation Management','Response Writing','Knowledge Base'], tools:['Intercom','Zendesk','Slack','Gmail'] },
+      { id:'success', type:'success', name:'David Okafor', title:'Customer Success Manager', status:'idle',
+        avatar:'assets/david.png',
+        bio:'Ex-Gainsight CSM. David proactively monitors customer engagement, spots at-risk accounts before they churn, and triggers retention plays. He believes the best renewal is the one you never have to ask for.',
+        skills:['Health Scoring','Churn Prevention','Renewal Management','Onboarding','Upsell Detection'], tools:['Gainsight','Salesforce','Slack','Zoom'] },
+      { id:'social', type:'social', name:'Emma Williams', title:'Social Media Manager', status:'idle',
+        avatar:'assets/emma.png',
+        bio:'Ex-Buffer content strategist. Emma knows what posts land and which flop. She generates on-brand social content, schedules it at optimal times, and tracks engagement. She treats every post like a mini-campaign.',
+        skills:['Content Creation','Social Scheduling','Engagement Tracking','Brand Voice','Hashtag Strategy'], tools:['Buffer','Twitter','LinkedIn','Hootsuite'] },
+    ];
+    const FALLBACK_CONNECTORS = [
+      { name:'Hunter.io' }, { name:'Serper' }, { name:'Supabase' }, { name:'Resend' }, { name:'OpenAI' },
+    ];
+
+    // ─── Per-role enrichment (responsibilities, example tasks, sample output, live activity) ───
+    // Merged onto whatever the API/fallback returns, keyed by worker type.
+    const ENRICH = {
+      manager: {
+        responsibilities:['Break high-level revenue goals into agent task plans','Coordinate specialist agents and resolve task dependencies','Track OKRs and report weekly progress back to you','Escalate blockers and re-prioritize the queue'],
+        exampleTasks:['Launch outbound to 50 fintech accounts this week','Build a 3-touch sequence for inbound demo no-shows','Coordinate research + SDR for the Q3 ABM list'],
+        sampleOutput:{ label:'Execution plan', text:'Objective: Book 10 meetings with mid-market SaaS\n\n1. Sarah → source 60 VP Sales contacts (parallel)\n2. Sarah → detect funding / hiring signals (parallel)\n3. James → draft GAP emails using signals (depends on 1,2)\n4. Priya → schedule sends within daily limits\n\nExecution: 2 parallel research tasks, then sequence build.' },
+        activity:['Decomposing objective into 4 sub-tasks','Delegating research to Sarah','Waiting on signal scan to finish','Compiling weekly OKR report'],
+      },
+      researcher: {
+        responsibilities:['Source qualified accounts and decision-makers','Enrich contacts with verified work emails','Detect buying signals — funding, hiring, launches','Build account briefs with talking points'],
+        exampleTasks:['Find VP Sales contacts at 50–200 person SaaS firms','Surface companies that just raised a Series B','Research Acme Corp before first outreach'],
+        sampleOutput:{ label:'Account brief — Acme Corp', text:'Fit: 9/10 — mid-market SaaS, hiring 4 AEs\nSignal: Raised $22M Series B (TechCrunch, 6d ago)\nDM: Dana Lee, VP Sales — dana@acme.com (98% conf.)\nAngle: Scaling outbound post-raise; manual lists slowing ramp.' },
+        activity:['Querying Hunter.io for acme.com','Scanning news for funding signals','Scoring 38 accounts against your ICP','Writing brief for Acme Corp'],
+      },
+      sdr: {
+        responsibilities:['Write GAP-methodology cold emails under 100 words','Manage multi-touch outbound sequences','Handle inbound replies and route next steps','A/B test subject lines and opening signals'],
+        exampleTasks:['Draft a cold email using a hiring signal','Build a 4-touch sequence for the fintech list','Rewrite the under-performing touch 2'],
+        sampleOutput:{ label:'Cold email draft', text:'Subject: Scaling outbound\n\nDana — saw Acme just raised your Series B and is hiring 4 AEs.\n\nMost teams that scale this fast end up rebuilding lists by hand, which slows ramp. We automate the research-to-outreach handoff so reps start in conversations, not spreadsheets.\n\nWorth a quick look?\n\nJames | A-Gent Fleet' },
+        activity:['Drafting email for Dana @ Acme','Queuing touch 2 for 142 contacts','Handling reply: positive — booking','A/B testing subject lines'],
+      },
+      ops: {
+        responsibilities:['Enforce daily send limits and safe pacing','Monitor queue depth and deliverability','Watch mailbox health and sender reputation','Flag system issues before they cause damage'],
+        exampleTasks:["Audit today's send queue and limits",'Check deliverability across all mailboxes','Report current system health'],
+        sampleOutput:{ label:'Ops status', text:'Queue depth: 142 queued · 38 sent today\nDaily limit: 200 — headroom 162\nBounce rate: 0.7% (healthy)\nMailboxes: 3/3 warm · reputation OK\nVerdict: all systems nominal.' },
+        activity:['Checking queue depth (142 queued)','Verifying daily-limit headroom','Monitoring bounce rate','All systems nominal'],
+      },
+      support: {
+        responsibilities:['Triage inbound replies by intent','Classify sentiment and flag escalations','Draft on-brand responses','Keep the knowledge base current'],
+        exampleTasks:['Classify the last 20 inbound replies','Draft a response to a pricing objection','Escalate negative replies to me'],
+        sampleOutput:{ label:'Reply classification', text:'From: dana@acme.com\nSentiment: positive\nSummary: Interested, asking about pricing tiers.\nNeeds escalation: no — routed to booking flow.' },
+        activity:['Classifying 12 new replies','Flagged 2 escalations','Drafting response to objection','Updating KB article'],
+      },
+      success: {
+        responsibilities:['Monitor customer health scores','Spot at-risk accounts before they churn','Trigger retention and renewal plays','Detect upsell opportunities'],
+        exampleTasks:['Find at-risk accounts this month','Build a renewal play for stale contacts','Flag upsell candidates'],
+        sampleOutput:{ label:'Health assessment', text:'Health: at_risk\nReply rate: 4.2% (down from 6.1%)\nStale contacts (>14d): 7\nActions: re-engage 7 stale accounts; trigger value check-in for top 3.' },
+        activity:['Scoring 50 accounts','3 at-risk accounts flagged','Drafting retention play','Reply rate now 4.2%'],
+      },
+      social: {
+        responsibilities:['Generate on-brand social content','Schedule posts at optimal times','Track engagement and iterate','Coordinate social with outbound moments'],
+        exampleTasks:['Write 5 LinkedIn posts on AI sales','Schedule this week’s content','Recap last week’s engagement'],
+        sampleOutput:{ label:'LinkedIn post', text:'Your SDRs spend 9 hours a week building lists.\n\nThat’s not a talent problem — it’s a tooling problem.\n\nAI workers do the research-to-outreach handoff so reps start in conversations, not spreadsheets.\n\nWhat would your team do with 9 hours back?' },
+        activity:['Drafting LinkedIn post','Scheduling 5 posts','Tracking engagement','Best window: Tue 9am'],
+      },
+    };
+
+    const TEAM_KEY = 'agent_team_v1';
+
     let workers = [];
     let connectors = [];
     let allDepts = [];
     let activeFilter = 'all';
 
+    // ─── Team persistence (localStorage) ───
+    function getTeam(){ try { return JSON.parse(localStorage.getItem(TEAM_KEY)) || []; } catch { return []; } }
+    function saveTeam(t){ localStorage.setItem(TEAM_KEY, JSON.stringify(t)); }
+    function isHired(id){ return getTeam().some(m => m.id === id); }
+    function addToTeam(member){ const t = getTeam().filter(m => m.id !== member.id); t.push(member); saveTeam(t); }
+    function removeFromTeam(id){ saveTeam(getTeam().filter(m => m.id !== id)); }
+
+    // Each worker is a "real coworker" — give it its own email + direct line.
+    function deriveEmail(w){ const f=((w.name||w.id).split(' ')[0]||'agent').toLowerCase().replace(/[^a-z]/g,''); return f+'@a-gent.co'; }
+    function derivePhone(w){ let h=0; for(const c of String(w.id||w.name||'')) h=(h*31+c.charCodeAt(0))>>>0; const ext=String(100+(h%900)).slice(-3); return `+1 (415) 555-0${ext}`; }
+    function enrich(w){ const m = { ...(ENRICH[w.type] || {}), ...w }; m.email = m.email || deriveEmail(m); m.phone = m.phone || derivePhone(m); return m; }
+
     async function load() {
-      const res = await fetch(API);
-      const data = await res.json();
-      workers = data.workforce || [];
-      connectors = data.connectors || [];
+      try {
+        const res = await fetch(API, { cache:'no-store' });
+        if (!res.ok) throw new Error('api ' + res.status);
+        const data = await res.json();
+        workers = (data.workforce || []).map(enrich);
+        connectors = data.connectors || [];
+        if (!workers.length) throw new Error('empty');
+      } catch (e) {
+        // Standalone / prototype mode — no backend reachable.
+        workers = FALLBACK_WORKFORCE.map(enrich);
+        connectors = FALLBACK_CONNECTORS;
+      }
 
       document.getElementById('workerCount').textContent = workers.length;
       document.getElementById('connectorCount').textContent = connectors.length;
 
-      // Build department filters
       allDepts = [...new Set(workers.map(w => w.type))];
       const filtersEl = document.getElementById('filters');
       filtersEl.innerHTML = `<button class="filter ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">All Workers</button>` +
         allDepts.map(d => `<button class="filter ${activeFilter===d?'active':''}" onclick="setFilter('${d}')">${capitalize(d)}</button>`).join('');
 
+      renderTeam();
       render();
     }
 
-    function setFilter(dept) { activeFilter = dept; load(); }
+    function setFilter(dept) { activeFilter = dept; render(); document.querySelectorAll('.filter').forEach(f=>f.classList.remove('active')); event && event.target && event.target.classList.add('active'); }
 
     function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
     function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+    function avHtml(w, cls){ return (w.avatar && w.avatar.includes('.')) ? `<div class="${cls}"><img src="${w.avatar}" alt="${esc(w.name)}" /></div>` : `<div class="${cls}">${w.avatar || '🤖'}</div>`; }
+
+    // ─── Your Team rendering + simulated live activity ───
+    let activityTimer = null;
+    function renderTeam(){
+      const team = getTeam();
+      const section = document.getElementById('teamSection');
+      document.getElementById('teamCount').textContent = team.length;
+      if (!team.length){ section.classList.add('hidden'); if(activityTimer){clearInterval(activityTimer);activityTimer=null;} return; }
+      section.classList.remove('hidden');
+      document.getElementById('teamPill').textContent = team.length + (team.length===1?' active':' active');
+      const row = document.getElementById('teamRow');
+      row.innerHTML = team.map(m => {
+        const w = workers.find(x => x.id === m.id) || m;
+        return `<div class="team-card" onclick="openProfile('${w.id}')">
+          ${avHtml(w,'av')}
+          <div class="tinfo">
+            <div class="n">${esc(w.name)}</div>
+            <div class="act"><span class="live-dot"></span><span class="act-text" data-id="${w.id}">On it…</span></div>
+          </div>
+        </div>`;
+      }).join('');
+      startActivity();
+    }
+
+    function startActivity(){
+      if (activityTimer) clearInterval(activityTimer);
+      const tick = () => {
+        document.querySelectorAll('.act-text').forEach(el => {
+          const w = workers.find(x => x.id === el.dataset.id);
+          const lines = (w && w.activity) || ['Working…'];
+          el.textContent = lines[Math.floor(Math.random()*lines.length)];
+        });
+      };
+      tick();
+      activityTimer = setInterval(tick, 3200);
+    }
 
     function render() {
       const filtered = activeFilter === 'all' ? workers : workers.filter(w => w.type === activeFilter);
       const grid = document.getElementById('grid');
       grid.innerHTML = filtered.map(w => {
-        const avatarHtml = (w.avatar && w.avatar.includes('.')) 
-          ? `<div class="card-avatar"><img src="${w.avatar}" alt="${esc(w.name)}" /></div>`
-          : `<div class="card-avatar">${w.avatar || '🤖'}</div>`;
+        const hired = isHired(w.id);
+        const statusBadge = hired
+          ? `<span class="card-status hired"><span class="live-dot"></span>Hired</span>`
+          : `<span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>`;
         return `
-        <div class="card" onclick="hire('${w.id}')">
-          <span class="card-status ${w.status||'idle'}">${esc((w.status||'idle').toUpperCase())}</span>
+        <div class="card ${hired?'is-hired':''}" onclick="openProfile('${w.id}')">
+          ${statusBadge}
           <div class="card-header">
-            ${avatarHtml}
+            ${avHtml(w,'card-avatar')}
             <div>
               <div class="card-name">${esc(w.name)}</div>
               <div class="card-title">${esc(w.title)}</div>
             </div>
           </div>
           <div class="card-bio">${esc(w.bio || w.description)}</div>
-          <div class="card-skills">${(w.skills||[]).map(s => `<span class="skill">${esc(s)}</span>`).join('')}</div>
+          <div class="card-skills">${(w.skills||[]).slice(0,5).map(s => `<span class="skill">${esc(s)}</span>`).join('')}</div>
           <div class="card-tools">${(w.tools||[]).map(t => `<span class="tool">${esc(t)}</span>`).join('')}</div>
+          <div class="card-id">
+            <span class="cid" title="${esc(w.name.split(' ')[0])}'s email">✉ ${esc(w.email)}</span>
+            <span class="cid" title="${esc(w.name.split(' ')[0])}'s direct line">☎ ${esc(w.phone)}</span>
+          </div>
           <div class="card-footer">
             <span class="card-dept">${esc(w.type)}</span>
-            <button class="hire-btn">Hire ${esc(w.name.split(' ')[0])}</button>
+            <button class="hire-btn ${hired?'ghost':''}" onclick="event.stopPropagation(); ${hired?`openProfile('${w.id}')`:`hire('${w.id}')`}">${hired?'View':'Hire '+esc(w.name.split(' ')[0])}</button>
           </div>
         </div>`;
       }).join('');
     }
 
-    // ─── Hire / Onboarding Flow ──────────────────────────────────
+    // ─── Profile view ──────────────────────────────────────
+    let profileWorker = null;
+    function openProfile(id){
+      profileWorker = workers.find(w => w.id === id);
+      if (!profileWorker) return;
+      const w = profileWorker;
+      const hired = isHired(w.id);
+      const member = getTeam().find(m => m.id === w.id);
+      document.getElementById('profileContent').innerHTML = `
+        <div class="profile-hero">
+          ${avHtml(w,'pav')}
+          <div>
+            <div class="pn">${esc(w.name)}</div>
+            <div class="pt">${esc(w.title)} · <span style="color:var(--muted)">${esc(w.type)}</span></div>
+            <div class="pstat"><span class="live-dot"></span>${hired ? 'On your team' : 'Available to hire'}</div>
+          </div>
+        </div>
+        <p class="pbio">${esc(w.bio || w.description)}</p>
+
+        <div class="id-block">
+          <div class="id-item">
+            <span class="ic">✉</span>
+            <div><div class="il">Direct email</div><a class="iv" href="mailto:${esc(w.email)}">${esc(w.email)}</a></div>
+          </div>
+          <div class="id-item">
+            <span class="ic">☎</span>
+            <div><div class="il">Direct line</div><a class="iv" href="tel:${esc((w.phone||'').replace(/[^+0-9]/g,''))}">${esc(w.phone)}</a></div>
+          </div>
+          <div class="id-note">${esc(w.name.split(' ')[0])} works like a real coworker — reachable by email or phone, working 24/7 without being asked.</div>
+        </div>
+
+        ${hired && member ? `
+        <div class="pblock">
+          <h3>🎯 Current assignment</h3>
+          <div class="task-chip"><strong>${esc(member.company)}</strong> — ${esc(member.goal)}</div>
+        </div>
+        <div class="pblock">
+          <h3><span class="live-dot"></span> Live activity</h3>
+          <div class="activity-feed">${(w.activity||[]).map((a,i)=>`<div class="activity-line">${esc(a)}<span class="t">${i===0?'now':i+'m ago'}</span></div>`).join('')}</div>
+        </div>` : ''}
+
+        <div class="pblock">
+          <h3>🧩 What ${esc(w.name.split(' ')[0])} handles</h3>
+          <ul class="resp-list">${(w.responsibilities||[]).map(r=>`<li>${esc(r)}</li>`).join('') || '<li>General assistance</li>'}</ul>
+        </div>
+
+        <div class="pblock">
+          <h3>💼 Example tasks you can assign</h3>
+          <div class="task-chips">${(w.exampleTasks||[]).map(t=>`<div class="task-chip">${esc(t)}</div>`).join('')}</div>
+        </div>
+
+        ${w.sampleOutput ? `
+        <div class="pblock">
+          <h3>✨ Sample output</h3>
+          <div class="sample-out"><span class="so-label">${esc(w.sampleOutput.label)}</span>${esc(w.sampleOutput.text)}</div>
+        </div>` : ''}
+
+        <div class="pblock">
+          <h3>🧠 Skills</h3>
+          <div class="pskills">${(w.skills||[]).map(s=>`<span class="skill">${esc(s)}</span>`).join('')}</div>
+        </div>
+
+        <div class="pblock">
+          <h3>🔌 Tools</h3>
+          <div class="ptools">${(w.tools||[]).map(t=>`<span class="ptool">🔌 ${esc(t)}</span>`).join('')}</div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="closeProfile()">Close</button>
+          ${hired
+            ? `<button class="btn-secondary" style="border-color:var(--red);color:var(--red)" onclick="fireWorker('${w.id}')">Remove from team</button>
+               <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1;text-decoration:none"><button class="btn-primary" style="width:100%">Open Mission Control</button></a>`
+            : `<button class="btn-gold" onclick="closeProfile(); hire('${w.id}')">Hire ${esc(w.name.split(' ')[0])}</button>`}
+        </div>
+      `;
+      document.getElementById('profileModal').classList.add('open');
+    }
+    function closeProfile(){ document.getElementById('profileModal').classList.remove('open'); profileWorker=null; }
+    function fireWorker(id){
+      removeFromTeam(id);
+      closeProfile(); renderTeam(); render();
+    }
+
+    // ─── Hire / Onboarding Flow ────────────────────────────
     let hiredWorker = null;
+    let connectedTools = new Set();
+    let onboardData = {};
 
     function hire(workerId) {
       hiredWorker = workers.find(w => w.id === workerId);
       if (!hiredWorker) return;
+      connectedTools = new Set((hiredWorker.tools||[]).slice(0,2)); // a couple pre-connected
+      onboardData = {};
       document.getElementById('hireModal').classList.add('open');
       renderHireStep1();
     }
-
     function closeHire() {
       document.getElementById('hireModal').classList.remove('open');
       hiredWorker = null;
     }
+    function stepsBar(n){ return `<div class="steps-bar">${[1,2,3].map(i=>`<div class="seg ${i<=n?'on':''}"></div>`).join('')}</div>`; }
+    function previewHtml(sub){ return `<div class="worker-preview">${avHtml(hiredWorker,'av')}<div class="info"><div class="n">${esc(hiredWorker.name)}</div><div class="t">${esc(sub||hiredWorker.title)}</div></div></div>`; }
 
     function renderHireStep1() {
+      const d = onboardData;
       document.getElementById('hireContent').innerHTML = `
+        ${stepsBar(1)}
         <div class="modal-step">Step 1 of 3 — Onboarding</div>
         <h2>Welcome ${esc(hiredWorker.name.split(' ')[0])} to your team</h2>
         <p class="sub">Just like a new employee, your AI worker needs some context to get started.</p>
-
-        <div class="worker-preview">
-          <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
-          <div class="info">
-            <div class="n">${esc(hiredWorker.name)}</div>
-            <div class="t">${esc(hiredWorker.title)}</div>
-          </div>
-        </div>
-
+        ${previewHtml()}
         <div class="field">
           <label>What's your company name?</label>
-          <input type="text" id="companyName" placeholder="e.g. Acme Corp" />
+          <input type="text" id="companyName" placeholder="e.g. Acme Corp" value="${esc(d.company||'')}" />
         </div>
         <div class="field">
           <label>What goal should ${esc(hiredWorker.name.split(' ')[0])} focus on?</label>
-          <textarea id="workerGoal" placeholder="e.g. Qualify 50 leads per week and book 10 meetings"></textarea>
+          <textarea id="workerGoal" placeholder="e.g. Qualify 50 leads per week and book 10 meetings">${esc(d.goal||'')}</textarea>
         </div>
         <div class="field">
           <label>Any context ${esc(hiredWorker.name.split(' ')[0])} should know? (optional)</label>
-          <textarea id="workerContext" placeholder="e.g. We sell B2B SaaS to mid-market companies. Our ICP is VP Sales at 50-200 employee companies."></textarea>
+          <textarea id="workerContext" placeholder="e.g. We sell B2B SaaS to mid-market. ICP is VP Sales at 50–200 employee companies.">${esc(d.context||'')}</textarea>
         </div>
-
         <div class="btn-row">
           <button class="btn-secondary" onclick="closeHire()">Cancel</button>
-          <button class="btn-primary" onclick="renderHireStep2()">Continue →</button>
+          <button class="btn-gold" onclick="goStep2()">Continue →</button>
         </div>
       `;
+    }
+
+    function goStep2() {
+      const company = document.getElementById('companyName')?.value?.trim();
+      const goal = document.getElementById('workerGoal')?.value?.trim();
+      const context = document.getElementById('workerContext')?.value?.trim() || '';
+      let bad = false;
+      if (!company){ document.getElementById('companyName').classList.add('err'); bad = true; }
+      if (!goal){ document.getElementById('workerGoal').classList.add('err'); bad = true; }
+      if (bad) return;
+      onboardData = { company, goal, context };
+      renderHireStep2();
     }
 
     function renderHireStep2() {
-      const company = document.getElementById('companyName')?.value?.trim();
-      const goal = document.getElementById('workerGoal')?.value?.trim();
-      if (!company || !goal) { alert('Please fill in company name and goal.'); return; }
-
+      const tools = hiredWorker.tools || [];
       document.getElementById('hireContent').innerHTML = `
+        ${stepsBar(2)}
         <div class="modal-step">Step 2 of 3 — Tool Connection</div>
         <h2>${esc(hiredWorker.name.split(' ')[0])}'s toolkit</h2>
-        <p class="sub">These are the tools ${esc(hiredWorker.name.split(' ')[0])} uses to get the job done. Some are already connected.</p>
-
-        <div class="worker-preview">
-          <div class="av">${(hiredWorker.avatar && hiredWorker.avatar.includes('.')) ? `<img src="${hiredWorker.avatar}" alt="${esc(hiredWorker.name)}" />` : hiredWorker.avatar || '🤖'}</div>
-          <div class="info">
-            <div class="n">${esc(hiredWorker.name)}</div>
-            <div class="t">Connecting tools...</div>
-          </div>
-        </div>
-
-        <div style="display:grid;gap:10px;margin-bottom:24px">
-          ${(hiredWorker.tools||[]).map((t,i) => `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel-3);border-radius:12px;border:1px solid var(--line)">
-              <span style="font-size:1.1rem">🔌</span>
-              <div style="flex:1">
-                <div style="font-weight:600;font-size:.85rem">${esc(t)}</div>
-                <div style="font-size:.7rem;color:${i < 3 ? 'var(--green)' : 'var(--muted)'}">${i < 3 ? 'Connected' : 'Not connected — optional'}</div>
-              </div>
-              ${i < 3 ? '<span style="color:var(--green);font-size:.7rem;font-weight:600">✓</span>' : ''}
-            </div>
-          `).join('')}
-        </div>
-
-        <div style="padding:14px;background:var(--gold-dim);border-radius:12px;border:1px solid var(--line);margin-bottom:20px">
+        <p class="sub">These are the tools ${esc(hiredWorker.name.split(' ')[0])} uses to get the job done. Connect the ones you use — you can always add more later.</p>
+        ${previewHtml('Connecting tools…')}
+        <div id="toolList">${tools.map(t => connectRow(t)).join('')}</div>
+        <div style="padding:14px;background:var(--gold-dim);border-radius:12px;border:1px solid var(--line);margin:14px 0 20px">
           <div style="font-size:.78rem;color:var(--gold-2);font-weight:600;margin-bottom:4px">Connected MCP Tools</div>
-          <div style="font-size:.72rem;color:var(--soft)">${connectors.map(c => c.name).join(' · ')}</div>
+          <div style="font-size:.72rem;color:var(--soft)">${connectors.map(c => esc(c.name)).join(' · ')}</div>
         </div>
-
         <div class="btn-row">
           <button class="btn-secondary" onclick="renderHireStep1()">← Back</button>
-          <button class="btn-primary" onclick="renderHireStep3('${esc(company)}','${esc(goal)}')">Onboard →</button>
+          <button class="btn-primary" onclick="renderHireStep3()" id="onboardBtn">Onboard ${esc(hiredWorker.name.split(' ')[0])} →</button>
         </div>
       `;
+      updateOnboardBtn();
+    }
+    function connectRow(t){
+      const on = connectedTools.has(t);
+      return `<div class="connect-row ${on?'connected':''}" data-tool="${esc(t)}">
+        <span class="cricon">🔌</span>
+        <div class="crinfo"><div class="crn">${esc(t)}</div><div class="crs">${on?'Connected':'Not connected'}</div></div>
+        <button class="connect-btn ${on?'done':''}" onclick="toggleTool('${esc(t)}', this)">${on?'Connected ✓':'Connect'}</button>
+      </div>`;
+    }
+    function toggleTool(t, btn){
+      if (connectedTools.has(t)) return; // connect-only in prototype
+      connectedTools.add(t);
+      const row = btn.closest('.connect-row');
+      row.classList.add('connected');
+      row.querySelector('.crs').textContent = 'Connected';
+      btn.classList.add('done'); btn.textContent = 'Connected ✓';
+      updateOnboardBtn();
+    }
+    function updateOnboardBtn(){
+      const btn = document.getElementById('onboardBtn');
+      if (btn) btn.textContent = `Onboard ${hiredWorker.name.split(' ')[0]} → (${connectedTools.size} tool${connectedTools.size===1?'':'s'})`;
     }
 
-    async function renderHireStep3(company, goal) {
-      const context = document.getElementById('workerContext')?.value?.trim() || '';
-      const btnHtml = `<button class="btn-primary" disabled>Onboarding...</button>`;
+    async function renderHireStep3() {
+      const { company, goal, context } = onboardData;
+      const steps = ['Setting up private memory','Loading company context','Connecting '+connectedTools.size+' tools','Preparing first task'];
       document.getElementById('hireContent').innerHTML = `
+        ${stepsBar(3)}
         <div class="modal-step">Step 3 of 3 — Activating</div>
-        <h2>Onboarding ${esc(hiredWorker.name.split(' ')[0])}...</h2>
-        <p class="sub">Setting up memory, loading company context, and preparing for first task.</p>
-        <div id="onboardStatus" style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">Activating ${esc(hiredWorker.name)}...</div>
+        <h2>Onboarding ${esc(hiredWorker.name.split(' ')[0])}…</h2>
+        <p class="sub">Spinning up your AI worker and assigning the first task.</p>
+        ${previewHtml('Activating…')}
+        <div id="progList">${steps.map(s=>`<div class="prog-line"><span class="pdot"></span>${esc(s)}</div>`).join('')}</div>
+        <div id="onboardStatus"></div>
       `;
 
-      // Actually onboard the worker via the workforce API
+      // Animate progress steps
+      const lines = [...document.querySelectorAll('#progList .prog-line')];
+      for (let i=0;i<lines.length;i++){ await new Promise(r=>setTimeout(r,520)); lines[i].classList.add('on'); }
+
+      // Best-effort real API call (no-op offline) — prototype persists locally regardless.
+      let apiOk = false;
       try {
         const res = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'execute',
-            agent: hiredWorker.id,
-            objective: goal,
-            context: { company, goal, context, onboarded: true }
-          })
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ action:'execute', agent:hiredWorker.id, objective:goal,
+            context:{ company, goal, context, tools:[...connectedTools], onboarded:true } })
         });
-        const result = await res.json();
+        apiOk = res.ok;
+      } catch {}
 
-        document.getElementById('onboardStatus').innerHTML = `
-          <div class="onboard-result">
-            <h3>✅ ${esc(hiredWorker.name)} is now active!</h3>
-            <p>${esc(hiredWorker.name.split(' ')[0])} has been onboarded to <strong>${esc(company)}</strong> and given the goal: "${esc(goal)}"</p>
-            <p style="margin-top:8px">First task result: ${result.success ? 'Completed successfully' : 'Queued for processing'}</p>
-            <div class="next">→ View ${esc(hiredWorker.name.split(' ')[0])} in Mission Control at missioncontrol.a-gent.co</div>
-          </div>
-          <div class="btn-row" style="margin-top:16px">
-            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
-            <button class="btn-secondary" onclick="closeHire()">Close</button>
-          </div>
-        `;
-      } catch(e) {
-        document.getElementById('onboardStatus').innerHTML = `
-          <div class="onboard-result" style="background:rgba(255,92,122,.08);border-color:rgba(255,92,122,.2)">
-            <h3 style="color:var(--red)">⚠️ Onboarding queued</h3>
-            <p>${esc(hiredWorker.name)} has been assigned to your team. The first task will process shortly.</p>
-            <div class="next">→ View in Mission Control at missioncontrol.a-gent.co</div>
-          </div>
-          <div class="btn-row" style="margin-top:16px">
-            <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1"><button class="btn-primary">View in Mission Control</button></a>
-            <button class="btn-secondary" onclick="closeHire()">Close</button>
-          </div>
-        `;
-      }
+      // Persist to "Your Team"
+      addToTeam({ id:hiredWorker.id, name:hiredWorker.name, company, goal, context, tools:[...connectedTools], hiredAt:new Date().toISOString() });
+
+      document.getElementById('onboardStatus').innerHTML = `
+        <div class="onboard-result">
+          <h3>✅ ${esc(hiredWorker.name)} is now on your team!</h3>
+          <p>${esc(hiredWorker.name.split(' ')[0])} has been onboarded to <strong>${esc(company)}</strong> with the goal: "${esc(goal)}"</p>
+          <p style="margin-top:8px">First task: ${apiOk ? 'dispatched to the live workforce' : 'queued — will run on next workforce cycle'}.</p>
+          <div class="next">→ Track ${esc(hiredWorker.name.split(' ')[0])} in your team above, or in Mission Control.</div>
+        </div>
+        <div class="btn-row" style="margin-top:16px">
+          <a href="https://missioncontrol.a-gent.co" target="_blank" style="flex:1;text-decoration:none"><button class="btn-primary" style="width:100%">View in Mission Control</button></a>
+          <button class="btn-secondary" onclick="finishHire()">Done</button>
+        </div>
+      `;
+      renderTeam(); render();
     }
+
+    function finishHire(){ closeHire(); }
 
     load();
   </script>
