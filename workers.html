@@ -99,13 +99,41 @@
     .onboard-result .next{margin-top:10px;font-size:.78rem;color:var(--gold)}
 
     @media(max-width:600px){.hero .stats{gap:24px}.grid{grid-template-columns:1fr}}
+
+    /* ── Positioning bands ── */
+    .band{max-width:1100px;margin:48px auto;padding:0 20px}
+    .band-head{text-align:center;margin-bottom:26px}
+    .eyebrow{display:inline-block;font-size:.7rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);background:var(--gold-dim);border:1px solid var(--line-accent);border-radius:999px;padding:5px 14px;margin-bottom:14px}
+    .band-head h2{font-size:clamp(1.4rem,3.2vw,2rem);font-weight:700;letter-spacing:-.02em;color:var(--text);margin:0 0 8px}
+    .band-head p{color:var(--muted);font-size:1rem;max-width:560px;margin:0 auto}
+    .vs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .vs-col{border:1px solid var(--line);border-radius:16px;padding:22px;background:var(--panel)}
+    .vs-col.vs-new{border-color:var(--line-accent);background:linear-gradient(180deg,var(--gold-dim),var(--panel) 60%)}
+    .vs-tag{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+    .vs-tag.gold{color:var(--gold-2)}
+    .vs-col ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+    .vs-col li{font-size:.9rem;color:var(--soft);padding-left:24px;position:relative;line-height:1.4}
+    .vs-old li::before{content:'\00d7';position:absolute;left:2px;color:var(--muted);font-weight:700}
+    .vs-new li::before{content:'\2713';position:absolute;left:0;color:var(--green);font-weight:700}
+    .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .step{border:1px solid var(--line);border-radius:16px;padding:20px;background:var(--panel)}
+    .step-n{font-size:.78rem;font-weight:700;color:var(--gold);letter-spacing:.1em;margin-bottom:10px}
+    .step h3{font-size:.98rem;font-weight:600;color:var(--text);margin:0 0 6px;letter-spacing:-.01em}
+    .step p{font-size:.85rem;color:var(--muted);line-height:1.5;margin:0}
+    .uses{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .use{border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:var(--panel)}
+    .use-team{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold-2);margin-bottom:6px}
+    .use-task{font-size:.9rem;color:var(--soft)}
+    .band-cta{text-align:center;margin-top:28px}
+    .band-cta button{border:1px solid rgba(255,255,255,.8);border-radius:var(--radius-sm);background:#f5f5f7;color:#0a0a0c;font-weight:600;font-size:.9rem;padding:12px 24px;cursor:pointer}
+    @media(max-width:760px){.vs,.uses{grid-template-columns:1fr}.steps{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
   <div class="hero">
     <a href="https://a-gent.co" aria-label="A-Gent home"><img src="assets/agent-logo.svg" alt="A-Gent" class="logo" /></a>
-    <h1>Hire Your AI Workforce</h1>
-    <p>Autonomous AI workers that operate 24/7 — with their own identity, memory, and initiative. Set a goal, they figure out the how.</p>
+    <h1>Hire outcomes, not headcount.</h1>
+    <p>Every team has work that never ends — leads to research, prospects to chase, reports no one has time to write. Put an A-Gent worker on it: you set the goal, it figures out the <em>how</em> and gets it done. 24/7, no scripting, no chasing.</p>
     <div class="stats">
       <div class="stat"><div class="num" id="workerCount">—</div><div class="label">Workers Available</div></div>
       <div class="stat"><div class="num">24/7</div><div class="label">Always Working</div></div>
@@ -115,6 +143,68 @@
 
   <div class="filters" id="filters"></div>
   <div class="grid" id="grid"><div style="color:var(--muted);text-align:center;padding:40px">Loading workforce...</div></div>
+
+  <!-- ── Why a worker, not another tool ── -->
+  <section class="band">
+    <div class="band-head">
+      <div class="eyebrow">Why a worker, not another tool</div>
+      <h2>You've added the tools. The work is still there.</h2>
+      <p>Chatbots and copilots wait for you to ask. The backlog doesn't.</p>
+    </div>
+    <div class="vs">
+      <div class="vs-col vs-old">
+        <div class="vs-tag">The tools you've tried</div>
+        <ul>
+          <li>Only help when you stop to ask</li>
+          <li>Live inside one more browser tab</li>
+          <li>Forget what happened yesterday</li>
+          <li>Hand you a draft to finish</li>
+          <li>Make you script every step</li>
+        </ul>
+      </div>
+      <div class="vs-col vs-new">
+        <div class="vs-tag gold">An A-Gent worker</div>
+        <ul>
+          <li>Works on its own — and follows up</li>
+          <li>Works across your stack, where the work lives</li>
+          <li>Remembers your accounts, history, and goals</li>
+          <li>Finishes the job and reports the result</li>
+          <li>Takes a goal and finds the steps itself</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ── -->
+  <section class="band">
+    <div class="band-head">
+      <div class="eyebrow">How it works</div>
+      <h2>Set the goal. Walk away. Get the result.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="step-n">01</div><h3>Pick the role that's slipping</h3><p>Choose the specialist for the work that keeps falling through the cracks.</p></div>
+      <div class="step"><div class="step-n">02</div><h3>Hand over the outcome</h3><p>Tell it the result you want — "book 10 meetings a week" — not a list of steps.</p></div>
+      <div class="step"><div class="step-n">03</div><h3>It works while you don't</h3><p>It runs continuously, adapts as it goes, and never needs a reminder.</p></div>
+      <div class="step"><div class="step-n">04</div><h3>You hear only what matters</h3><p>It reports progress and surfaces the few calls that actually need a human.</p></div>
+    </div>
+  </section>
+
+  <!-- ── Built for the work that piles up ── -->
+  <section class="band">
+    <div class="band-head">
+      <div class="eyebrow">Built for the work that piles up</div>
+      <h2>Every team has a job no one has time for.</h2>
+    </div>
+    <div class="uses">
+      <div class="use"><div class="use-team">Sales</div><div class="use-task">Chasing leads and booking the meetings.</div></div>
+      <div class="use"><div class="use-team">Growth</div><div class="use-task">Finding fit accounts and running the outreach.</div></div>
+      <div class="use"><div class="use-team">RevOps</div><div class="use-task">Cleaning the data and keeping pipeline honest.</div></div>
+      <div class="use"><div class="use-team">Research</div><div class="use-task">Sourcing prospects that actually match your ICP.</div></div>
+      <div class="use"><div class="use-team">Content &amp; Social</div><div class="use-task">Publishing consistently, on schedule, on brand.</div></div>
+      <div class="use"><div class="use-team">Support &amp; Success</div><div class="use-task">Answering and following up — instantly, around the clock.</div></div>
+    </div>
+    <div class="band-cta"><button onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ Meet the workforce</button></div>
+  </section>
 
   <!-- Onboarding Modal -->
   <div class="modal-overlay" id="hireModal">
