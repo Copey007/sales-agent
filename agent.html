@@ -145,6 +145,7 @@
     let cfg = null;
     let session = null, started = false, connecting = false, speaking = false, speakerOn = true, spokeOnce = false;
     let presenting = false, presentIdx = 0, deckStarted = false, lastNarrate = false;
+    let curStep = -1;   // active Content Journey step index (-1 = none)
     let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
@@ -294,36 +295,35 @@
       const q = (text || '').toLowerCase();
       const slides = (cfg && cfg.slides) ? cfg.slides : [];
 
-      // ── Deck-walk controls ──────────────────────────────────────────────
+      // ── Content Journey: enter / exit / advance ─────────────────────────
       if (slides.length) {
-        const isStart = /\b(present|presentation|deck|slideshow)\b/.test(q) || q.includes('walk me through') || q.includes('run through') || q.includes('go through') || q.includes('show me the slides') || q.includes('present the slides');
-        const isNext  = /\b(next|continue|resume)\b/.test(q) || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next slide');
-        const isBack  = /\b(back|previous)\b/.test(q) || q.includes('go back');
-        const isStop  = /\b(stop|pause|enough|exit)\b/.test(q) || q.includes('hold on');
-        if (presenting && isStop) { presenting = false; const l = 'Sure — what would you like to know?'; addMsg('bot', l); await speak(l); return; }
-        if (isStart) { startPresent(); return; }
-        if (isNext)  { if (!deckStarted) startPresent(); else { presenting = true; stepPresent(1); } return; }
-        if (isBack)  { presenting = true; stepPresent(-1); return; }
+        const isStop = /\b(stop|pause|enough)\b/.test(q) || q.includes('hold on') || (presenting && /\bexit\b/.test(q));
+        if (presenting && isStop) { presenting = false; curStep = -1; hideSlide(); const l = 'Sure — what would you like to know?'; addMsg('bot', l); await speak(l); return; }
+        if ((/\b(back|previous)\b/.test(q) || q.includes('go back')) && curStep > 0) { gotoStep(curStep - 1); return; }
+        // Exit words of the current step (or a generic "next") advance the journey.
+        const cur = curStep >= 0 ? slides[curStep] : null;
+        const exitWords = cur ? (cur.exit || []) : [];
+        const isNext = /\b(next|continue|resume)\b/.test(q) || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next step') || q.includes('move on') || exitWords.some(w => w && q.includes(String(w).toLowerCase()));
+        if (cur && isNext) { gotoStep(curStep + 1); return; }
+        // Enter words jump straight to a step.
+        const ent = matchEnterStep(q);
+        if (ent >= 0) { gotoStep(ent); return; }
+        // Generic "start the journey".
+        if (/\b(present|begin|overview)\b/.test(q) || q.includes('walk me through') || q.includes('get started') || q.includes('guided') || q.includes('show me')) { gotoStep(curStep < 0 ? 0 : curStep); return; }
       }
 
-      // Any other question stops an in-progress walk and answers normally.
-      presenting = false;
-      const slide = matchSlide(text);
-      if (slide) showSlide(slide);
+      // Any other question answers normally (and ends any active journey step).
+      presenting = false; curStep = -1;
       const cap = $('caption'); cap.style.display = 'block'; cap.className = 'caption thinking'; cap.textContent = '● ● ●'; setStatus('Thinking');
       let reply = '';
-      if (slide && slide.narration && slide.narration.trim()) {
-        reply = slide.narration.trim();           // she presents/narrates the slide
-      } else {
-        try {
-          const res = await fetch('/api/concierge', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'chat', slug: SLUG, messages, speak: false }),
-          });
-          const data = await res.json();
-          reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
-        } catch (e) { reply = "I'm having a little trouble connecting right now. Mind trying again?"; }
-      }
+      try {
+        const res = await fetch('/api/concierge', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'chat', slug: SLUG, messages, speak: false }),
+        });
+        const data = await res.json();
+        reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
+      } catch (e) { reply = "I'm having a little trouble connecting right now. Mind trying again?"; }
       messages.push({ role: 'assistant', content: reply });
       addMsg('bot', reply); await speak(reply);
     }
@@ -333,8 +333,37 @@
     function showChips(list) { const c = $('chips'); c.innerHTML = ''; (list || []).forEach((t) => { const b = document.createElement('button'); b.className = 'chip'; b.textContent = t; b.onclick = () => send(t); c.appendChild(b); }); }
     function setStatus(label) { $('statusLabel').textContent = label; }
 
-    // ─── Presentation slides ─────────────────────────────────────────────
+    // ─── Content Journey (sequential steps with enter / exit / advance) ──────
     let slideIdx = 0;
+    // Find a step the message should ENTER (by its enter words). Returns index or -1.
+    function matchEnterStep(q){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const msg = new Set(slideTokens(q));
+      for (let i = 0; i < slides.length; i++){
+        const enter = slides[i].triggers || [];
+        if (enter.some(w => w && q.includes(String(w).toLowerCase()))) return i;
+        if (slideTokens(enter.join(' ')).some(t => msg.has(t))) return i;
+      }
+      return -1;
+    }
+    // Show step i: render its content, narrate, and mark it active. i past the end ends the journey.
+    function gotoStep(i){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!slides.length) return;
+      if (i < 0) i = 0;
+      if (i >= slides.length){ presenting = false; curStep = -1; hideSlide(); const l = "That's everything — happy to take any questions."; addMsg('bot', l); speak(l); return; }
+      curStep = i; presenting = true; lastNarrate = false;
+      const s = slides[i];
+      showSlide(s); $('chips').innerHTML = '';
+      const line = (s.narration && s.narration.trim()) ? s.narration.trim() : `Here's ${s.title || 'the next step'}.`;
+      addMsg('bot', line); messages.push({ role: 'assistant', content: line }); speak(line);
+    }
+    // A finished clip auto-advances the journey to the next step (unless the step waits for words).
+    document.getElementById('slideVideo').addEventListener('ended', () => {
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const s = slides[curStep];
+      if (s && s.advance !== 'words') gotoStep(curStep + 1);
+    });
     const SLIDE_STOP = new Set(['show','when','asked','ask','or','and','the','an','are','about','can','could','would','please','for','this','that','its','our','will','tell','give','want','see','how','much','does','what','you','your','they','them','from','with','have','has']);
     const slideTokens = (s) => ((s || '').toLowerCase().match(/[a-z0-9-]+/g) || []).filter(t => t.length > 2 && !SLIDE_STOP.has(t));
     function matchSlide(text){
