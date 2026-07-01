@@ -20,6 +20,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { callLLM } from './_llm.mjs';
 import { userFromToken, tenantFromRequest } from './_tenant.mjs';
+import { findProspectByEmail, isEmailSuppressed, DEFAULTS } from './_campaign-store.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -31,6 +32,12 @@ async function rest(path, init = {}) {
 }
 
 const isTest = (h) => /test|stripeok|trial\d|vfy|\bqa\b|sample/i.test(`${h.company || ''} ${h.name || ''}`);
+
+// Has a worker already drafted/sent to this email? (avoid re-contacting across cycles)
+async function outreachExists(tenantId, email) {
+  try { const r = await rest(`worker_outreach?tenant_id=eq.${tenantId}&prospect_email=eq.${encodeURIComponent(email)}&select=id&limit=1`); return r.ok ? (await r.json()).length > 0 : false; }
+  catch { return false; }
+}
 
 // ─── One worker, one step ────────────────────────────────────────────────────
 
@@ -79,19 +86,34 @@ async function researcherStep(hire) {
 async function sdrStep(hire) {
   const KEY = env('HUNTER_API_KEY');
   const seg = segOf(`${hire.goal || ''} ${hire.context || ''}`);
-  let prospect = null;
+  // Gather candidates from Hunter…
+  const candidates = [];
   if (KEY) {
-    for (const [domain, company] of ICP[seg].slice(0, 2)) {
+    for (const [domain, company] of ICP[seg].slice(0, 3)) {
+      if (candidates.length >= 8) break;
       try {
-        const params = new URLSearchParams({ api_key: KEY, domain, type: 'personal', seniority: 'senior,executive', limit: '2' });
+        const params = new URLSearchParams({ api_key: KEY, domain, type: 'personal', seniority: 'senior,executive', limit: '3' });
         const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`);
         if (!r.ok) continue;
-        const e = ((await r.json())?.data?.emails || [])[0];
-        if (e?.value) { prospect = { name: [e.first_name, e.last_name].filter(Boolean).join(' ') || e.value, title: e.position || '', company: company, email: e.value }; break; }
+        for (const e of ((await r.json())?.data?.emails || [])) {
+          if (e?.value) candidates.push({ name: [e.first_name, e.last_name].filter(Boolean).join(' ') || e.value, title: e.position || '', company, email: e.value });
+        }
       } catch { /* next domain */ }
     }
   }
-  if (!prospect) return llmStep(hire);   // no Hunter/match → generic step
+  if (!candidates.length) return llmStep(hire);   // no Hunter/matches → generic step
+  // …then keep only a prospect NOT already in your AI SDR campaign / suppressed / previously contacted.
+  let prospect = null;
+  for (const c of candidates) {
+    const email = c.email.toLowerCase();
+    try {
+      if (await findProspectByEmail(DEFAULTS.TENANT_ID, email)) continue;   // already a prospect in the AI SDR
+      if (await isEmailSuppressed(DEFAULTS.TENANT_ID, email)) continue;      // suppressed / unsubscribed
+    } catch { /* campaign store unavailable — don't block */ }
+    if (await outreachExists(hire.tenant_id, email)) continue;              // a worker already contacted them
+    prospect = c; break;
+  }
+  if (!prospect) return { action: `Checked ${candidates.length} prospects — all already in your pipeline`, detail: `Every prospect sourced this cycle is already enrolled in your AI SDR campaign, suppressed, or previously contacted — no duplicate created. Widening the ICP next run.` };
   const sys = `You are ${hire.name}, an SDR for ${hire.company || 'the company'}.${hire.context ? ` What you sell / context: ${hire.context}.` : ''} Goal: ${hire.goal || 'book qualified meetings'}.
 Write a short, genuinely personalized cold outreach email to ${prospect.name}${prospect.title ? ` (${prospect.title})` : ''} at ${prospect.company}. 2–3 sentences, specific to their role/company, no fluff, one clear low-friction CTA.
 Return ONLY JSON: {"subject":"<6-9 words>","body":"<the email>"}`;

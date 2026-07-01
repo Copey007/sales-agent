@@ -14,6 +14,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
+import { putProspect, findProspectByEmail, DEFAULTS } from './_campaign-store.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -70,6 +71,13 @@ export default async (req) => {
       const result = await send.json().catch(() => ({}));
       if (!send.ok) return json({ error: result?.message || `Resend ${send.status}` }, 502);
       await rest(`worker_outreach?id=eq.${b.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'sent', resend_id: result.id || null, reviewed_at: new Date().toISOString(), sent_at: new Date().toISOString() }) });
+      // Record the contact in the shared AI SDR prospect store so future sourcing dedups against it.
+      try {
+        const email = String(draft.prospect_email || '').toLowerCase();
+        if (email && !(await findProspectByEmail(DEFAULTS.TENANT_ID, email))) {
+          await putProspect({ id: crypto.randomUUID(), tenant_id: DEFAULTS.TENANT_ID, email, name: draft.prospect_name || null, company_name: draft.prospect_company || null, source: 'sdr-worker', contacted: true, contacted_at: new Date().toISOString(), sourced_at: new Date().toISOString(), created_at: new Date().toISOString() });
+        }
+      } catch (e) { console.warn('[worker-outreach] prospect record:', e.message); }
       return json({ ok: true, status: 'sent', resend_id: result.id || null });
     } catch (e) {
       return json({ error: e.message }, 502);
