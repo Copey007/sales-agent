@@ -64,7 +64,8 @@ export default async (req) => {
   if (!name || !company) return json({ error: 'Name and company are required.' }, 400);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: 'Enter a valid email.' }, 400);
   if (password.length < 8) return json({ error: 'Password must be at least 8 characters.' }, 400);
-  if (!SLUG_RE.test(slug) || RESERVED.has(slug)) return json({ error: 'Pick a handle: 3–40 chars, lowercase letters, numbers, hyphens.' }, 400);
+  if (!SLUG_RE.test(slug)) return json({ error: 'Pick a handle: 3–40 chars, lowercase letters, numbers, hyphens.' }, 400);
+  if (RESERVED.has(slug)) return json({ error: `"${slug}" is reserved — please choose a different handle.` }, 409);
 
   const { url, key } = creds();
   if (!url || !key) return json({ error: 'Server not configured.' }, 500);
