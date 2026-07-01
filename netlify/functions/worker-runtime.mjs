@@ -20,7 +20,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { callLLM } from './_llm.mjs';
 import { userFromToken, tenantFromRequest } from './_tenant.mjs';
-import { findProspectByEmail, isEmailSuppressed, DEFAULTS } from './_campaign-store.mjs';
+import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect } from './_campaign-store.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -57,29 +57,42 @@ function segOf(s = '') {
   return 'default';
 }
 
-// Researcher does REAL work: source ICP-fit prospects via Hunter toward the goal.
+// Researcher: source ICP-fit prospects via Hunter, dedup, and ENROLL the new ones
+// into the AI SDR campaign (loaded for the SDR to work).
 async function researcherStep(hire) {
   const KEY = env('HUNTER_API_KEY');
   const seg = segOf(`${hire.goal || ''} ${hire.context || ''}`);
-  if (!KEY) return { action: 'Planned ICP sourcing run', detail: `Identified the ${seg} segment for "${hire.goal || 'the goal'}". (Hunter key not set — connect it to source live prospects.)` };
-  const targets = ICP[seg].slice(0, 3);
+  if (!KEY) return { action: 'Planned ICP sourcing run', detail: `Identified the ${seg} segment for "${hire.goal || 'the goal'}". (Hunter key not set — connect it to source live.)` };
   const found = [];
-  for (const [domain, company] of targets) {
-    if (found.length >= 6) break;
+  for (const [domain, company] of ICP[seg].slice(0, 3)) {
+    if (found.length >= 8) break;
     try {
       const params = new URLSearchParams({ api_key: KEY, domain, type: 'personal', seniority: 'senior,executive', limit: '3' });
       const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`);
       if (!r.ok) continue;
       const d = await r.json();
       for (const e of (d?.data?.emails || [])) {
-        if (!e.value) continue;
-        found.push({ name: [e.first_name, e.last_name].filter(Boolean).join(' ') || e.value, title: e.position || '', company: d?.data?.organization || company });
+        if (e?.value) found.push({ name: [e.first_name, e.last_name].filter(Boolean).join(' ') || e.value, title: e.position || '', company: d?.data?.organization || company, email: e.value });
       }
     } catch { /* skip domain */ }
   }
-  if (!found.length) return { action: 'Ran a sourcing pass — no new matches', detail: `Scanned ${targets.length} ${seg} accounts this cycle; nothing new cleared the bar. Will widen the net next run.` };
-  const names = found.slice(0, 5).map(p => `${p.name}${p.title ? ` (${p.title})` : ''} @ ${p.company}`);
-  return { action: `Sourced ${found.length} ICP-fit prospects`, detail: `Toward "${hire.goal || 'your goal'}": ${names.join('; ')}.` };
+  if (!found.length) return { action: 'Ran a sourcing pass — no new matches', detail: `Scanned ${seg} accounts; nothing cleared the bar. Widening next run.` };
+  let camp = null;
+  try { camp = (await listCampaigns(DEFAULTS.TENANT_ID)).find(c => c.status === 'active') || null; } catch { /* no campaigns */ }
+  const newly = [];
+  for (const p of found) {
+    const email = (p.email || '').toLowerCase(); if (!email) continue;
+    try {
+      if (await isEmailSuppressed(DEFAULTS.TENANT_ID, email)) continue;
+      if (await findProspectByEmail(DEFAULTS.TENANT_ID, email)) continue;   // already known → dedup
+      const pr = { id: crypto.randomUUID(), tenant_id: DEFAULTS.TENANT_ID, email, name: p.name, company_name: p.company, role: p.title, source: 'researcher-worker', sourced_at: new Date().toISOString(), created_at: new Date().toISOString() };
+      await putProspect(pr); newly.push(p);
+      if (camp) await putCampaignProspect({ campaign_id: camp.id, prospect_id: pr.id, enrolled_at: new Date().toISOString(), status: 'active' });
+    } catch { /* skip prospect */ }
+  }
+  if (!newly.length) return { action: `Reviewed ${found.length} prospects — all already known`, detail: 'Every match is already a prospect in your AI SDR — no duplicates added.' };
+  const names = newly.slice(0, 5).map(p => `${p.name}${p.title ? ` (${p.title})` : ''} @ ${p.company}`);
+  return { action: `Sourced & enrolled ${newly.length} new prospects${camp ? ` into "${camp.name}"` : ''}`, detail: `Loaded into ${camp ? `the "${camp.name}" campaign` : 'your prospect list'} for the AI SDR: ${names.join('; ')}.` };
 }
 
 // SDR: source an ICP-fit prospect via Hunter, then draft a personalized opener for it.
@@ -153,10 +166,48 @@ Return ONLY JSON: {"action":"<past-tense summary, max 9 words>","detail":"<2-4 s
   return { action: 'Advanced the goal', detail: 'Completed the next step of work this cycle.' };
 }
 
+// Live business snapshot from the AI SDR (for Manager / RevOps / Success).
+async function businessSnapshot() {
+  try {
+    const camps = await listCampaigns(DEFAULTS.TENANT_ID);
+    const active = camps.filter(c => c.status === 'active');
+    const prospects = (await listRecords('prospects')).filter(p => p.tenant_id === DEFAULTS.TENANT_ID);
+    const sends = (await listRecords('email_sends')).filter(s => s.tenant_id === DEFAULTS.TENANT_ID);
+    const replies = (await listRecords('replies')).filter(r => r.tenant_id === DEFAULTS.TENANT_ID);
+    return `${active.length} active campaign(s)${active.length ? ` (${active.slice(0, 4).map(c => c.name).join(', ')})` : ''}, ${prospects.length} prospects, ${sends.filter(s => s.status === 'sent').length} emails sent, ${replies.length} replies`;
+  } catch { return 'no campaign data available yet'; }
+}
+
+// Role-specific brains — each worker does its own job.
+const ROLE_BRIEFS = {
+  manager: { data: true, brief: (h, s) => `You are ${h.name}, Mission Control Manager for ${h.company || 'the company'}. You run the AI workforce and own the growth plan. Live business snapshot: ${s}. Do the next concrete planning move: name ONE gap ("what we're not doing yet") and ONE specific thing to put in place to grow, with a short rationale.` },
+  ops: { data: true, brief: (h, s) => `You are ${h.name}, Revenue Operations. You watch every campaign — whether they're running, what's been sent, what's replied. Snapshot: ${s}. Produce the next concrete ops finding: a health check, a flag (stalled campaign, low reply rate, no sends), or a specific fix to recommend.` },
+  success: { data: true, brief: (h, s) => `You are ${h.name}, Customer Success. You watch how customers get value and any churn signals. Signals: ${s}. Produce the next concrete CS action: a value highlight to surface, a churn-risk flag, or a check-in to run.` },
+  social: { data: false, brief: (h) => `You are ${h.name}, Social Media Manager for ${h.company || 'the company'}. Draft the next concrete piece of content — a ready-to-post update for X or LinkedIn, on-brand for an AI SDR / AI workforce product. (Scheduling + engagement analytics connect once the Social integration is enabled.)` },
+  support: { data: false, brief: (h) => `You are ${h.name}, Customer Support. Produce the next concrete support-readiness deliverable — a crisp answer to a common product question, an FAQ entry, or an escalation/triage rule. (Live inbound support connects once the support inbox is wired.)` },
+};
+async function roleStep(hire) {
+  const cfg = ROLE_BRIEFS[hire.worker_id];
+  if (!cfg) return llmStep(hire);
+  const snap = cfg.data ? await businessSnapshot() : '';
+  const recent = (hire.activity || []).slice(0, 3).map(a => `- ${a.action}`).join('\n') || '- (first cycle)';
+  const system = `${cfg.brief(hire, snap)}
+Standing goal: "${hire.goal || 'make progress for the team'}".${hire.context ? ` Context: ${hire.context}.` : ''}
+Recent work you've done:\n${recent}
+Build on it; don't repeat. Return ONLY JSON: {"action":"<past-tense, <=9 words>","detail":"<2-4 sentences, specific>"}`;
+  try {
+    const out = await callLLM([{ role: 'system', content: system }, { role: 'user', content: 'Do the next piece of work and report it as JSON.' }], { temperature: 0.6, maxTokens: 500 });
+    const m = (out || '').match(/\{[\s\S]*\}/); const p = m ? JSON.parse(m[0]) : null;
+    if (p?.action) return { action: String(p.action).slice(0, 80), detail: String(p.detail || '').slice(0, 600) };
+  } catch { /* fall through */ }
+  return { action: 'Advanced the goal', detail: 'Completed the next step this cycle.' };
+}
+
 async function runCycle(hire) {
   let step;
   if (hire.worker_id === 'researcher') step = await researcherStep(hire);
   else if (hire.worker_id === 'sdr') step = await sdrStep(hire);
+  else if (ROLE_BRIEFS[hire.worker_id]) step = await roleStep(hire);
   else step = await llmStep(hire);
   const entry = { ts: new Date().toISOString(), action: step.action, detail: step.detail };
   const activity = [entry, ...(Array.isArray(hire.activity) ? hire.activity : [])].slice(0, 50);
