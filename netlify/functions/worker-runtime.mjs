@@ -75,6 +75,35 @@ async function researcherStep(hire) {
   return { action: `Sourced ${found.length} ICP-fit prospects`, detail: `Toward "${hire.goal || 'your goal'}": ${names.join('; ')}.` };
 }
 
+// SDR: source an ICP-fit prospect via Hunter, then draft a personalized opener for it.
+async function sdrStep(hire) {
+  const KEY = env('HUNTER_API_KEY');
+  const seg = segOf(`${hire.goal || ''} ${hire.context || ''}`);
+  let prospect = null;
+  if (KEY) {
+    for (const [domain, company] of ICP[seg].slice(0, 2)) {
+      try {
+        const params = new URLSearchParams({ api_key: KEY, domain, type: 'personal', seniority: 'senior,executive', limit: '2' });
+        const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`);
+        if (!r.ok) continue;
+        const e = ((await r.json())?.data?.emails || [])[0];
+        if (e?.value) { prospect = { name: [e.first_name, e.last_name].filter(Boolean).join(' ') || e.value, title: e.position || '', company: company, email: e.value }; break; }
+      } catch { /* next domain */ }
+    }
+  }
+  if (!prospect) return llmStep(hire);   // no Hunter/match → generic step
+  const sys = `You are ${hire.name}, an SDR for ${hire.company || 'the company'}.${hire.context ? ` What you sell / context: ${hire.context}.` : ''} Goal: ${hire.goal || 'book qualified meetings'}.
+Write a short, genuinely personalized cold outreach email to ${prospect.name}${prospect.title ? ` (${prospect.title})` : ''} at ${prospect.company}. 2–3 sentences, specific to their role/company, no fluff, one clear low-friction CTA.
+Return ONLY JSON: {"subject":"<6-9 words>","body":"<the email>"}`;
+  let email = null;
+  try { const out = await callLLM([{ role: 'system', content: sys }, { role: 'user', content: 'Write the email as JSON.' }], { temperature: 0.6, maxTokens: 420 }); const m = (out || '').match(/\{[\s\S]*\}/); email = m ? JSON.parse(m[0]) : null; } catch { /* ignore */ }
+  const action = `Drafted personalized outreach to ${prospect.name.split(' ')[0]} @ ${prospect.company}`;
+  const detail = email
+    ? `To ${prospect.name} <${prospect.email}> — Subject: "${email.subject}". ${String(email.body).replace(/\s+/g, ' ').slice(0, 320)}`
+    : `Sourced ${prospect.name} (${prospect.title}) at ${prospect.company} <${prospect.email}>; personalizing the opener next cycle.`;
+  return { action, detail };
+}
+
 // Everyone else produces a concrete LLM deliverable toward the goal.
 async function llmStep(hire) {
   const recent = (hire.activity || []).slice(0, 4).map(a => `- ${a.action}`).join('\n') || '- (nothing yet — this is your first cycle)';
@@ -93,7 +122,10 @@ Return ONLY JSON: {"action":"<past-tense summary, max 9 words>","detail":"<2-4 s
 }
 
 async function runCycle(hire) {
-  const step = hire.worker_id === 'researcher' ? await researcherStep(hire) : await llmStep(hire);
+  let step;
+  if (hire.worker_id === 'researcher') step = await researcherStep(hire);
+  else if (hire.worker_id === 'sdr') step = await sdrStep(hire);
+  else step = await llmStep(hire);
   const entry = { ts: new Date().toISOString(), action: step.action, detail: step.detail };
   const activity = [entry, ...(Array.isArray(hire.activity) ? hire.activity : [])].slice(0, 50);
   // Try to persist the full feed; fall back to just last_activity if the column isn't there yet.
