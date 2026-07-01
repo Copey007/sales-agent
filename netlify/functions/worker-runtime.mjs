@@ -97,11 +97,21 @@ Write a short, genuinely personalized cold outreach email to ${prospect.name}${p
 Return ONLY JSON: {"subject":"<6-9 words>","body":"<the email>"}`;
   let email = null;
   try { const out = await callLLM([{ role: 'system', content: sys }, { role: 'user', content: 'Write the email as JSON.' }], { temperature: 0.6, maxTokens: 420 }); const m = (out || '').match(/\{[\s\S]*\}/); email = m ? JSON.parse(m[0]) : null; } catch { /* ignore */ }
-  const action = `Drafted personalized outreach to ${prospect.name.split(' ')[0]} @ ${prospect.company}`;
-  const detail = email
-    ? `To ${prospect.name} <${prospect.email}> — Subject: "${email.subject}". ${String(email.body).replace(/\s+/g, ' ').slice(0, 320)}`
-    : `Sourced ${prospect.name} (${prospect.title}) at ${prospect.company} <${prospect.email}>; personalizing the opener next cycle.`;
-  return { action, detail };
+  if (!email?.subject) return { action: `Sourced ${prospect.name} @ ${prospect.company}`, detail: `${prospect.name} (${prospect.title}) <${prospect.email}>; personalizing the opener next cycle.` };
+  // The worker's own identity on the verified sending domain.
+  const fromEmail = `${(hire.name.split(' ')[0] || 'worker').toLowerCase().replace(/[^a-z0-9]/g, '')}@a-gent.co`;
+  // Queue the email as a PENDING draft for human review (best-effort; needs the worker_outreach table).
+  try {
+    await rest('worker_outreach', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({
+      tenant_id: hire.tenant_id, hire_id: hire.id, worker_id: hire.worker_id, worker_name: hire.name, from_email: fromEmail,
+      prospect_name: prospect.name, prospect_email: prospect.email, prospect_company: prospect.company,
+      subject: email.subject, body: email.body, status: 'pending',
+    }) });
+  } catch { /* table not present yet — still report the draft */ }
+  return {
+    action: `Drafted outreach to ${prospect.name.split(' ')[0]} @ ${prospect.company} — pending review`,
+    detail: `From ${fromEmail} → ${prospect.name} <${prospect.email}>. Subject: "${email.subject}". Approve it in Outreach review to send.`,
+  };
 }
 
 // Everyone else produces a concrete LLM deliverable toward the goal.
