@@ -101,6 +101,45 @@ async function gatherSignalsForProspect(prospect, signalConfig) {
   return signals;
 }
 
+// ─── Signal Validation ──────────────────────────────────────────────────────
+// Name-based web search can match the WRONG company (e.g. a Belgian staffing
+// agency also called "A-gent"). A signal is only usable when it's anchored to
+// the prospect's actual domain. No known domain → no company-specific signals;
+// the email falls back to the generic industry-catalyst angle instead of
+// risking a wrong-company claim.
+
+function validateSignals(signals, prospect) {
+  const domain = String(prospect.company_domain || '')
+    .toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  if (!domain) return [];
+  const brand = domain.split('.')[0];
+  return signals.filter(s => {
+    const hay = `${s.title || ''} ${s.detail || ''} ${s.source_url || ''}`.toLowerCase();
+    if (hay.includes(domain)) return true;                       // exact domain — strong
+    if (brand.length > 2 && hay.includes(brand)) {
+      // Same brand word under a DIFFERENT TLD (a-gent.be vs a-gent.co) = wrong company
+      const otherTld = new RegExp(`${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(?!${domain.split('.').slice(1).join('\\.')})[a-z]{2,}`, 'i');
+      return !otherTld.test(hay);
+    }
+    return false;
+  });
+}
+
+// ─── Signature Enforcement ──────────────────────────────────────────────────
+// The A-Gent Fleet signature is a locked guardrail — never trust the LLM to
+// remember it. Appended deterministically to every outbound body.
+
+function ensureFleetSignature(body, senderName) {
+  let out = String(body || '').trimEnd();
+  if (!/A-Gent Fleet/i.test(out)) {
+    out += `\n\n${senderName} | A-Gent Fleet`;
+  }
+  if (!out.includes('https://a-gent.co')) {
+    out += `\nDeploy your A-Gent Fleet: https://a-gent.co`;
+  }
+  return out;
+}
+
 // ─── GAP Email Generation (campaign-aware) ──────────────────────────────────
 
 const GAP_SYSTEM_PROMPT = `You are an expert cold email writer trained in the GAP Prospecting methodology. Write short, problem-centric outbound emails.
@@ -288,11 +327,13 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence) {
     return { failed: true, reason: 'prospect not found' };
   }
 
-  // 1. Gather signals
-  const signals = await gatherSignalsForProspect(prospect, signalConfig);
+  // 1. Gather signals, then keep only ones verifiably about THIS company
+  const rawSignals = await gatherSignalsForProspect(prospect, signalConfig);
+  const signals = validateSignals(rawSignals, prospect);
 
   // 2. Generate GAP email (step-aware: >1 produces a short follow-up)
   const emailData = await generateEmail(prospect, signals, persona, campaign, Number(send.step_number) || 1);
+  emailData.body = ensureFleetSignature(emailData.body, campaign?.sender_name || 'Mark');
 
   // 3. Send via Resend
   const sendResult = await sendViaResend(emailData, prospect, campaign);
@@ -303,6 +344,7 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence) {
   send.email_subject = emailData.subject;
   send.email_body = emailData.body;
   send.signals_used = emailData.signals_used || [];
+  send.signals_rejected_wrong_company = rawSignals.length - signals.length;
   send.gap_analysis = emailData.gap_analysis || {};
   send.resend_result = sendResult;
   await putEmailSend(send);
