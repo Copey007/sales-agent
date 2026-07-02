@@ -19,7 +19,7 @@
 
 import {
   getCampaign, putCampaign,
-  listCampaigns,
+  listCampaigns, listActiveCampaigns, listQueuedSends,
   listCampaignProspects, getCampaignProspect, putCampaignProspect,
   getProspect, putProspect, findProspectByEmail,
   putEmailSend,
@@ -381,18 +381,76 @@ function generateDemoProspects(parsedICP, targetRole, count) {
 
 // ─── Netlify Background Function Handler ────────────────────────────────────
 
+// ─── Auto-Source Top-Up Sweep ────────────────────────────────────────────────
+// For every ACTIVE campaign with auto_source === true whose queued-send count
+// has dropped below its floor (auto_source_min_queue, default 5), re-run the
+// researcher against the campaign's stored brief. Rate-limited per campaign
+// via last_sourced_at (min 6h between sourcing runs) so a busy cron cadence
+// never turns into prospect spam.
+
+const TOPUP_MIN_QUEUE_DEFAULT = 5;
+const TOPUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+async function runTopUpSweep() {
+  const summary = { campaigns_checked: 0, campaigns_topped_up: 0, skipped: [] };
+  const campaigns = (await listActiveCampaigns(DEFAULTS.TENANT_ID)).filter(c => c.auto_source === true);
+  summary.campaigns_checked = campaigns.length;
+
+  for (const campaign of campaigns) {
+    const minQueue = Number(campaign.auto_source_min_queue) || TOPUP_MIN_QUEUE_DEFAULT;
+    const queued = await listQueuedSends(campaign.id);
+    if (queued.length >= minQueue) {
+      summary.skipped.push({ campaign: campaign.name, reason: `queue healthy (${queued.length})` });
+      continue;
+    }
+    if (campaign.last_sourced_at && (Date.now() - new Date(campaign.last_sourced_at).getTime()) < TOPUP_COOLDOWN_MS) {
+      summary.skipped.push({ campaign: campaign.name, reason: 'sourced within last 6h' });
+      continue;
+    }
+
+    campaign.last_sourced_at = new Date().toISOString();
+    await putCampaign(campaign);
+
+    const role = campaign.target_role || campaign.brief?.target_persona || '';
+    console.log(`[researcher-bg] TOP-UP campaign=${campaign.id} "${campaign.name}" queue=${queued.length} role="${role}"`);
+    try {
+      await runResearcher(campaign.id, campaign.parsed_icp || {}, role);
+      summary.campaigns_topped_up++;
+      await logActivity({
+        type: 'auto_source_topup',
+        campaign_id: campaign.id,
+        campaign_name: campaign.name,
+        queue_before: queued.length
+      });
+    } catch (e) {
+      console.error(`[researcher-bg] top-up failed for ${campaign.name}:`, e.message);
+      summary.skipped.push({ campaign: campaign.name, reason: `error: ${e.message}` });
+    }
+  }
+  return summary;
+}
+
 export default async (req) => {
   // Background functions return 202 immediately; work runs after response
   let body = {};
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
+    body = {};
   }
 
   const { campaign_id, parsed_icp, target_role } = body;
+
+  // Top-up mode: scheduled invocations carry no campaign_id. Instead of the old
+  // 400 no-op, sweep active campaigns that opted into auto-sourcing (auto_source
+  // = true) and refill any whose queue has run low. This is what keeps campaigns
+  // fed after the initial launch batch is exhausted.
   if (!campaign_id) {
-    return new Response(JSON.stringify({ error: 'campaign_id required' }), { status: 400 });
+    const summary = await runTopUpSweep().catch(err => ({ error: err.message }));
+    return new Response(JSON.stringify({ mode: 'top_up_sweep', ...summary }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   // Run researcher in background (after response is sent)

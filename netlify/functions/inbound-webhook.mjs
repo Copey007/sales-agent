@@ -246,6 +246,50 @@ export default async (req, context) => {
       console.error('[inbound-webhook] Blobs logging failed:', blobErr.message);
     }
 
+    // --- 3. Reply correlation: stop the machine for this prospect ---
+    // Mark the prospect replied and cancel every still-queued send for them
+    // across ALL campaigns, so a reply immediately halts the cadence.
+    let cancelledSends = 0;
+    try {
+      const {
+        findProspectByEmail, putProspect, listRecords, putEmailSend, logActivity, DEFAULTS
+      } = await import('./_campaign-store.mjs');
+
+      const prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, prospectEmail);
+      if (prospect) {
+        prospect.replied_at = prospect.replied_at || receivedAt;
+        prospect.status = 'replied';
+        prospect.last_reply_id = replyId;
+        await putProspect(prospect);
+
+        for (const send of await listRecords('email_sends')) {
+          if (send.prospect_id === prospect.id && ['queued', 'dispatched'].includes(send.status)) {
+            send.status = 'cancelled_replied';
+            send.cancelled_at = receivedAt;
+            send.cancelled_reason = `prospect replied (${replyId})`;
+            await putEmailSend(send);
+            cancelledSends++;
+          }
+        }
+
+        await logActivity({
+          type: 'reply_received',
+          prospect_id: prospect.id,
+          prospect_email: prospectEmail,
+          prospect_name: prospectName,
+          campaign_id: attributedCampaignId,
+          reply_id: replyId,
+          subject,
+          followups_cancelled: cancelledSends
+        });
+        console.log(`[inbound-webhook] Correlated: prospect ${prospect.id} marked replied, ${cancelledSends} pending send(s) cancelled`);
+      } else {
+        console.log('[inbound-webhook] No prospect record for', prospectEmail, '— reply logged without correlation');
+      }
+    } catch (corrErr) {
+      console.error('[inbound-webhook] Reply correlation failed:', corrErr.message);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       reply_id: replyId,
@@ -253,6 +297,7 @@ export default async (req, context) => {
       subject: subject,
       forwarded: forwarded,
       logged: blobsLogged,
+      followups_cancelled: cancelledSends,
       received_at: receivedAt
     }), {
       status: 200,

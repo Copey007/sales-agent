@@ -19,7 +19,7 @@
 import {
   getCampaign, getCampaignPersona, getCampaignSignalConfig,
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
-  logActivity, getFeatureFlag, DEFAULTS
+  listCampaignSends, logActivity, getFeatureFlag, DEFAULTS
 } from "./_campaign-store.mjs";
 import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
 
@@ -122,7 +122,7 @@ const GAP_SYSTEM_PROMPT = `You are an expert cold email writer trained in the GA
 ### Output: Return ONLY valid JSON:
 {"subject":"...","body":"...","signals_used":[{"type":"...","source_url":"...","why":"..."}],"gap_analysis":{"current_state":"...","future_state":"...","cost_of_gap":"..."}}`;
 
-async function generateEmail(prospect, signals, persona, campaign) {
+async function generateEmail(prospect, signals, persona, campaign, stepNumber = 1) {
   const senderName = campaign?.sender_name || "Mark";
 
   // Field normalization: researcher-background saves `name`, but earlier flows used
@@ -156,6 +156,15 @@ async function generateEmail(prospect, signals, persona, campaign) {
 - GAP Current State: ${persona.gap_current_state || ''}
 - GAP Future State: ${persona.gap_future_state || ''}
 `;
+  }
+
+  if (stepNumber > 1) {
+    userPrompt += `\n## Sequence Context
+This is FOLLOW-UP #${stepNumber - 1} to a prospect who has not replied to earlier emails in this thread.
+Write a SHORT follow-up (40-70 words): reference that you reached out before without guilt-tripping,
+add ONE new angle or piece of value (a different signal, a sharper question, or a relevant proof point),
+and keep the same single CTA. Subject should read as a natural thread continuation (it may start with "Re:").
+Do NOT repeat the original email's framing.\n`;
   }
 
   userPrompt += `\n## Sender: ${senderName} | A-Gent Fleet
@@ -221,9 +230,50 @@ async function sendViaResend(emailData, prospect, campaign) {
   }
 }
 
+// ─── Follow-Up Engine ───────────────────────────────────────────────────────
+// After a successful send of step N, schedule step N+1 per the campaign
+// sequence's step_delays_days cadence. Guards: cadence complete, follow-ups
+// disabled on the campaign, prospect already replied, or step already queued.
+
+const DEFAULT_STEP_DELAYS = [0, 3, 3, 4, 5, 5, 7, 7, 7, 10, 10, 14];
+
+async function enqueueNextStep(send, prospect, campaign, sequence) {
+  if (campaign?.followups_enabled === false) return null;
+  const delays = (sequence?.step_delays_days && sequence.step_delays_days.length)
+    ? sequence.step_delays_days
+    : DEFAULT_STEP_DELAYS;
+  const nextStep = (Number(send.step_number) || 1) + 1;
+  if (nextStep > delays.length) return null; // cadence complete
+  if (prospect?.replied_at || prospect?.status === 'replied') return null;
+
+  // Dedup: never double-book the same prospect+step in this campaign
+  const existing = (await listCampaignSends(campaign.id)).find(s =>
+    s.prospect_id === send.prospect_id &&
+    Number(s.step_number) === nextStep &&
+    ['queued', 'dispatched', 'sent'].includes(s.status)
+  );
+  if (existing) return null;
+
+  const delayDays = Number(delays[nextStep - 1]) || 3;
+  const next = {
+    id: crypto.randomUUID(),
+    tenant_id: send.tenant_id || DEFAULTS.TENANT_ID,
+    campaign_id: campaign.id,
+    prospect_id: send.prospect_id,
+    step_number: nextStep,
+    status: 'queued',
+    scheduled_at: new Date(Date.now() + delayDays * 86400000).toISOString(),
+    created_at: new Date().toISOString(),
+    enqueued_by: 'follow_up_engine',
+    parent_send_id: send.id
+  };
+  await putEmailSend(next);
+  return next;
+}
+
 // ─── Process a Single Send ──────────────────────────────────────────────────
 
-async function processSend(sendId, campaign, persona, signalConfig) {
+async function processSend(sendId, campaign, persona, signalConfig, sequence) {
   const send = await getEmailSend(sendId);
   if (!send || send.status === 'sent') {
     return { skipped: true, reason: send ? 'already sent' : 'send not found' };
@@ -241,8 +291,8 @@ async function processSend(sendId, campaign, persona, signalConfig) {
   // 1. Gather signals
   const signals = await gatherSignalsForProspect(prospect, signalConfig);
 
-  // 2. Generate GAP email
-  const emailData = await generateEmail(prospect, signals, persona, campaign);
+  // 2. Generate GAP email (step-aware: >1 produces a short follow-up)
+  const emailData = await generateEmail(prospect, signals, persona, campaign, Number(send.step_number) || 1);
 
   // 3. Send via Resend
   const sendResult = await sendViaResend(emailData, prospect, campaign);
@@ -257,12 +307,20 @@ async function processSend(sendId, campaign, persona, signalConfig) {
   send.resend_result = sendResult;
   await putEmailSend(send);
 
+  // 5. Follow-up engine: schedule the next cadence step
+  let nextStep = null;
+  if (sendResult.sent) {
+    try { nextStep = await enqueueNextStep(send, prospect, campaign, sequence); }
+    catch (e) { console.error('[follow-up] enqueue failed:', e.message); }
+  }
+
   return {
     send_id: sendId,
     prospect: prospect.contact_name,
     status: send.status,
     subject: emailData.subject,
     signals_count: signals.length,
+    next_step_queued: nextStep ? { step: nextStep.step_number, at: nextStep.scheduled_at } : null,
     send_result: sendResult
   };
 }
@@ -317,7 +375,7 @@ export default async (req, context) => {
     const results = [];
     for (const sendId of send_ids.slice(0, BATCH_SIZE)) {
       try {
-        const result = await processSend(sendId, campaign, persona, signalConfig);
+        const result = await processSend(sendId, campaign, persona, signalConfig, sequence);
         results.push(result);
       } catch (sendErr) {
         results.push({ send_id: sendId, failed: true, error: sendErr.message });

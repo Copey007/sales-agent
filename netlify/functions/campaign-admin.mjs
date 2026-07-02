@@ -17,7 +17,8 @@ import {
   getCampaignPersona, getCampaignSignalConfig, getCampaignSequence, getCampaignTerritory,
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
-  listActivityLog, countSentToday, listQueuedSends
+  listActivityLog, countSentToday, listQueuedSends,
+  listRecords, getProspect, listAllReplies
 } from "./_campaign-store.mjs";
 
 export default async (req, context) => {
@@ -64,6 +65,95 @@ export default async (req, context) => {
           data_store: "netlify_blobs",
           architecture: "parallel_to_supabase"
         };
+        break;
+      }
+
+      case "pipeline_stats": {
+        // Single-call feed for the dashboard: real numbers from the live
+        // email_sends ledger (not the legacy Supabase email_steps table).
+        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaignName = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
+        const sends = await listRecords("email_sends");
+        // Real replies only: sender must be a prospect we actually emailed
+        // (filters spam/marketing hitting the domain catch-all), and drop
+        // tagged test artifacts, simulated events, and OOO auto-replies.
+        const prospectEmails = new Set(
+          (await listRecords("prospects")).map(p => (p.email || '').toLowerCase()).filter(Boolean));
+        const replies = (await listAllReplies()).filter(r => {
+          if (r.is_test === true) return false;
+          if (['test', 'unknown'].includes(r.event_type)) return false;
+          const sender = (r.from_email || r.prospect_email || r.from || '')
+            .toLowerCase().replace(/^.*</, '').replace(/>$/, '').trim();
+          if (!sender || !prospectEmails.has(sender)) return false;
+          if (/^(automatic reply|auto(matic)? response|out of office)/i.test(r.subject || '')) return false;
+          return true;
+        });
+
+        const byStatus = {};
+        for (const s of sends) byStatus[s.status || 'unknown'] = (byStatus[s.status || 'unknown'] || 0) + 1;
+
+        const prospectCache = {};
+        const hydrate = async (s) => {
+          if (s.prospect_id && !(s.prospect_id in prospectCache)) {
+            prospectCache[s.prospect_id] = await getProspect(s.prospect_id).catch(() => null);
+          }
+          const p = prospectCache[s.prospect_id] || {};
+          return {
+            id: s.id, status: s.status, step: s.step_number,
+            email: p.email, name: p.contact_name || p.name, company: p.company_name,
+            campaign: campaignName[s.campaign_id] || s.campaign_id,
+            subject: s.email_subject || null,
+            scheduled_at: s.scheduled_at, sent_at: s.sent_at || null,
+            enqueued_by: s.enqueued_by || null
+          };
+        };
+
+        const sentRows = sends.filter(s => s.status === 'sent')
+          .sort((a, b) => String(b.sent_at || '').localeCompare(String(a.sent_at || ''))).slice(0, 60);
+        const queuedRows = sends.filter(s => ['queued', 'dispatched'].includes(s.status))
+          .sort((a, b) => String(a.scheduled_at || '').localeCompare(String(b.scheduled_at || ''))).slice(0, 90);
+
+        result = {
+          generated_at: new Date().toISOString(),
+          totals: {
+            sent: byStatus.sent || 0,
+            queued: (byStatus.queued || 0) + (byStatus.dispatched || 0),
+            replied: replies.length,
+            suppressed: byStatus.suppressed || 0,
+            cancelled_replied: byStatus.cancelled_replied || 0,
+            failed: byStatus.failed || 0
+          },
+          last_send_at: sentRows[0]?.sent_at || null,
+          campaigns_active: campaigns.filter(c => c.status === 'active').length,
+          campaigns_total: campaigns.length,
+          sent_rows: await Promise.all(sentRows.map(hydrate)),
+          queued_rows: await Promise.all(queuedRows.map(hydrate)),
+          reply_rows: replies
+            .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || ''))).slice(0, 30)
+            .map(r => ({
+              from: r.from_email || r.from, name: r.from_name, subject: r.subject,
+              at: r.received_at, campaign: campaignName[r.campaign_id] || null,
+              preview: String(r.text_body || '').slice(0, 160)
+            }))
+        };
+        break;
+      }
+
+      case "set_campaign_status": {
+        if (req.method !== "POST") { result = { error: "POST required" }; break; }
+        const body = await req.json();
+        const { campaign_id, status, auto_source } = body;
+        if (!campaign_id) { result = { error: "campaign_id required" }; break; }
+        const campaign = await getCampaign(campaign_id);
+        if (!campaign) { result = { error: `Campaign ${campaign_id} not found` }; break; }
+        if (status && !["active", "paused", "archived"].includes(status)) {
+          result = { error: "status must be active | paused | archived" }; break;
+        }
+        if (status) campaign.status = status;
+        if (typeof auto_source === "boolean") campaign.auto_source = auto_source;
+        campaign.updated_at = new Date().toISOString();
+        await putCampaign(campaign);
+        result = { success: true, campaign: { id: campaign.id, name: campaign.name, status: campaign.status, auto_source: campaign.auto_source === true } };
         break;
       }
 

@@ -12,7 +12,7 @@
 import {
   getFeatureFlag, listActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
-  getProspect, putEmailSend, logActivity, DEFAULTS
+  getProspect, putEmailSend, logActivity, listRecords, DEFAULTS
 } from "./_campaign-store.mjs";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -52,20 +52,39 @@ function getSendWorkerUrl() {
 
 // ─── Main Queue Processing ──────────────────────────────────────────────────
 
+const NEW_OUTREACH_COOLDOWN_MS = 5 * 24 * 60 * 60 * 1000;
+
 async function processQueue() {
   const now = new Date();
   const results = {
     campaigns_checked: 0,
     sends_dispatched: 0,
     sends_suppressed: 0,
+    sends_cancelled_replied: 0,
+    sends_cooldown_postponed: 0,
     sends_over_limit: 0,
     batches_dispatched: 0,
+    topups_triggered: 0,
     errors: []
   };
 
   // Get all active campaigns
   const campaigns = await listActiveCampaigns(DEFAULTS.TENANT_ID);
   results.campaigns_checked = campaigns.length;
+
+  // Cross-campaign dedup context: last successful send per prospect, loaded
+  // once per run. Used to stop NEW (step-1) outreach to anyone emailed by any
+  // campaign within the cooldown window — follow-ups inside a cadence are exempt.
+  const lastSentByProspect = {};
+  try {
+    for (const s of await listRecords("email_sends")) {
+      if (s.status === "sent" && s.sent_at && s.prospect_id) {
+        if (!lastSentByProspect[s.prospect_id] || s.sent_at > lastSentByProspect[s.prospect_id]) {
+          lastSentByProspect[s.prospect_id] = s.sent_at;
+        }
+      }
+    }
+  } catch (e) { /* cooldown map is best-effort */ }
 
   for (const campaign of campaigns) {
     try {
@@ -103,6 +122,29 @@ async function processQueue() {
           await putEmailSend(send);
           results.sends_suppressed++;
           continue;
+        }
+
+        // Replied guard: never email a prospect who already replied
+        if (prospect && (prospect.replied_at || prospect.status === 'replied')) {
+          send.status = "cancelled_replied";
+          send.cancelled_at = now.toISOString();
+          await putEmailSend(send);
+          results.sends_cancelled_replied++;
+          continue;
+        }
+
+        // Cross-campaign cooldown: don't START new outreach (step 1) to anyone
+        // any campaign emailed within the window; postpone instead of cancel.
+        // Follow-ups (step 2+) run on their own cadence and are exempt.
+        if ((Number(send.step_number) || 1) === 1) {
+          const last = lastSentByProspect[send.prospect_id];
+          if (last && (now.getTime() - new Date(last).getTime()) < NEW_OUTREACH_COOLDOWN_MS) {
+            send.scheduled_at = new Date(new Date(last).getTime() + NEW_OUTREACH_COOLDOWN_MS).toISOString();
+            send.postponed_reason = "cross_campaign_cooldown";
+            await putEmailSend(send);
+            results.sends_cooldown_postponed++;
+            continue;
+          }
         }
 
         eligibleSends.push(send);
@@ -162,6 +204,32 @@ async function processQueue() {
       results.errors.push(`Campaign ${campaign.id}: ${campaignErr.message}`);
     }
   }
+
+  // Auto-source top-up trigger: piggyback on this reliable 5-minute cron.
+  // If an opted-in campaign's queue has run dry, fire the researcher to refill
+  // it (the researcher rate-limits itself to one sourcing run per 6h/campaign).
+  try {
+    const needsTopUp = [];
+    for (const campaign of campaigns) {
+      if (campaign.auto_source !== true) continue;
+      const queued = await listQueuedSends(campaign.id);
+      const minQueue = Number(campaign.auto_source_min_queue) || 5;
+      if (queued.length < minQueue) needsTopUp.push(campaign);
+    }
+    if (needsTopUp.length) {
+      const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
+        ? Netlify.env.get('URL')
+        : (process.env.URL || 'https://aisdr.a-gent.co');
+      // No campaign_id in the body → researcher runs its top-up sweep, which
+      // re-checks queue depth + per-campaign 6h cooldown before sourcing.
+      await fetch(`${siteUrl}/.netlify/functions/researcher-background`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      }).catch(() => {});
+      results.topups_triggered = needsTopUp.length;
+    }
+  } catch (e) { /* top-up is best-effort; sends were already processed */ }
 
   return results;
 }
