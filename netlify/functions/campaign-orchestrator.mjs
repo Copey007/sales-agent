@@ -28,7 +28,7 @@ import {
 
 export default async (req, context) => {
   if (req.method === "OPTIONS") {
-    return new Response("", { status: 204, headers: corsHeaders() });
+    return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   const url = new URL(req.url);

@@ -24,7 +24,7 @@ import {
 export default async (req, context) => {
   // CORS
   if (req.method === "OPTIONS") {
-    return new Response("", {
+    return new Response(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
