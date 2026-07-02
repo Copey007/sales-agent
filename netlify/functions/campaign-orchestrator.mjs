@@ -25,7 +25,7 @@ import {
   listRecords, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
-import { syncContactToSupabase } from "./researcher-background.mjs";
+import { syncContactToSupabase, icpDiscoverCompanies } from "./researcher-background.mjs";
 
 export default async (req, context) => {
   if (req.method === "OPTIONS") {
@@ -566,8 +566,19 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
   } else {
     const seniority = mapRoleToSeniority(targetRole);
     const department = mapRoleToDepartment(targetRole);
-    // Use only first 3 domains to stay within timeout
-    const domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
+    // ICP Agent first: real companies matching the campaign's ICP text;
+    // static domain map only as an honest fallback.
+    const icpText = campaign?.brief?.icp || '';
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, RESEARCHER_DOMAINS_PER_RUN);
+    let domains;
+    if (disc.companies.length) {
+      domains = disc.companies.slice(0, RESEARCHER_DOMAINS_PER_RUN);
+      discoverStats.discover_mode = disc.mode;
+      discoverStats.discover_filters = disc.filters;
+    } else {
+      domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
+      discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
+    }
     discoverStats.companies_searched = domains.length;
 
     for (const { domain, company_name } of domains) {

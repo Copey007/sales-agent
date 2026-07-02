@@ -27,6 +27,69 @@ import {
   DEFAULTS
 } from "./_campaign-store.mjs";
 import { env } from './_mcp-connectors.mjs';
+import { callLLM, parseLLMJson } from './_llm.mjs';
+
+// ─── ICP Agent ───────────────────────────────────────────────────────────────
+// Turns the campaign's free-text ICP into a REAL company list via Hunter
+// Discover, instead of the static demo domain map. Two steps:
+//   1. LLM parses the ICP into Discover filters (query, headcount buckets,
+//      exclusions like "no competitors like Gong").
+//   2. Hunter Discover returns companies actually matching those filters.
+// Returns { companies: [{domain, company_name}], mode, filters } — empty
+// companies means the caller should fall back (and say so honestly).
+
+export async function icpDiscoverCompanies(icpText, targetRole, hunterKey, max = 6) {
+  if (!icpText || !hunterKey) return { companies: [], mode: 'no_icp_or_key' };
+
+  let f = {};
+  try {
+    const content = await callLLM([
+      { role: 'system', content: `Parse an ideal-customer-profile description into Hunter.io Discover filters. Return ONLY JSON:
+{"query":"<short natural-language company search, e.g. B2B SaaS companies in the US>","headcount":["11-50","51-200"],"exclude_domains":["gong.io"],"exclude_keywords":["gong"]}
+headcount buckets (pick all that cover the stated employee range): "1-10","11-50","51-200","201-500","501-1000","1001-5000","5001-10000","10001+".
+exclude_domains/exclude_keywords: any companies or categories the ICP explicitly excludes (e.g. named competitors and their well-known peers).` },
+      { role: 'user', content: `ICP: ${icpText}\nTarget buyer: ${targetRole || 'decision maker'}` }
+    ], { model: 'claude-haiku-4-5', maxTokens: 400 });
+    f = parseLLMJson(content);
+  } catch (e) {
+    return { companies: [], mode: `icp_parse_failed: ${e.message}` };
+  }
+
+  const query = f.query || icpText.slice(0, 120);
+  const headcount = Array.isArray(f.headcount) ? f.headcount.filter(Boolean) : [];
+
+  // Discover request ladder: POST JSON first, then GET fallback.
+  let orgs = null, mode = '';
+  try {
+    const body = { query };
+    if (headcount.length) body.headcount = headcount;
+    let res = await fetch(`https://api.hunter.io/v2/discover?api_key=${hunterKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_post'; }
+    else {
+      const params = new URLSearchParams({ api_key: hunterKey, query });
+      if (headcount.length) params.set('headcount', headcount.join(','));
+      res = await fetch(`https://api.hunter.io/v2/discover?${params}`);
+      if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_get'; }
+      else return { companies: [], mode: `discover_http_${res.status}` };
+    }
+  } catch (e) {
+    return { companies: [], mode: `discover_failed: ${e.message}` };
+  }
+
+  const list = orgs?.data?.organizations || orgs?.data || orgs?.organizations || [];
+  const exDom = (f.exclude_domains || []).map(d => String(d).toLowerCase());
+  const exKw = (f.exclude_keywords || []).map(k => String(k).toLowerCase());
+  const companies = (Array.isArray(list) ? list : [])
+    .map(o => ({ domain: o.domain, company_name: o.organization || o.name || o.company_name || o.domain }))
+    .filter(c => c.domain)
+    .filter(c => !exDom.some(d => c.domain.toLowerCase().includes(d)))
+    .filter(c => !exKw.some(k => `${c.domain} ${c.company_name}`.toLowerCase().includes(k)))
+    .slice(0, max);
+
+  return { companies, mode, filters: { query, headcount: headcount.length ? headcount : null } };
+}
 
 // ─── AI SDR / CRM Feed ───────────────────────────────────────────────────────
 // Campaign-sourced prospects also flow into the shared Supabase `contacts`
@@ -50,7 +113,7 @@ export async function syncContactToSupabase(prospect, campaignName) {
         name: prospect.name || prospect.contact_name || prospect.email.split('@')[0],
         email: prospect.email,
         company_name: prospect.company_name || null,
-        type: 'prospect',
+        type: 'Prospect',
         source: campaignName ? `Campaign: ${campaignName}` : 'campaign_researcher'
       })
     });
@@ -183,10 +246,22 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
   } else {
     const seniority = mapRoleToSeniority(targetRole);
     const department = mapRoleToDepartment(targetRole);
-    const domains = selectICPDomains(parsedICP, targetRole);
+
+    // ICP Agent first: real companies matching the campaign's ICP text.
+    const icpText = campaign?.brief?.icp || parsedICP?.raw || '';
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY);
+    let domains;
+    if (disc.companies.length) {
+      domains = disc.companies;
+      discoverStats.discover_mode = disc.mode;
+      discoverStats.discover_filters = disc.filters;
+    } else {
+      domains = selectICPDomains(parsedICP, targetRole);
+      discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
+    }
     discoverStats.companies_found = domains.length;
 
-    console.log(`[researcher-bg] Running domain search on ${domains.length} companies for "${targetRole}"`);
+    console.log(`[researcher-bg] Sourcing via ${discoverStats.discover_mode}: ${domains.map(d => d.domain).join(', ')} for "${targetRole}"`);
 
     // Domain Search per company
     for (const { domain, company_name } of domains) {
