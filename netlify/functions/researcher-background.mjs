@@ -26,6 +26,37 @@ import {
   isEmailSuppressed, logActivity,
   DEFAULTS
 } from "./_campaign-store.mjs";
+import { env } from './_mcp-connectors.mjs';
+
+// ─── AI SDR / CRM Feed ───────────────────────────────────────────────────────
+// Campaign-sourced prospects also flow into the shared Supabase `contacts`
+// table so the AI SDR dashboard Prospects metric and the CRM see them.
+// Best-effort: a Supabase hiccup never blocks campaign enrollment.
+
+export async function syncContactToSupabase(prospect, campaignName) {
+  try {
+    const url = env('SUPABASE_URL');
+    const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
+    if (!url || !key || !prospect.email) return false;
+    const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+    const existing = await fetch(
+      `${url}/rest/v1/contacts?select=id&email=eq.${encodeURIComponent(prospect.email)}&limit=1`,
+      { headers: h }).then(r => r.ok ? r.json() : []);
+    if (existing.length) return false;
+    const res = await fetch(`${url}/rest/v1/contacts`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        name: prospect.name || prospect.contact_name || prospect.email.split('@')[0],
+        email: prospect.email,
+        company_name: prospect.company_name || null,
+        type: 'prospect',
+        source: campaignName ? `Campaign: ${campaignName}` : 'campaign_researcher'
+      })
+    });
+    return res.ok;
+  } catch { return false; }
+}
 
 const RESEARCHER_MAX_PROSPECTS = 20;
 
@@ -297,6 +328,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
       await putProspect(prospect);
     }
     await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
+    await syncContactToSupabase(prospect, campaign?.name);
     enrolled.push(prospect);
   }
 

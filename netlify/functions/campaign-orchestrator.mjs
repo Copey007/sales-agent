@@ -25,6 +25,7 @@ import {
   listRecords, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
+import { syncContactToSupabase } from "./researcher-background.mjs";
 
 export default async (req, context) => {
   if (req.method === "OPTIONS") {
@@ -692,6 +693,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
       await putProspect(prospect);
     }
     await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
+    await syncContactToSupabase(prospect, campaign?.name);
     enrolled.push(prospect);
   }
 
