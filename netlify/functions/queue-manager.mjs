@@ -12,8 +12,10 @@
 import {
   getFeatureFlag, listActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
-  getProspect, putEmailSend, logActivity, listRecords, DEFAULTS
+  getProspect, putProspect, putCampaignProspect,
+  putEmailSend, logActivity, listRecords, DEFAULTS
 } from "./_campaign-store.mjs";
+import { sb } from "./_supabase-rest.mjs";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -203,6 +205,55 @@ async function processQueue() {
     } catch (campaignErr) {
       results.errors.push(`Campaign ${campaign.id}: ${campaignErr.message}`);
     }
+  }
+
+  // Pool feeder: enrolled contacts wait in Supabase contact_pool
+  // (sdr_state=awaiting) so a 1000-contact campaign never bloats the send
+  // ledger. Each cycle, campaigns whose queue runs low get the next batch.
+  const FEEDER_MIN_QUEUE = 40, FEEDER_BATCH = 30;
+  for (const campaign of campaigns) {
+    try {
+      const queued = await listQueuedSends(campaign.id);
+      if (queued.length >= FEEDER_MIN_QUEUE) continue;
+      const awaiting = await sb(`contact_pool?campaign_id=eq.${campaign.id}&sdr_state=eq.awaiting&order=enrolled_at.asc&limit=${FEEDER_BATCH}`);
+      if (!Array.isArray(awaiting) || !awaiting.length) continue;
+      let fed = 0;
+      for (const c of awaiting) {
+        const prospect = {
+          id: crypto.randomUUID(),
+          tenant_id: DEFAULTS.TENANT_ID,
+          contact_name: c.name,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          email: c.email,
+          title: c.title,
+          company_name: c.company_name,
+          company_domain: c.company_domain,
+          hunter_confidence: c.hunter_confidence,
+          source: 'researcher_pool',
+          created_at: now.toISOString()
+        };
+        await putProspect(prospect);
+        await putCampaignProspect({ campaign_id: campaign.id, prospect_id: prospect.id, enrolled_at: now.toISOString(), status: 'active' });
+        await putEmailSend({
+          id: crypto.randomUUID(),
+          tenant_id: DEFAULTS.TENANT_ID,
+          campaign_id: campaign.id,
+          prospect_id: prospect.id,
+          step_number: 1,
+          status: 'queued',
+          scheduled_at: new Date(Date.now() + fed * 120000).toISOString(),
+          created_at: now.toISOString(),
+          enqueued_by: 'pool_feeder'
+        });
+        await sb(`contact_pool?id=eq.${c.id}`, { method: 'PATCH', body: { sdr_state: 'queued' }, prefer: 'return=minimal' });
+        fed++;
+      }
+      if (fed) {
+        results.feeder_fed = (results.feeder_fed || 0) + fed;
+        await logActivity({ type: 'pool_feeder', campaign_id: campaign.id, campaign_name: campaign.name, fed });
+      }
+    } catch (e) { /* feeder is per-campaign best-effort */ }
   }
 
   // Auto-source top-up trigger: piggyback on this reliable 5-minute cron.

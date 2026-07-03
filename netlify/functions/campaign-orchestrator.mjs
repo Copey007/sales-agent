@@ -26,69 +26,35 @@ import {
   DEFAULTS
 } from "./_campaign-store.mjs";
 import { syncContactToSupabase, icpDiscoverCompanies } from "./researcher-background.mjs";
-import { poolGetMany, poolUpdate } from "./researcher-find.mjs";
+import { enrollPool } from "./researcher-find.mjs";
+import { sb } from "./_supabase-rest.mjs";
 
-// Enroll contacts hand-picked in the A-Gent Researcher panel: create prospect
-// records, junction rows, and staggered step-1 sends; mark pool entries
-// in_campaign so they can't be double-enrolled.
+// Enroll every selected Researcher-pool contact into the campaign: one bulk
+// UPDATE (instant even at 1000 contacts). The queue-manager feeder then drips
+// them into the send ledger ~30 at a time, so the ledger never bloats.
 async function enrollSelectedContacts(campaignId, contactIds) {
-  const now = new Date().toISOString();
-  const campaign = await getCampaign(campaignId);
-  const contacts = (await poolGetMany(contactIds)).filter(c => c.email && c.status === 'found');
-  let enrolled = 0, scheduled = 0;
-
-  for (const c of contacts) {
-    let prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, c.email);
-    if (!prospect) {
-      prospect = {
-        id: crypto.randomUUID(),
-        tenant_id: DEFAULTS.TENANT_ID,
-        contact_name: c.name,
-        first_name: c.first_name,
-        last_name: c.last_name,
-        email: c.email,
-        title: c.title,
-        company_name: c.company_name,
-        company_domain: c.company_domain,
-        hunter_confidence: c.hunter_confidence || null,
-        source: 'researcher_panel',
-        sourced_at: now,
-        created_at: now
-      };
-      await putProspect(prospect);
-    }
-    await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
-    await syncContactToSupabase(prospect, campaign?.name);
-    await putEmailSend({
-      id: crypto.randomUUID(),
-      tenant_id: DEFAULTS.TENANT_ID,
-      campaign_id: campaignId,
-      prospect_id: prospect.id,
-      step_number: 1,
-      status: 'queued',
-      scheduled_at: new Date(Date.now() + scheduled * 120000).toISOString(),
-      created_at: now,
-      enqueued_by: 'researcher_panel_selection'
-    });
-    scheduled++;
-    await poolUpdate(c.id, { status: 'in_campaign', campaign_id: campaignId, enrolled_at: now });
-    enrolled++;
+  // Explicit ids (small hand-picked lists): mark just those selected first.
+  if (Array.isArray(contactIds) && contactIds.length) {
+    await sb(`contact_pool?id=in.(${contactIds.join(',')})&status=eq.found`, {
+      method: 'PATCH', body: { selected: true }, prefer: 'return=minimal'
+    }).catch(() => {});
   }
+  const enrolled = await enrollPool(campaignId);
 
   const fresh = await getCampaign(campaignId);
   if (fresh) {
     fresh.agent_status.researcher = {
       state: 'COMPLETE',
-      last_action: `Enrolled ${enrolled} hand-picked contacts from the Researcher panel`,
+      last_action: `Enrolled ${enrolled} contacts from the Researcher pool`,
       updated_at: new Date().toISOString(),
       prospects_found: enrolled
     };
-    fresh.agent_status.ops = { state: 'COMPLETE', last_action: `Queued ${scheduled} step-1 sends`, updated_at: new Date().toISOString() };
-    fresh.agent_status.sdr = { state: 'ACTIVE', last_action: 'Sequencing queued sends', updated_at: new Date().toISOString() };
+    fresh.agent_status.ops = { state: 'ACTIVE', last_action: `Feeder queues sends progressively (${enrolled} awaiting)`, updated_at: new Date().toISOString() };
+    fresh.agent_status.sdr = { state: 'ACTIVE', last_action: 'Sequencing as the queue fills', updated_at: new Date().toISOString() };
     await putCampaign(fresh);
   }
 
-  return { prospects_enrolled: enrolled, sends_queued: scheduled, source: 'researcher_pool' };
+  return { prospects_enrolled: enrolled, source: 'researcher_pool', feeder: true };
 }
 
 export default async (req, context) => {
@@ -280,8 +246,8 @@ async function handleLaunch(req) {
   //    in the A-Gent Researcher panel (the find → select → campaign flow)
   //  - otherwise → auto-source via the inline ICP researcher
   let researchResult;
-  if (Array.isArray(body.contact_ids) && body.contact_ids.length) {
-    console.log(`[orchestrator] launch: enrolling ${body.contact_ids.length} selected Researcher contacts`);
+  if (body.use_pool === true || (Array.isArray(body.contact_ids) && body.contact_ids.length)) {
+    console.log(`[orchestrator] launch: enrolling selected Researcher-pool contacts`);
     researchResult = await enrollSelectedContacts(campaignId, body.contact_ids);
   } else {
     console.log(`[orchestrator] launch: running inline researcher for campaign ${campaignId}`);
