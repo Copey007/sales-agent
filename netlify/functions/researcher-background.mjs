@@ -31,7 +31,7 @@ import { callLLM, parseLLMJson } from './_llm.mjs';
 
 export { icpDiscoverCompanies } from "./_icp-agent.mjs";
 import { icpDiscoverCompanies } from "./_icp-agent.mjs";
-import { findAndPoolContacts } from "./researcher-find.mjs";
+import { findAndPoolContacts, getBulkLock, setBulkLock } from "./researcher-find.mjs";
 
 // ─── Bulk Find ───────────────────────────────────────────────────────────────
 // Fill the contact pool toward a target count (up to 1000) inside this
@@ -43,6 +43,14 @@ const BULK_TIME_BUDGET_MS = 12 * 60 * 1000;
 const BULK_ORGS_PER_PASS = 10;
 
 async function runBulkFind({ icp, role, target }) {
+  // Single-flight: a second bulk job started while one is running would only
+  // burn Hunter credits re-finding the first job's contacts.
+  const existing = await getBulkLock();
+  if (existing) {
+    return { skipped: 'bulk job already running', running_icp: existing.icp, running_since: existing.started_at };
+  }
+  await setBulkLock({ icp, target, started_at: new Date().toISOString() });
+
   const started = Date.now();
   let inserted = 0, passes = 0, exhausted = false, lastError = null;
   let emptyStreak = 0, errorStreak = 0;
@@ -75,6 +83,7 @@ async function runBulkFind({ icp, role, target }) {
     : emptyStreak >= 8 ? 'eight_empty_pages'
     : (Date.now() - started) >= BULK_TIME_BUDGET_MS ? 'time_budget'
     : 'pass_cap';
+  await setBulkLock({ icp, target, started_at: new Date(started).toISOString(), released_at: new Date().toISOString(), inserted, stop_reason });
   await logActivity({ type: 'researcher_bulk_find', target, inserted, passes, exhausted, stop_reason, icp });
   return { inserted, target, passes, exhausted, stop_reason, error: lastError, elapsed_s: Math.round((Date.now() - started) / 1000) };
 }

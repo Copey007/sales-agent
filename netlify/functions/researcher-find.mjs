@@ -35,18 +35,51 @@ export function hunterKey() {
     ? Netlify.env.get('HUNTER_API_KEY') : (process.env.HUNTER_API_KEY || '');
 }
 
-// Per-ICP Discover pagination cursor (single small record — Blobs is fine).
+// Per-ICP Discover pagination cursor. Each distinct ICP text gets its OWN
+// cursor record (hashed key) so two searches never thrash each other's
+// progress — the bug that made concurrent bulk jobs re-read page 1 forever.
+async function cursorKey(icp) {
+  const { createHash } = await import('node:crypto');
+  return 'pool_meta_' + createHash('sha1').update(icp).digest('hex').slice(0, 12);
+}
 export async function getIcpCursor(icp) {
   const { getStore } = await import('@netlify/blobs');
   const store = getStore('contact_pool');
-  let meta = {};
-  try { meta = (await store.get('pool_meta', { type: 'json' })) || {}; } catch { meta = {}; }
-  return meta.icp === icp ? (Number(meta.offset) || 0) : 0;
+  const key = await cursorKey(icp);
+  try {
+    const meta = await store.get(key, { type: 'json' });
+    if (meta) return Number(meta.offset) || 0;
+  } catch { /* fall through */ }
+  // Adopt the legacy single-cursor record if it belongs to this ICP.
+  try {
+    const legacy = (await store.get('pool_meta', { type: 'json' })) || {};
+    if (legacy.icp === icp) return Number(legacy.offset) || 0;
+  } catch { /* new ICP */ }
+  return 0;
 }
 export async function setIcpCursor(icp, offset, extra = {}) {
   const { getStore } = await import('@netlify/blobs');
   const store = getStore('contact_pool');
-  await store.setJSON('pool_meta', { id: 'pool_meta', icp, offset, updated_at: new Date().toISOString(), ...extra });
+  const key = await cursorKey(icp);
+  await store.setJSON(key, { id: key, icp, offset, updated_at: new Date().toISOString(), ...extra });
+}
+
+// Single-flight lock so only one bulk job runs at a time (concurrent jobs
+// waste Hunter credits re-finding each other's contacts).
+const BULK_LOCK_TTL_MS = 14 * 60 * 1000;
+export async function getBulkLock() {
+  const { getStore } = await import('@netlify/blobs');
+  const store = getStore('contact_pool');
+  try {
+    const lock = await store.get('bulk_lock', { type: 'json' });
+    if (lock && lock.started_at && (Date.now() - new Date(lock.started_at).getTime()) < BULK_LOCK_TTL_MS && !lock.released_at) return lock;
+  } catch { /* no lock */ }
+  return null;
+}
+export async function setBulkLock(fields) {
+  const { getStore } = await import('@netlify/blobs');
+  const store = getStore('contact_pool');
+  await store.setJSON('bulk_lock', { id: 'bulk_lock', ...fields });
 }
 
 /**
@@ -176,11 +209,14 @@ export default async (req) => {
       const { data: pool, count: total } = await sb('contact_pool?select=*&order=found_at.desc&limit=300', { count: true });
       const { count: selectedCount } = await sb('contact_pool?select=id&selected=is.true&status=eq.found&limit=1', { count: true });
       const { count: availableCount } = await sb('contact_pool?select=id&status=eq.found&limit=1', { count: true });
+      const lock = await getBulkLock();
       return new Response(JSON.stringify({
         pool: pool || [],
         total: total ?? (pool || []).length,
         available_count: availableCount ?? 0,
-        selected_count: selectedCount ?? 0
+        selected_count: selectedCount ?? 0,
+        bulk_running: !!lock,
+        bulk_job: lock ? { icp: lock.icp, target: lock.target, started_at: lock.started_at } : null
       }), { headers: cors });
     }
 
