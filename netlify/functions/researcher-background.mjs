@@ -44,9 +44,10 @@ export async function icpDiscoverCompanies(icpText, targetRole, hunterKey, max =
   let f = {};
   try {
     const content = await callLLM([
-      { role: 'system', content: `Parse an ideal-customer-profile description into Hunter.io Discover filters. Return ONLY JSON:
-{"query":"<short natural-language company search, e.g. B2B SaaS companies in the US>","headcount":["11-50","51-200"],"exclude_domains":["gong.io"],"exclude_keywords":["gong"]}
-headcount buckets (pick all that cover the stated employee range): "1-10","11-50","51-200","201-500","501-1000","1001-5000","5001-10000","10001+".
+      { role: 'system', content: `Turn an ideal-customer-profile description into a Hunter.io Discover natural-language search. Return ONLY JSON:
+{"query":"<one natural-language sentence describing the companies, INCLUDING industry AND the employee-count range verbatim, e.g. 'B2B SaaS software companies with 15 to 100 employees'>","exclude_domains":["gong.io"],"exclude_keywords":["gong"]}
+Hunter Discover understands company size in plain language, so always state the employee range inside the query.
+Use CONCRETE segment words (e.g. "SaaS software", "fintech", "cybersecurity") — never the generic word "technology" alone, it matches universities and consumer brands.
 exclude_domains/exclude_keywords: any companies or categories the ICP explicitly excludes (e.g. named competitors and their well-known peers).` },
       { role: 'user', content: `ICP: ${icpText}\nTarget buyer: ${targetRole || 'decision maker'}` }
     ], { model: 'claude-haiku-4-5', maxTokens: 400 });
@@ -56,20 +57,18 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
   }
 
   const query = f.query || icpText.slice(0, 120);
-  const headcount = Array.isArray(f.headcount) ? f.headcount.filter(Boolean) : [];
 
-  // Discover request ladder: POST JSON first, then GET fallback.
+  // Natural-language query only: Hunter Discover's semantic mode honors the
+  // size/industry constraints in the sentence but IGNORES structured filters
+  // when a query is present (verified live), so we never mix the two.
   let orgs = null, mode = '';
   try {
-    const body = { query };
-    if (headcount.length) body.headcount = headcount;
     let res = await fetch(`https://api.hunter.io/v2/discover?api_key=${hunterKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query })
     });
-    if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_post'; }
+    if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_query'; }
     else {
       const params = new URLSearchParams({ api_key: hunterKey, query });
-      if (headcount.length) params.set('headcount', headcount.join(','));
       res = await fetch(`https://api.hunter.io/v2/discover?${params}`);
       if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_get'; }
       else return { companies: [], mode: `discover_http_${res.status}` };
@@ -81,14 +80,28 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
   const list = orgs?.data?.organizations || orgs?.data || orgs?.organizations || [];
   const exDom = (f.exclude_domains || []).map(d => String(d).toLowerCase());
   const exKw = (f.exclude_keywords || []).map(k => String(k).toLowerCase());
-  const companies = (Array.isArray(list) ? list : [])
+  let companies = (Array.isArray(list) ? list : [])
     .map(o => ({ domain: o.domain, company_name: o.organization || o.name || o.company_name || o.domain }))
     .filter(c => c.domain)
     .filter(c => !exDom.some(d => c.domain.toLowerCase().includes(d)))
-    .filter(c => !exKw.some(k => `${c.domain} ${c.company_name}`.toLowerCase().includes(k)))
-    .slice(0, max);
+    .filter(c => !exKw.some(k => `${c.domain} ${c.company_name}`.toLowerCase().includes(k)));
 
-  return { companies, mode, filters: { query, headcount: headcount.length ? headcount : null } };
+  // Relevance gate: Discover's semantic search can surface universities,
+  // consumer brands, or media sites. Screen candidates against the ICP and
+  // keep only plausible fits before spending Hunter domain-search credits.
+  if (companies.length) {
+    try {
+      const content = await callLLM([
+        { role: 'system', content: 'You screen companies against an ideal customer profile. Return ONLY JSON: {"keep":["domain1.com","domain2.com"]} — the domains that PLAUSIBLY match the ICP (right industry AND a plausible commercial fit). Reject universities, government bodies, standards organizations, consumer-product brands, media/news sites, and anything clearly outside the stated industry.' },
+        { role: 'user', content: `ICP: ${icpText}\n\nCandidates:\n${companies.slice(0, 20).map(c => `- ${c.domain} (${c.company_name})`).join('\n')}` }
+      ], { model: 'claude-haiku-4-5', maxTokens: 300 });
+      const keep = new Set(((parseLLMJson(content) || {}).keep || []).map(d => String(d).toLowerCase()));
+      if (keep.size) companies = companies.filter(c => keep.has(c.domain.toLowerCase()));
+    } catch (e) { /* gate is best-effort — unscreened is better than none */ }
+  }
+  companies = companies.slice(0, max);
+
+  return { companies, mode, filters: { query } };
 }
 
 // ─── AI SDR / CRM Feed ───────────────────────────────────────────────────────
@@ -560,19 +573,26 @@ export default async (req) => {
     });
   }
 
-  // Run researcher in background (after response is sent)
-  // Netlify background functions: the handler must return a response,
-  // then any remaining async work continues until the function exits
-  runResearcher(campaign_id, parsed_icp || {}, target_role || '').catch(err => {
+  // Await the full run: fire-and-forget proved unreliable (the runtime can
+  // freeze right after the response, killing the researcher mid-run). As a
+  // background function we have minutes of budget — completing the work
+  // before responding guarantees enrollment actually happens.
+  try {
+    await runResearcher(campaign_id, parsed_icp || {}, target_role || '');
+  } catch (err) {
     console.error('[researcher-bg] FATAL campaign=' + campaign_id + ':', err.message, err.stack);
-  });
+    return new Response(JSON.stringify({ error: err.message, campaign_id }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 
   return new Response(JSON.stringify({
-    accepted: true,
+    completed: true,
     campaign_id,
-    message: 'Agent Researcher started — prospects will be enrolled within 60 seconds'
+    message: 'Agent Researcher finished — prospects enrolled and sends queued'
   }), {
-    status: 202,
+    status: 200,
     headers: { 'Content-Type': 'application/json' }
   });
 };

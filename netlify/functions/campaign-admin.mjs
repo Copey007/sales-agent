@@ -157,6 +157,35 @@ export default async (req, context) => {
         break;
       }
 
+      case "icp_test": {
+        const { icpDiscoverCompanies } = await import('./researcher-background.mjs');
+        const hunterKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
+          ? Netlify.env.get('HUNTER_API_KEY') : (process.env.HUNTER_API_KEY || '');
+        const icp = url.searchParams.get("icp") || "B2B technology companies between 15-100 employees - no competitors like GONG";
+        result = await icpDiscoverCompanies(icp, url.searchParams.get("role") || "CEO", hunterKey);
+        break;
+      }
+
+      case "discover_raw": {
+        const hunterKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
+          ? Netlify.env.get('HUNTER_API_KEY') : (process.env.HUNTER_API_KEY || '');
+        let payload = {};
+        try { payload = JSON.parse(url.searchParams.get("body") || "{}"); } catch { payload = {}; }
+        const method = url.searchParams.get("method") || "POST";
+        let res;
+        if (method === "GET") {
+          const params = new URLSearchParams({ api_key: hunterKey, ...payload });
+          res = await fetch(`https://api.hunter.io/v2/discover?${params}`);
+        } else {
+          res = await fetch(`https://api.hunter.io/v2/discover?api_key=${hunterKey}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+          });
+        }
+        const text = await res.text();
+        result = { http: res.status, body: text.slice(0, 3000) };
+        break;
+      }
+
       case "get_campaign": {
         const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
         const campaign = await getCampaign(campaignId);
