@@ -21,10 +21,13 @@ import { sb } from './_supabase-rest.mjs';
 const MAX_ORGS_PER_FIND = 15;   // sync path budget; bulk path loops in background
 const EMAILS_PER_ORG = 5;
 
-const TABLE_MISSING_HINT = 'contact_pool table not found — run the setup SQL in the Supabase SQL editor first';
+const TABLE_MISSING_HINT = 'One-time setup needed: the contact_pool table does not exist yet. Run the setup SQL (provided in chat) in the Supabase SQL editor, then refresh this panel.';
 
 function tableMissing(err) {
-  return err && (err.code === '42P01' || /contact_pool.*(not exist|not found)|PGRST205/i.test(err.message || ''));
+  return err && (
+    err.code === '42P01' || err.code === 'PGRST205' ||
+    /contact_pool/i.test(err.message || '') && /(not exist|not found|could not find|schema cache)/i.test(err.message || '')
+  );
 }
 
 export function hunterKey() {
