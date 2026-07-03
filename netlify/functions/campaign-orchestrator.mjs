@@ -567,14 +567,19 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
     const seniority = mapRoleToSeniority(targetRole);
     const department = mapRoleToDepartment(targetRole);
     // ICP Agent first: real companies matching the campaign's ICP text;
-    // static domain map only as an honest fallback.
+    // static domain map only as an honest fallback. discover_offset advances
+    // so the auto-source top-up continues where the launch left off.
     const icpText = campaign?.brief?.icp || '';
-    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, RESEARCHER_DOMAINS_PER_RUN);
+    const discOffset = Number(campaign.discover_offset) || 0;
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, RESEARCHER_DOMAINS_PER_RUN, discOffset);
     let domains;
     if (disc.companies.length) {
       domains = disc.companies.slice(0, RESEARCHER_DOMAINS_PER_RUN);
       discoverStats.discover_mode = disc.mode;
       discoverStats.discover_filters = disc.filters;
+      discoverStats.market_size = disc.total;
+      campaign.discover_offset = disc.next_offset;
+      await putCampaign(campaign);
     } else {
       domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
       discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
@@ -710,6 +715,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
 
   // Update researcher agent status on campaign
   const freshCampaign = await getCampaign(campaignId);
+  if (freshCampaign && campaign.discover_offset != null) freshCampaign.discover_offset = campaign.discover_offset;
   if (freshCampaign) {
     const sourceLabel = discoverStats.fallback ? 'demo (no Hunter key)' : 'Hunter.io live';
     freshCampaign.agent_status.researcher = {

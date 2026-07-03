@@ -38,7 +38,7 @@ import { callLLM, parseLLMJson } from './_llm.mjs';
 // Returns { companies: [{domain, company_name}], mode, filters } — empty
 // companies means the caller should fall back (and say so honestly).
 
-export async function icpDiscoverCompanies(icpText, targetRole, hunterKey, max = 6) {
+export async function icpDiscoverCompanies(icpText, targetRole, hunterKey, max = 6, offset = 0) {
   if (!icpText || !hunterKey) return { companies: [], mode: 'no_icp_or_key' };
 
   let f = {};
@@ -61,14 +61,18 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
   // Natural-language query only: Hunter Discover's semantic mode honors the
   // size/industry constraints in the sentence but IGNORES structured filters
   // when a query is present (verified live), so we never mix the two.
+  // limit/offset paginate the full match set (verified: 13k+ results for a
+  // typical ICP) — the caller advances offset per run to walk the market.
+  const pageSize = Math.max(max * 3, 20);
   let orgs = null, mode = '';
   try {
     let res = await fetch(`https://api.hunter.io/v2/discover?api_key=${hunterKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: pageSize, offset })
     });
     if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_query'; }
     else {
-      const params = new URLSearchParams({ api_key: hunterKey, query });
+      const params = new URLSearchParams({ api_key: hunterKey, query, limit: String(pageSize), offset: String(offset) });
       res = await fetch(`https://api.hunter.io/v2/discover?${params}`);
       if (res.ok) { orgs = await res.json(); mode = 'hunter_discover_get'; }
       else return { companies: [], mode: `discover_http_${res.status}` };
@@ -101,7 +105,9 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
   }
   companies = companies.slice(0, max);
 
-  return { companies, mode, filters: { query } };
+  const rawCount = Array.isArray(list) ? list.length : 0;
+  const total = orgs?.meta?.results ?? null;
+  return { companies, mode, raw_count: rawCount, total, next_offset: offset + rawCount, filters: { query, offset } };
 }
 
 // ─── AI SDR / CRM Feed ───────────────────────────────────────────────────────
@@ -261,13 +267,19 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     const department = mapRoleToDepartment(targetRole);
 
     // ICP Agent first: real companies matching the campaign's ICP text.
+    // discover_offset walks the full Discover result set (often 10k+
+    // companies) so successive runs source NEW companies, not page 1 forever.
     const icpText = campaign?.brief?.icp || parsedICP?.raw || '';
-    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY);
+    const discOffset = Number(campaign.discover_offset) || 0;
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, 10, discOffset);
     let domains;
     if (disc.companies.length) {
       domains = disc.companies;
       discoverStats.discover_mode = disc.mode;
       discoverStats.discover_filters = disc.filters;
+      discoverStats.market_size = disc.total;
+      campaign.discover_offset = disc.next_offset;
+      await putCampaign(campaign);
     } else {
       domains = selectICPDomains(parsedICP, targetRole);
       discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
@@ -441,6 +453,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
 
   // Update campaign with final status + cached metrics
   const freshCampaign = await getCampaign(campaignId);
+  if (freshCampaign && campaign.discover_offset != null) freshCampaign.discover_offset = campaign.discover_offset;
   if (freshCampaign) {
     const sourceLabel = discoverStats.fallback ? 'demo (fallback)' : 'Hunter.io live';
     freshCampaign.agent_status.researcher = {
