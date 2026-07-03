@@ -62,10 +62,18 @@ export async function findAndPoolContacts({ icp, role, orgCount }) {
 
   const offset = await getIcpCursor(icp);
   const disc = await icpDiscoverCompanies(icp, role || 'CEO', key, orgCount, offset);
+  // Always advance the cursor past pages Discover actually returned — a page
+  // where the relevance gate rejected everything is skipped, not terminal.
+  if (disc.raw_count > 0) await setIcpCursor(icp, disc.next_offset, { market_size: disc.total });
   if (!disc.companies.length) {
-    return { inserted: 0, companies: [], market_size: disc.total || null, exhausted: true, mode: disc.mode };
+    return {
+      inserted: 0, companies: [],
+      market_size: disc.total || null,
+      exhausted: disc.exhausted === true,
+      transient: disc.transient === true,
+      mode: disc.mode
+    };
   }
-  await setIcpCursor(icp, disc.next_offset, { market_size: disc.total });
 
   const rows = [];
   const now = new Date().toISOString();

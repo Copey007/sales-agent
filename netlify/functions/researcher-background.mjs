@@ -45,16 +45,38 @@ const BULK_ORGS_PER_PASS = 10;
 async function runBulkFind({ icp, role, target }) {
   const started = Date.now();
   let inserted = 0, passes = 0, exhausted = false, lastError = null;
-  while (inserted < target && (Date.now() - started) < BULK_TIME_BUDGET_MS && !exhausted && passes < 150) {
-    const r = await findAndPoolContacts({ icp, role, orgCount: BULK_ORGS_PER_PASS });
-    if (r.error) { lastError = r.error; break; }
-    inserted += r.inserted;
-    exhausted = !!r.exhausted;
+  let emptyStreak = 0, errorStreak = 0;
+  // Keep pushing through gate-rejected pages and transient hiccups: only a
+  // true end-of-market (Discover returns nothing), a hard error streak, or
+  // the time budget stops the job.
+  while (
+    inserted < target &&
+    (Date.now() - started) < BULK_TIME_BUDGET_MS &&
+    !exhausted && emptyStreak < 8 && errorStreak < 4 && passes < 200
+  ) {
+    let r;
+    try { r = await findAndPoolContacts({ icp, role, orgCount: BULK_ORGS_PER_PASS }); }
+    catch (e) { r = { error: e.message, transient: true }; }
     passes++;
-    console.log(`[bulk-find] pass ${passes}: +${r.inserted} (total ${inserted}/${target})`);
+    if (r.error) {
+      lastError = r.error; errorStreak++;
+      console.warn(`[bulk-find] pass ${passes} error (${errorStreak}/4): ${r.error}`);
+      continue;
+    }
+    errorStreak = 0;
+    inserted += r.inserted;
+    exhausted = r.exhausted === true;
+    emptyStreak = r.inserted === 0 ? emptyStreak + 1 : 0;
+    console.log(`[bulk-find] pass ${passes}: +${r.inserted} (total ${inserted}/${target})${r.inserted === 0 ? ` [empty streak ${emptyStreak}]` : ''}`);
   }
-  await logActivity({ type: 'researcher_bulk_find', target, inserted, passes, exhausted, icp });
-  return { inserted, target, passes, exhausted, error: lastError, elapsed_s: Math.round((Date.now() - started) / 1000) };
+  const stop_reason = inserted >= target ? 'target_reached'
+    : exhausted ? 'market_exhausted'
+    : errorStreak >= 4 ? `errors: ${lastError}`
+    : emptyStreak >= 8 ? 'eight_empty_pages'
+    : (Date.now() - started) >= BULK_TIME_BUDGET_MS ? 'time_budget'
+    : 'pass_cap';
+  await logActivity({ type: 'researcher_bulk_find', target, inserted, passes, exhausted, stop_reason, icp });
+  return { inserted, target, passes, exhausted, stop_reason, error: lastError, elapsed_s: Math.round((Date.now() - started) / 1000) };
 }
 
 export async function syncContactToSupabase(prospect, campaignName) {

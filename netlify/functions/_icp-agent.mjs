@@ -14,23 +14,31 @@ import { callLLM, parseLLMJson } from './_llm.mjs';
 // Returns { companies: [{domain, company_name}], mode, filters } — empty
 // companies means the caller should fall back (and say so honestly).
 
+// Per-invocation parse cache: bulk jobs call this dozens of times with the
+// same ICP — parse once, reuse the query + exclusions for every page.
+const parseCache = new Map();
+
 export async function icpDiscoverCompanies(icpText, targetRole, hunterKey, max = 6, offset = 0) {
   if (!icpText || !hunterKey) return { companies: [], mode: 'no_icp_or_key' };
 
-  let f = {};
-  try {
-    const content = await callLLM([
-      { role: 'system', content: `Turn an ideal-customer-profile description into a Hunter.io Discover natural-language search. Return ONLY JSON:
+  let f = parseCache.get(icpText);
+  if (!f) {
+    try {
+      const content = await callLLM([
+        { role: 'system', content: `Turn an ideal-customer-profile description into a Hunter.io Discover natural-language search. Return ONLY JSON:
 {"query":"<one natural-language sentence describing the companies, INCLUDING industry AND the employee-count range verbatim, e.g. 'B2B SaaS software companies with 15 to 100 employees'>","exclude_domains":["gong.io"],"exclude_keywords":["gong"]}
 Hunter Discover understands company size in plain language, so always state the employee range inside the query.
 Use CONCRETE segment words (e.g. "SaaS software", "fintech", "cybersecurity") — never the generic word "technology" alone, it matches universities and consumer brands.
 exclude_domains/exclude_keywords: any companies or categories the ICP explicitly excludes (e.g. named competitors and their well-known peers).` },
-      { role: 'user', content: `ICP: ${icpText}\nTarget buyer: ${targetRole || 'decision maker'}` }
-    ], { model: 'claude-haiku-4-5', maxTokens: 400 });
-    f = parseLLMJson(content);
-  } catch (e) {
-    return { companies: [], mode: `icp_parse_failed: ${e.message}` };
+        { role: 'user', content: `ICP: ${icpText}\nTarget buyer: ${targetRole || 'decision maker'}` }
+      ], { model: 'claude-haiku-4-5', maxTokens: 400 });
+      f = parseLLMJson(content);
+      if (f && f.query) parseCache.set(icpText, f);
+    } catch (e) {
+      return { companies: [], mode: `icp_parse_failed: ${e.message}`, transient: true };
+    }
   }
+  f = f || {};
 
   const query = f.query || icpText.slice(0, 120);
 
@@ -97,7 +105,17 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
 
   const rawCount = Array.isArray(list) ? list.length : 0;
   const total = orgs?.meta?.results ?? null;
-  return { companies, mode, raw_count: rawCount, total, next_offset: offset + rawCount, filters: { query, offset } };
+  // exhausted = Discover itself returned nothing at this offset (true end of
+  // market). A page where the gate rejected every candidate is NOT exhaustion
+  // — the cursor advanced and the next page may be full of fits.
+  return {
+    companies, mode,
+    raw_count: rawCount,
+    total,
+    next_offset: offset + rawCount,
+    exhausted: rawCount === 0,
+    filters: { query, offset }
+  };
 }
 
 // ─── AI SDR / CRM Feed ───────────────────────────────────────────────────────
