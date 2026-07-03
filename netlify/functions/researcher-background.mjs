@@ -93,15 +93,29 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
   // Relevance gate: Discover's semantic search can surface universities,
   // consumer brands, or media sites. Screen candidates against the ICP and
   // keep only plausible fits before spending Hunter domain-search credits.
+  // The gate is MANDATORY: LLM screen with one retry, then a heuristic
+  // fallback — never pass candidates through unscreened.
   if (companies.length) {
-    try {
-      const content = await callLLM([
-        { role: 'system', content: 'You screen companies against an ideal customer profile. Return ONLY JSON: {"keep":["domain1.com","domain2.com"]} — the domains that PLAUSIBLY match the ICP (right industry AND a plausible commercial fit). Reject universities, government bodies, standards organizations, consumer-product brands, media/news sites, and anything clearly outside the stated industry.' },
-        { role: 'user', content: `ICP: ${icpText}\n\nCandidates:\n${companies.slice(0, 20).map(c => `- ${c.domain} (${c.company_name})`).join('\n')}` }
-      ], { model: 'claude-haiku-4-5', maxTokens: 300 });
-      const keep = new Set(((parseLLMJson(content) || {}).keep || []).map(d => String(d).toLowerCase()));
-      if (keep.size) companies = companies.filter(c => keep.has(c.domain.toLowerCase()));
-    } catch (e) { /* gate is best-effort — unscreened is better than none */ }
+    let gated = null;
+    for (let attempt = 0; attempt < 2 && gated === null; attempt++) {
+      try {
+        const content = await callLLM([
+          { role: 'system', content: 'You screen companies against an ideal customer profile. Return ONLY JSON: {"keep":["domain1.com","domain2.com"]} — the exact domains (verbatim from the list) that PLAUSIBLY match the ICP (right industry AND a plausible commercial fit). Reject universities, government bodies, standards organizations, consumer-product brands, media/news sites, and anything clearly outside the stated industry. An empty keep list is valid if nothing fits.' },
+          { role: 'user', content: `ICP: ${icpText}\n\nCandidates:\n${companies.slice(0, 20).map(c => `- ${c.domain} (${c.company_name})`).join('\n')}` }
+        ], { model: 'claude-haiku-4-5', maxTokens: 300 });
+        const parsed = parseLLMJson(content);
+        if (parsed && Array.isArray(parsed.keep)) {
+          const keep = new Set(parsed.keep.map(d => String(d).toLowerCase().replace(/^www\./, '')));
+          gated = companies.filter(c => keep.has(c.domain.toLowerCase().replace(/^www\./, '')));
+        }
+      } catch (e) { /* retry once, then heuristic */ }
+    }
+    if (gated === null) {
+      // Heuristic fallback: drop obvious non-commercial fits
+      const junk = /(\.edu|\.gov|\.mil|\.ac\.[a-z]{2})$|\.(ru|by)$|university|institute|college|w3\.org|wikipedia/i;
+      gated = companies.filter(c => !junk.test(c.domain) && !junk.test(c.company_name || ''));
+    }
+    companies = gated;
   }
   companies = companies.slice(0, max);
 
