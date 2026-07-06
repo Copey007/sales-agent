@@ -68,6 +68,37 @@ export default async (req, context) => {
         break;
       }
 
+      case "campaigns_overview": {
+        // Campaign Agent panel feed: every non-archived campaign with its
+        // contact counts (awaiting/queued/sent/replied) in one call.
+        const { sb } = await import('./_supabase-rest.mjs');
+        const campaigns = (await listCampaigns(DEFAULTS.TENANT_ID)).filter(c => c.status !== 'archived');
+        let poolRows = [];
+        try { poolRows = await sb('contact_pool?select=campaign_id,sdr_state&campaign_id=not.is.null&limit=10000') || []; } catch { poolRows = []; }
+        const sends = await listRecords('email_sends');
+        const overview = campaigns
+          .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+          .map(c => {
+            const pool = poolRows.filter(p => p.campaign_id === c.id);
+            const cs = sends.filter(s => s.campaign_id === c.id);
+            return {
+              id: c.id,
+              name: c.name,
+              status: c.status,
+              created_at: c.created_at,
+              auto_source: c.auto_source === true,
+              persona: c.brief?.target_persona || null,
+              contacts_enrolled: pool.length,
+              awaiting: pool.filter(p => p.sdr_state === 'awaiting').length,
+              queued: cs.filter(s => ['queued', 'dispatched'].includes(s.status)).length,
+              sent: cs.filter(s => s.status === 'sent').length,
+              replied: cs.filter(s => s.status === 'cancelled_replied').length
+            };
+          });
+        result = { campaigns: overview };
+        break;
+      }
+
       case "pipeline_stats": {
         // Single-call feed for the dashboard: real numbers from the live
         // email_sends ledger (not the legacy Supabase email_steps table).
@@ -146,8 +177,8 @@ export default async (req, context) => {
         if (!campaign_id) { result = { error: "campaign_id required" }; break; }
         const campaign = await getCampaign(campaign_id);
         if (!campaign) { result = { error: `Campaign ${campaign_id} not found` }; break; }
-        if (status && !["active", "paused", "archived"].includes(status)) {
-          result = { error: "status must be active | paused | archived" }; break;
+        if (status && !["active", "ready", "paused", "archived"].includes(status)) {
+          result = { error: "status must be active | ready | paused | archived" }; break;
         }
         if (status) campaign.status = status;
         if (typeof auto_source === "boolean") campaign.auto_source = auto_source;

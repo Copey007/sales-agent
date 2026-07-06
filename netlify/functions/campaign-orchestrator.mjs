@@ -146,7 +146,9 @@ async function handleLaunch(req) {
     id: campaignId,
     tenant_id: tenantId,
     name: campaign_name,
-    status: "active",
+    // Campaigns are created READY, not sending. Nothing dispatches until the
+    // user presses "Send to AI SDR" in Mission Control (status -> active).
+    status: "ready",
     daily_send_limit: 25,
     sending_domain: "a-gent.co",
     sender_name: "Mark",
@@ -271,11 +273,11 @@ async function handleLaunch(req) {
     success: true,
     campaign_id: campaignId,
     campaign_name: campaign_name,
-    status: "active",
+    status: "ready",
     agent_status: updated?.agent_status || campaign.agent_status,
     metrics: updated?.metrics || {},
     research_result: researchResult,
-    message: `Campaign "${campaign_name}" is live. Agent Researcher sourced ${researchResult.prospects_enrolled} real prospects, Agent Ops queued ${researchResult.prospects_enrolled} sends, Agent SDR is ready.`
+    message: `Campaign "${campaign_name}" created with ${researchResult.prospects_enrolled} contacts — press "Send to AI SDR" in the Campaign Agent panel to start the 12-step sequence.`
   };
 }
 
