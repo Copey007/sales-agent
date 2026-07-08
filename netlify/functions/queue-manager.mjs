@@ -75,25 +75,41 @@ async function processQueue() {
   const campaigns = await listAllActiveCampaigns();
   results.campaigns_checked = campaigns.length;
 
-  // Cross-campaign dedup context: last successful send per prospect, loaded
-  // once per run. Used to stop NEW (step-1) outreach to anyone emailed by any
-  // campaign within the cooldown window — follow-ups inside a cadence are exempt.
-  const lastSentByProspect = {};
+  // ONE ledger scan per run. Blobs listRecords costs one GET per record, so
+  // repeated full scans (cooldown + per-campaign counts + feeder + top-up)
+  // blew the 30s scheduled-function budget and got the run killed mid-work —
+  // the bug that caused the feeder to re-feed the same contacts. Everything
+  // below derives from this single in-memory list; the feeder keeps the
+  // ledger small, so this stays fast at any campaign size.
+  let allSends = [];
   try {
-    for (const s of await listRecords("email_sends")) {
-      if (s.status === "sent" && s.sent_at && s.prospect_id) {
-        if (!lastSentByProspect[s.prospect_id] || s.sent_at > lastSentByProspect[s.prospect_id]) {
-          lastSentByProspect[s.prospect_id] = s.sent_at;
-        }
+    allSends = await listRecords("email_sends");
+  } catch (e) {
+    results.errors.push(`ledger scan failed: ${e.message}`);
+    return results;
+  }
+  const today = now.toISOString().slice(0, 10);
+  const queuedFor = (cid) => allSends.filter(s => s.campaign_id === cid && s.status === "queued");
+  const sentTodayFor = (cid) => allSends.filter(s =>
+    s.campaign_id === cid && s.status === "sent" && s.sent_at && s.sent_at.slice(0, 10) === today).length;
+
+  // Cross-campaign dedup context: last successful send per prospect. Used to
+  // stop NEW (step-1) outreach to anyone emailed by any campaign within the
+  // cooldown window — follow-ups inside a cadence are exempt.
+  const lastSentByProspect = {};
+  for (const s of allSends) {
+    if (s.status === "sent" && s.sent_at && s.prospect_id) {
+      if (!lastSentByProspect[s.prospect_id] || s.sent_at > lastSentByProspect[s.prospect_id]) {
+        lastSentByProspect[s.prospect_id] = s.sent_at;
       }
     }
-  } catch (e) { /* cooldown map is best-effort */ }
+  }
 
   for (const campaign of campaigns) {
     try {
       const campaignTenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
       // Check daily limit
-      const sentToday = await countSentToday(campaign.id);
+      const sentToday = sentTodayFor(campaign.id);
       const effectiveLimit = getEffectiveDailyLimit(campaign);
       const remainingBudget = effectiveLimit - sentToday;
 
@@ -103,7 +119,7 @@ async function processQueue() {
       }
 
       // Get queued sends that are due
-      const queuedSends = await listQueuedSends(campaign.id);
+      const queuedSends = queuedFor(campaign.id);
       const dueSends = queuedSends.filter(s => new Date(s.scheduled_at) <= now);
 
       if (dueSends.length === 0) continue;
@@ -215,12 +231,22 @@ async function processQueue() {
   const FEEDER_MIN_QUEUE = 40, FEEDER_BATCH = 30;
   for (const campaign of campaigns) {
     try {
-      const queued = await listQueuedSends(campaign.id);
-      if (queued.length >= FEEDER_MIN_QUEUE) continue;
+      if (queuedFor(campaign.id).length >= FEEDER_MIN_QUEUE) continue;
       const awaiting = await sb(`contact_pool?campaign_id=eq.${campaign.id}&sdr_state=eq.awaiting&order=enrolled_at.asc&limit=${FEEDER_BATCH}`);
       if (!Array.isArray(awaiting) || !awaiting.length) continue;
       let fed = 0;
       for (const c of awaiting) {
+        // CLAIM FIRST: mark the pool row fed BEFORE creating the send. If the
+        // run is killed mid-contact the failure mode is "skipped" (repairable)
+        // instead of "re-fed and duplicate-emailed" (not). The representation
+        // check proves the claim actually landed.
+        const claimed = await sb(`contact_pool?id=eq.${c.id}&sdr_state=eq.awaiting`, {
+          method: 'PATCH', body: { sdr_state: 'queued' }, prefer: 'return=representation'
+        });
+        if (!Array.isArray(claimed) || !claimed.length) {
+          results.errors.push(`feeder claim failed for ${c.email} — skipping`);
+          continue;
+        }
         const prospect = {
           id: crypto.randomUUID(),
           tenant_id: campaign.tenant_id || DEFAULTS.TENANT_ID,
@@ -237,7 +263,7 @@ async function processQueue() {
         };
         await putProspect(prospect);
         await putCampaignProspect({ campaign_id: campaign.id, prospect_id: prospect.id, enrolled_at: now.toISOString(), status: 'active' });
-        await putEmailSend({
+        const newSend = {
           id: crypto.randomUUID(),
           tenant_id: campaign.tenant_id || DEFAULTS.TENANT_ID,
           campaign_id: campaign.id,
@@ -247,15 +273,18 @@ async function processQueue() {
           scheduled_at: new Date(Date.now() + fed * 120000).toISOString(),
           created_at: now.toISOString(),
           enqueued_by: 'pool_feeder'
-        });
-        await sb(`contact_pool?id=eq.${c.id}`, { method: 'PATCH', body: { sdr_state: 'queued' }, prefer: 'return=minimal' });
+        };
+        await putEmailSend(newSend);
+        allSends.push(newSend);
         fed++;
       }
       if (fed) {
         results.feeder_fed = (results.feeder_fed || 0) + fed;
         await logActivity({ type: 'pool_feeder', campaign_id: campaign.id, campaign_name: campaign.name, fed });
       }
-    } catch (e) { /* feeder is per-campaign best-effort */ }
+    } catch (e) {
+      results.errors.push(`feeder(${campaign.name}): ${e.message}`);
+    }
   }
 
   // Auto-source top-up trigger: piggyback on this reliable 5-minute cron.
@@ -265,9 +294,8 @@ async function processQueue() {
     const needsTopUp = [];
     for (const campaign of campaigns) {
       if (campaign.auto_source !== true) continue;
-      const queued = await listQueuedSends(campaign.id);
       const minQueue = Number(campaign.auto_source_min_queue) || 5;
-      if (queued.length < minQueue) needsTopUp.push(campaign);
+      if (queuedFor(campaign.id).length < minQueue) needsTopUp.push(campaign);
     }
     if (needsTopUp.length) {
       const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
