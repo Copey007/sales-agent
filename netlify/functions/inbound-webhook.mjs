@@ -252,18 +252,27 @@ export default async (req, context) => {
     let cancelledSends = 0;
     try {
       const {
-        findProspectByEmail, putProspect, listRecords, putEmailSend, logActivity, DEFAULTS
+        putProspect, listRecords, putEmailSend, logActivity
       } = await import('./_campaign-store.mjs');
 
-      const prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, prospectEmail);
-      if (prospect) {
-        prospect.replied_at = prospect.replied_at || receivedAt;
-        prospect.status = 'replied';
-        prospect.last_reply_id = replyId;
-        await putProspect(prospect);
+      // Inbound mail carries no tenant. Match the sender against EVERY
+      // tenant's prospects (the same address can exist in more than one) and
+      // stop the cadence wherever it exists — a reply/opt-out must always win.
+      const emailLower = (prospectEmail || '').toLowerCase();
+      const prospects = (await listRecords('prospects'))
+        .filter(p => (p.email || '').toLowerCase() === emailLower);
+      if (prospects.length) {
+        const prospectIds = new Set();
+        for (const prospect of prospects) {
+          prospect.replied_at = prospect.replied_at || receivedAt;
+          prospect.status = 'replied';
+          prospect.last_reply_id = replyId;
+          await putProspect(prospect);
+          prospectIds.add(prospect.id);
+        }
 
         for (const send of await listRecords('email_sends')) {
-          if (send.prospect_id === prospect.id && ['queued', 'dispatched'].includes(send.status)) {
+          if (prospectIds.has(send.prospect_id) && ['queued', 'dispatched'].includes(send.status)) {
             send.status = 'cancelled_replied';
             send.cancelled_at = receivedAt;
             send.cancelled_reason = `prospect replied (${replyId})`;
@@ -274,7 +283,7 @@ export default async (req, context) => {
 
         await logActivity({
           type: 'reply_received',
-          prospect_id: prospect.id,
+          prospect_id: prospects[0].id,
           prospect_email: prospectEmail,
           prospect_name: prospectName,
           campaign_id: attributedCampaignId,
@@ -282,7 +291,7 @@ export default async (req, context) => {
           subject,
           followups_cancelled: cancelledSends
         });
-        console.log(`[inbound-webhook] Correlated: prospect ${prospect.id} marked replied, ${cancelledSends} pending send(s) cancelled`);
+        console.log(`[inbound-webhook] Correlated: ${prospects.length} prospect record(s) marked replied, ${cancelledSends} pending send(s) cancelled`);
       } else {
         console.log('[inbound-webhook] No prospect record for', prospectEmail, '— reply logged without correlation');
       }

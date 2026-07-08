@@ -94,6 +94,12 @@ export async function listActiveCampaigns(tenantId) {
   const all = await listCampaigns(tenantId);
   return all.filter(c => c.status === "active");
 }
+// Cross-tenant variant for scheduled functions (no JWT): they derive the
+// tenant from each campaign record instead of assuming a global default.
+export async function listAllActiveCampaigns() {
+  const all = await listRecords("campaigns");
+  return all.filter(c => c.status === "active");
+}
 
 // PERSONAS
 export async function getPersona(personaId) {

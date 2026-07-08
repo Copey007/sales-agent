@@ -61,6 +61,7 @@ function segOf(s = '') {
 // into the AI SDR campaign (loaded for the SDR to work).
 async function researcherStep(hire) {
   const KEY = env('HUNTER_API_KEY');
+  const tenantId = hire.tenant_id || DEFAULTS.TENANT_ID;
   const seg = segOf(`${hire.goal || ''} ${hire.context || ''}`);
   if (!KEY) return { action: 'Planned ICP sourcing run', detail: `Identified the ${seg} segment for "${hire.goal || 'the goal'}". (Hunter key not set — connect it to source live.)` };
   const found = [];
@@ -78,14 +79,14 @@ async function researcherStep(hire) {
   }
   if (!found.length) return { action: 'Ran a sourcing pass — no new matches', detail: `Scanned ${seg} accounts; nothing cleared the bar. Widening next run.` };
   let camp = null;
-  try { camp = (await listCampaigns(DEFAULTS.TENANT_ID)).find(c => c.status === 'active') || null; } catch { /* no campaigns */ }
+  try { camp = (await listCampaigns(tenantId)).find(c => c.status === 'active') || null; } catch { /* no campaigns */ }
   const newly = [];
   for (const p of found) {
     const email = (p.email || '').toLowerCase(); if (!email) continue;
     try {
-      if (await isEmailSuppressed(DEFAULTS.TENANT_ID, email)) continue;
-      if (await findProspectByEmail(DEFAULTS.TENANT_ID, email)) continue;   // already known → dedup
-      const pr = { id: crypto.randomUUID(), tenant_id: DEFAULTS.TENANT_ID, email, name: p.name, company_name: p.company, role: p.title, source: 'researcher-worker', sourced_at: new Date().toISOString(), created_at: new Date().toISOString() };
+      if (await isEmailSuppressed(tenantId, email)) continue;
+      if (await findProspectByEmail(tenantId, email)) continue;   // already known → dedup
+      const pr = { id: crypto.randomUUID(), tenant_id: tenantId, email, name: p.name, company_name: p.company, role: p.title, source: 'researcher-worker', sourced_at: new Date().toISOString(), created_at: new Date().toISOString() };
       await putProspect(pr); newly.push(p);
       if (camp) await putCampaignProspect({ campaign_id: camp.id, prospect_id: pr.id, enrolled_at: new Date().toISOString(), status: 'active' });
     } catch { /* skip prospect */ }
@@ -117,11 +118,12 @@ async function sdrStep(hire) {
   if (!candidates.length) return llmStep(hire);   // no Hunter/matches → generic step
   // …then keep only a prospect NOT already in your AI SDR campaign / suppressed / previously contacted.
   let prospect = null;
+  const sdrTenantId = hire.tenant_id || DEFAULTS.TENANT_ID;
   for (const c of candidates) {
     const email = c.email.toLowerCase();
     try {
-      if (await findProspectByEmail(DEFAULTS.TENANT_ID, email)) continue;   // already a prospect in the AI SDR
-      if (await isEmailSuppressed(DEFAULTS.TENANT_ID, email)) continue;      // suppressed / unsubscribed
+      if (await findProspectByEmail(sdrTenantId, email)) continue;   // already a prospect in the AI SDR
+      if (await isEmailSuppressed(sdrTenantId, email)) continue;      // suppressed / unsubscribed
     } catch { /* campaign store unavailable — don't block */ }
     if (await outreachExists(hire.tenant_id, email)) continue;              // a worker already contacted them
     prospect = c; break;
@@ -167,13 +169,13 @@ Return ONLY JSON: {"action":"<past-tense summary, max 9 words>","detail":"<2-4 s
 }
 
 // Live business snapshot from the AI SDR (for Manager / RevOps / Success).
-async function businessSnapshot() {
+async function businessSnapshot(tenantId = DEFAULTS.TENANT_ID) {
   try {
-    const camps = await listCampaigns(DEFAULTS.TENANT_ID);
+    const camps = await listCampaigns(tenantId);
     const active = camps.filter(c => c.status === 'active');
-    const prospects = (await listRecords('prospects')).filter(p => p.tenant_id === DEFAULTS.TENANT_ID);
-    const sends = (await listRecords('email_sends')).filter(s => s.tenant_id === DEFAULTS.TENANT_ID);
-    const replies = (await listRecords('replies')).filter(r => r.tenant_id === DEFAULTS.TENANT_ID);
+    const prospects = (await listRecords('prospects')).filter(p => (p.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
+    const sends = (await listRecords('email_sends')).filter(s => (s.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
+    const replies = (await listRecords('replies')).filter(r => (r.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
     return `${active.length} active campaign(s)${active.length ? ` (${active.slice(0, 4).map(c => c.name).join(', ')})` : ''}, ${prospects.length} prospects, ${sends.filter(s => s.status === 'sent').length} emails sent, ${replies.length} replies`;
   } catch { return 'no campaign data available yet'; }
 }
@@ -189,7 +191,7 @@ const ROLE_BRIEFS = {
 async function roleStep(hire) {
   const cfg = ROLE_BRIEFS[hire.worker_id];
   if (!cfg) return llmStep(hire);
-  const snap = cfg.data ? await businessSnapshot() : '';
+  const snap = cfg.data ? await businessSnapshot(hire.tenant_id || DEFAULTS.TENANT_ID) : '';
   const recent = (hire.activity || []).slice(0, 3).map(a => `- ${a.action}`).join('\n') || '- (first cycle)';
   const system = `${cfg.brief(hire, snap)}
 Standing goal: "${hire.goal || 'make progress for the team'}".${hire.context ? ` Context: ${hire.context}.` : ''}

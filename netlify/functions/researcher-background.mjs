@@ -19,7 +19,7 @@
 
 import {
   getCampaign, putCampaign,
-  listCampaigns, listActiveCampaigns, listQueuedSends,
+  listCampaigns, listAllActiveCampaigns, listQueuedSends,
   listCampaignProspects, getCampaignProspect, putCampaignProspect,
   getProspect, putProspect, findProspectByEmail,
   putEmailSend,
@@ -27,6 +27,7 @@ import {
   DEFAULTS
 } from "./_campaign-store.mjs";
 import { env } from './_mcp-connectors.mjs';
+import { resolveTenantContext } from './_tenant.mjs';
 import { callLLM, parseLLMJson } from './_llm.mjs';
 
 export { icpDiscoverCompanies } from "./_icp-agent.mjs";
@@ -42,7 +43,7 @@ import { findAndPoolContacts, getBulkLock, setBulkLock } from "./researcher-find
 const BULK_TIME_BUDGET_MS = 12 * 60 * 1000;
 const BULK_ORGS_PER_PASS = 10;
 
-async function runBulkFind({ icp, role, target }) {
+async function runBulkFind({ icp, role, target, tenantId }) {
   // Single-flight: a second bulk job started while one is running would only
   // burn Hunter credits re-finding the first job's contacts.
   const existing = await getBulkLock();
@@ -63,7 +64,7 @@ async function runBulkFind({ icp, role, target }) {
     !exhausted && emptyStreak < 8 && errorStreak < 4 && passes < 200
   ) {
     let r;
-    try { r = await findAndPoolContacts({ icp, role, orgCount: BULK_ORGS_PER_PASS }); }
+    try { r = await findAndPoolContacts({ icp, role, orgCount: BULK_ORGS_PER_PASS, tenantId }); }
     catch (e) { r = { error: e.message, transient: true }; }
     passes++;
     if (r.error) {
@@ -226,6 +227,8 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     console.error(`[researcher-bg] Campaign ${campaignId} not found`);
     return;
   }
+  // No JWT here (background/cron) — the campaign record carries the tenant.
+  const tenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
 
   const now = new Date().toISOString();
   let rawProspects = [];
@@ -336,8 +339,8 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     console.log(`[researcher-bg] After verification: ${rawProspects.length} prospects`);
   }
 
-  // Cross-campaign dedup + suppression
-  const allCampaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+  // Cross-campaign dedup + suppression (within this campaign's tenant)
+  const allCampaigns = await listCampaigns(tenantId);
   const otherActiveIds = allCampaigns
     .filter(c => c.status === 'active' && c.id !== campaignId)
     .map(c => c.id);
@@ -359,9 +362,9 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     if (!emailLower) continue;
     if (seenEmails.has(emailLower)) { discoverStats.deduped++; continue; }
     seenEmails.add(emailLower);
-    if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) { discoverStats.suppressed++; continue; }
+    if (await isEmailSuppressed(tenantId, emailLower)) { discoverStats.suppressed++; continue; }
     if (crossCampaignEmails.has(emailLower)) { discoverStats.deduped++; continue; }
-    const existing = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    const existing = await findProspectByEmail(tenantId, emailLower);
     if (existing) {
       const junction = await getCampaignProspect(campaignId, existing.id).catch(() => null);
       if (junction) { discoverStats.deduped++; continue; }
@@ -373,11 +376,11 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
   const enrolled = [];
   for (const p of toEnroll) {
     const emailLower = p.email.toLowerCase();
-    let prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    let prospect = await findProspectByEmail(tenantId, emailLower);
     if (!prospect) {
       prospect = {
         id: crypto.randomUUID(),
-        tenant_id: DEFAULTS.TENANT_ID,
+        tenant_id: tenantId,
         email: emailLower,
         name: p.name || null,
         first_name: p.first_name || null,
@@ -413,7 +416,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     const scheduledAt = new Date(scheduleNow.getTime() + scheduledCount * 120000);
     await putEmailSend({
       id: sendId,
-      tenant_id: DEFAULTS.TENANT_ID,
+      tenant_id: tenantId,
       campaign_id: campaignId,
       prospect_id: prospect.id,
       step_number: 1,
@@ -499,7 +502,9 @@ const TOPUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 async function runTopUpSweep() {
   const summary = { campaigns_checked: 0, campaigns_topped_up: 0, skipped: [] };
-  const campaigns = (await listActiveCampaigns(DEFAULTS.TENANT_ID)).filter(c => c.auto_source === true);
+  // Sweep every tenant's active campaigns — runResearcher scopes each run to
+  // the campaign's own tenant_id.
+  const campaigns = (await listAllActiveCampaigns()).filter(c => c.auto_source === true);
   summary.campaigns_checked = campaigns.length;
 
   for (const campaign of campaigns) {
@@ -550,10 +555,19 @@ export default async (req) => {
   // Bulk find: fill the contact pool toward a target count for the Researcher
   // panel. Runs here for the 15-minute background budget.
   if (body.action === 'bulk_find') {
+    // Pool inserts are tenant-scoped: JWT → caller's tenant; no auth header →
+    // demo tenant (internal calls); bad token → 401.
+    const authCtx = await resolveTenantContext(req);
+    if (authCtx.invalid) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { 'Content-Type': 'application/json' }
+      });
+    }
     const result = await runBulkFind({
       icp: (body.icp || '').trim(),
       role: (body.role || 'CEO').trim(),
-      target: Math.min(Number(body.target_contacts) || 100, 1000)
+      target: Math.min(Number(body.target_contacts) || 100, 1000),
+      tenantId: authCtx.tenantId || DEFAULTS.TENANT_ID
     }).catch(err => ({ error: err.message }));
     return new Response(JSON.stringify({ mode: 'bulk_find', ...result }), {
       status: result.error ? 500 : 200,

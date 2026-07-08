@@ -19,12 +19,13 @@ import {
   findProspectByEmail, isEmailSuppressed, getFeatureFlag,
   logActivity, DEFAULTS
 } from "./_campaign-store.mjs";
+import { resolveTenantContext } from "./_tenant.mjs";
 
 export default async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
   if (req.method === 'OPTIONS') {
@@ -53,6 +54,17 @@ export default async (req, context) => {
       });
     }
 
+    // Tenant scope: JWT → caller's tenant; no auth header → demo tenant
+    // (internal calls); a bad token must 401, never write to the demo tenant.
+    const authCtx = await resolveTenantContext(req);
+    if (authCtx.invalid) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+
     const body = await req.json();
     const campaignId = body.campaign_id || DEFAULTS.CAMPAIGN_ID;
     const prospects = body.prospects || [];
@@ -66,9 +78,9 @@ export default async (req, context) => {
       });
     }
 
-    // Verify campaign exists
+    // Verify campaign exists AND belongs to this tenant
     const campaign = await getCampaign(campaignId);
-    if (!campaign) {
+    if (!campaign || (campaign.tenant_id || DEFAULTS.TENANT_ID) !== tenantId) {
       return new Response(JSON.stringify({ error: `Campaign ${campaignId} not found` }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -90,20 +102,20 @@ export default async (req, context) => {
         }
 
         // Check suppression
-        if (p.email && await isEmailSuppressed(DEFAULTS.TENANT_ID, p.email)) {
+        if (p.email && await isEmailSuppressed(tenantId, p.email)) {
           results.suppressed++;
           continue;
         }
 
         // Upsert prospect
-        let prospect = p.email 
-          ? await findProspectByEmail(DEFAULTS.TENANT_ID, p.email)
+        let prospect = p.email
+          ? await findProspectByEmail(tenantId, p.email)
           : null;
 
         if (!prospect) {
           prospect = {
             id: crypto.randomUUID(),
-            tenant_id: DEFAULTS.TENANT_ID,
+            tenant_id: tenantId,
             contact_name: p.contact_name,
             company_name: p.company_name,
             email: p.email,
@@ -142,6 +154,7 @@ export default async (req, context) => {
         const sendId = crypto.randomUUID();
         await putEmailSend({
           id: sendId,
+          tenant_id: tenantId,
           campaign_id: campaignId,
           prospect_id: prospect.id,
           step_number: stepNumber,

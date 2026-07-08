@@ -74,8 +74,9 @@ export default async (req) => {
       // Record the contact in the shared AI SDR prospect store so future sourcing dedups against it.
       try {
         const email = String(draft.prospect_email || '').toLowerCase();
-        if (email && !(await findProspectByEmail(DEFAULTS.TENANT_ID, email))) {
-          await putProspect({ id: crypto.randomUUID(), tenant_id: DEFAULTS.TENANT_ID, email, name: draft.prospect_name || null, company_name: draft.prospect_company || null, source: 'sdr-worker', contacted: true, contacted_at: new Date().toISOString(), sourced_at: new Date().toISOString(), created_at: new Date().toISOString() });
+        const draftTenantId = draft.tenant_id || DEFAULTS.TENANT_ID;
+        if (email && !(await findProspectByEmail(draftTenantId, email))) {
+          await putProspect({ id: crypto.randomUUID(), tenant_id: draftTenantId, email, name: draft.prospect_name || null, company_name: draft.prospect_company || null, source: 'sdr-worker', contacted: true, contacted_at: new Date().toISOString(), sourced_at: new Date().toISOString(), created_at: new Date().toISOString() });
         }
       } catch (e) { console.warn('[worker-outreach] prospect record:', e.message); }
       return json({ ok: true, status: 'sent', resend_id: result.id || null });

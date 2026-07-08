@@ -296,7 +296,7 @@ async function enqueueNextStep(send, prospect, campaign, sequence) {
   const delayDays = Number(delays[nextStep - 1]) || 3;
   const next = {
     id: crypto.randomUUID(),
-    tenant_id: send.tenant_id || DEFAULTS.TENANT_ID,
+    tenant_id: send.tenant_id || campaign.tenant_id || DEFAULTS.TENANT_ID,
     campaign_id: campaign.id,
     prospect_id: send.prospect_id,
     step_number: nextStep,

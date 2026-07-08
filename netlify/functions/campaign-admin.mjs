@@ -20,6 +20,7 @@ import {
   listActivityLog, countSentToday, listQueuedSends,
   listRecords, getProspect, listAllReplies
 } from "./_campaign-store.mjs";
+import { resolveTenantContext } from "./_tenant.mjs";
 
 export default async (req, context) => {
   // CORS
@@ -29,13 +30,26 @@ export default async (req, context) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
       }
     });
   }
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "status";
+
+  // Tenant scope: JWT → the caller's tenant; no auth header → demo tenant
+  // (internal/legacy calls); a bad token must never fall back to demo.
+  const authCtx = await resolveTenantContext(req);
+  if (authCtx.invalid) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    });
+  }
+  const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+  const ownsCampaign = (campaign) =>
+    campaign && (campaign.tenant_id || DEFAULTS.TENANT_ID) === tenantId;
 
   try {
     let result;
@@ -49,7 +63,7 @@ export default async (req, context) => {
       case "status": {
         const orchestrationEnabled = await getFeatureFlag("multi_campaign_orchestration");
         const queueManagerActive = await getFeatureFlag("queue_manager_active");
-        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaigns = await listCampaigns(tenantId);
         const activeCampaigns = campaigns.filter(c => c.status === "active");
 
         result = {
@@ -59,7 +73,7 @@ export default async (req, context) => {
             multi_campaign_orchestration: orchestrationEnabled,
             queue_manager_active: queueManagerActive
           },
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           campaigns_total: campaigns.length,
           campaigns_active: activeCampaigns.length,
           data_store: "netlify_blobs",
@@ -72,7 +86,7 @@ export default async (req, context) => {
         // Campaign Agent panel feed: every non-archived campaign with its
         // contact counts (awaiting/queued/sent/replied) in one call.
         const { sb } = await import('./_supabase-rest.mjs');
-        const campaigns = (await listCampaigns(DEFAULTS.TENANT_ID)).filter(c => c.status !== 'archived');
+        const campaigns = (await listCampaigns(tenantId)).filter(c => c.status !== 'archived');
         let poolRows = [];
         try { poolRows = await sb('contact_pool?select=campaign_id,sdr_state&campaign_id=not.is.null&limit=10000') || []; } catch { poolRows = []; }
         const sends = await listRecords('email_sends');
@@ -102,14 +116,20 @@ export default async (req, context) => {
       case "pipeline_stats": {
         // Single-call feed for the dashboard: real numbers from the live
         // email_sends ledger (not the legacy Supabase email_steps table).
-        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaigns = await listCampaigns(tenantId);
         const campaignName = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
-        const sends = await listRecords("email_sends");
+        // Records written before multi-tenancy carry no tenant_id — they all
+        // belong to the demo tenant.
+        const sends = (await listRecords("email_sends"))
+          .filter(s => (s.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
         // Real replies only: sender must be a prospect we actually emailed
         // (filters spam/marketing hitting the domain catch-all), and drop
         // tagged test artifacts, simulated events, and OOO auto-replies.
+        // The tenant-scoped prospect set also keeps replies tenant-scoped.
         const prospectEmails = new Set(
-          (await listRecords("prospects")).map(p => (p.email || '').toLowerCase()).filter(Boolean));
+          (await listRecords("prospects"))
+            .filter(p => (p.tenant_id || DEFAULTS.TENANT_ID) === tenantId)
+            .map(p => (p.email || '').toLowerCase()).filter(Boolean));
         const replies = (await listAllReplies()).filter(r => {
           if (r.is_test === true) return false;
           if (['test', 'unknown'].includes(r.event_type)) return false;
@@ -176,7 +196,7 @@ export default async (req, context) => {
         const { campaign_id, status, auto_source } = body;
         if (!campaign_id) { result = { error: "campaign_id required" }; break; }
         const campaign = await getCampaign(campaign_id);
-        if (!campaign) { result = { error: `Campaign ${campaign_id} not found` }; break; }
+        if (!ownsCampaign(campaign)) { result = { error: `Campaign ${campaign_id} not found` }; break; }
         if (status && !["active", "ready", "paused", "archived"].includes(status)) {
           result = { error: "status must be active | ready | paused | archived" }; break;
         }
@@ -220,7 +240,7 @@ export default async (req, context) => {
       case "get_campaign": {
         const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
         const campaign = await getCampaign(campaignId);
-        if (!campaign) {
+        if (!ownsCampaign(campaign)) {
           return new Response(JSON.stringify({ error: "Campaign not found" }), {
             status: 404,
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -245,7 +265,7 @@ export default async (req, context) => {
       }
 
       case "list_campaigns": {
-        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaigns = await listCampaigns(tenantId);
         result = { campaigns };
         break;
       }
@@ -261,7 +281,7 @@ export default async (req, context) => {
         const id = crypto.randomUUID();
         const campaign = {
           id,
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           name: body.name || "New Campaign",
           status: body.status || "draft",
           daily_send_limit: body.daily_send_limit || 50,
@@ -275,7 +295,7 @@ export default async (req, context) => {
           const personaId = crypto.randomUUID();
           await putPersona({
             id: personaId,
-            tenant_id: DEFAULTS.TENANT_ID,
+            tenant_id: tenantId,
             campaign_id: id,
             target_role: body.persona.target_role || "Decision Maker",
             pain_points: body.persona.pain_points || [],
@@ -290,7 +310,7 @@ export default async (req, context) => {
           const scId = crypto.randomUUID();
           await putSignalConfig({
             id: scId,
-            tenant_id: DEFAULTS.TENANT_ID,
+            tenant_id: tenantId,
             campaign_id: id,
             signal_types: body.signal_config.signal_types || ["company_news", "hiring"],
             serp_query_templates: body.signal_config.serp_query_templates || ["{company} news {year}"]
@@ -301,7 +321,7 @@ export default async (req, context) => {
         const seqId = crypto.randomUUID();
         await putSequence({
           id: seqId,
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           campaign_id: id,
           step_count: body.step_count || 12,
           cadence_config: body.cadence_config || { step_delays_days: [0, 3, 3, 4, 5, 5, 7, 7, 7, 10, 10, 14] },
@@ -343,20 +363,30 @@ export default async (req, context) => {
       }
 
       case "activity_log": {
-        const log = await listActivityLog(50);
+        // Activity entries predate tenancy — scope them via campaign ownership
+        // for non-demo tenants (demo keeps the full internal feed).
+        let log = await listActivityLog(50);
+        if (tenantId !== DEFAULTS.TENANT_ID) {
+          const ownIds = new Set((await listCampaigns(tenantId)).map(c => c.id));
+          log = log.filter(e => e.campaign_id && ownIds.has(e.campaign_id));
+        }
         result = { entries: log };
         break;
       }
 
       case "list_queued_sends": {
-        const sends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
+        if (!ownsCampaign(await getCampaign(campaignId))) { result = { error: "Campaign not found" }; break; }
+        const sends = await listQueuedSends(campaignId);
         result = { sends };
         break;
       }
 
       case "trigger_queue": {
         // Manual trigger for queue-manager logic (for testing)
-        const allSends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        const triggerCampaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
+        if (!ownsCampaign(await getCampaign(triggerCampaignId))) { result = { error: "Campaign not found" }; break; }
+        const allSends = await listQueuedSends(triggerCampaignId);
         const batch = allSends.slice(0, 5);
         if (batch.length === 0) {
           result = { message: "No queued sends found" };

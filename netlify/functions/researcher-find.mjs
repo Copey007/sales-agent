@@ -16,7 +16,8 @@
 
 import { icpDiscoverCompanies } from './_icp-agent.mjs';
 import { isEmailSuppressed, logActivity, DEFAULTS } from './_campaign-store.mjs';
-import { sb } from './_supabase-rest.mjs';
+import { sb, poolTenantReady, poolTenantFilter } from './_supabase-rest.mjs';
+import { resolveTenantContext } from './_tenant.mjs';
 
 const MAX_ORGS_PER_FIND = 15;   // sync path budget; bulk path loops in background
 const EMAILS_PER_ORG = 5;
@@ -38,29 +39,35 @@ export function hunterKey() {
 // Per-ICP Discover pagination cursor. Each distinct ICP text gets its OWN
 // cursor record (hashed key) so two searches never thrash each other's
 // progress — the bug that made concurrent bulk jobs re-read page 1 forever.
-async function cursorKey(icp) {
+// Non-demo tenants get their own cursor namespace so a trial user's search
+// never advances (or inherits) the demo tenant's Discover progress.
+async function cursorKey(icp, tenantId) {
   const { createHash } = await import('node:crypto');
-  return 'pool_meta_' + createHash('sha1').update(icp).digest('hex').slice(0, 12);
+  const ns = tenantId && tenantId !== DEFAULTS.TENANT_ID ? `${tenantId}|` : '';
+  return 'pool_meta_' + createHash('sha1').update(ns + icp).digest('hex').slice(0, 12);
 }
-export async function getIcpCursor(icp) {
+export async function getIcpCursor(icp, tenantId) {
   const { getStore } = await import('@netlify/blobs');
   const store = getStore('contact_pool');
-  const key = await cursorKey(icp);
+  const key = await cursorKey(icp, tenantId);
   try {
     const meta = await store.get(key, { type: 'json' });
     if (meta) return Number(meta.offset) || 0;
   } catch { /* fall through */ }
-  // Adopt the legacy single-cursor record if it belongs to this ICP.
-  try {
-    const legacy = (await store.get('pool_meta', { type: 'json' })) || {};
-    if (legacy.icp === icp) return Number(legacy.offset) || 0;
-  } catch { /* new ICP */ }
+  // Adopt the legacy single-cursor record if it belongs to this ICP
+  // (demo-tenant only — the legacy cursor predates tenancy).
+  if (!tenantId || tenantId === DEFAULTS.TENANT_ID) {
+    try {
+      const legacy = (await store.get('pool_meta', { type: 'json' })) || {};
+      if (legacy.icp === icp) return Number(legacy.offset) || 0;
+    } catch { /* new ICP */ }
+  }
   return 0;
 }
-export async function setIcpCursor(icp, offset, extra = {}) {
+export async function setIcpCursor(icp, offset, extra = {}, tenantId) {
   const { getStore } = await import('@netlify/blobs');
   const store = getStore('contact_pool');
-  const key = await cursorKey(icp);
+  const key = await cursorKey(icp, tenantId);
   await store.setJSON(key, { id: key, icp, offset, updated_at: new Date().toISOString(), ...extra });
 }
 
@@ -89,15 +96,17 @@ export async function setBulkLock(fields) {
  * database enforces "never twice", across every campaign, forever.
  * Returns { inserted, companies, market_size, exhausted }.
  */
-export async function findAndPoolContacts({ icp, role, orgCount }) {
+export async function findAndPoolContacts({ icp, role, orgCount, tenantId }) {
   const key = hunterKey();
   if (!key) return { error: 'HUNTER_API_KEY not configured' };
+  tenantId = tenantId || DEFAULTS.TENANT_ID;
+  const tenantColReady = await poolTenantReady();
 
-  const offset = await getIcpCursor(icp);
+  const offset = await getIcpCursor(icp, tenantId);
   const disc = await icpDiscoverCompanies(icp, role || 'CEO', key, orgCount, offset);
   // Always advance the cursor past pages Discover actually returned — a page
   // where the relevance gate rejected everything is skipped, not terminal.
-  if (disc.raw_count > 0) await setIcpCursor(icp, disc.next_offset, { market_size: disc.total });
+  if (disc.raw_count > 0) await setIcpCursor(icp, disc.next_offset, { market_size: disc.total }, tenantId);
   if (!disc.companies.length) {
     return {
       inserted: 0, companies: [],
@@ -122,8 +131,9 @@ export async function findAndPoolContacts({ icp, role, orgCount }) {
       const org = data?.data?.organization || company_name;
       for (const e of (data?.data?.emails || [])) {
         if (!e.value) continue;
-        if (await isEmailSuppressed(DEFAULTS.TENANT_ID, e.value.toLowerCase())) continue;
+        if (await isEmailSuppressed(tenantId, e.value.toLowerCase())) continue;
         rows.push({
+          ...(tenantColReady ? { tenant_id: tenantId } : {}),
           email: e.value.toLowerCase(),
           name: [e.first_name, e.last_name].filter(Boolean).join(' ') || null,
           first_name: e.first_name || null,
@@ -143,7 +153,10 @@ export async function findAndPoolContacts({ icp, role, orgCount }) {
 
   let inserted = [];
   if (rows.length) {
-    inserted = await sb('contact_pool?on_conflict=email', {
+    // Post-migration the unique constraint is (tenant_id,email) — dedup is
+    // per-tenant. Pre-migration it's the legacy global (email) constraint.
+    const conflictTarget = tenantColReady ? 'tenant_id,email' : 'email';
+    inserted = await sb(`contact_pool?on_conflict=${conflictTarget}`, {
       method: 'POST', body: rows,
       prefer: 'resolution=ignore-duplicates,return=representation'
     });
@@ -184,10 +197,12 @@ export async function findAndPoolContacts({ icp, role, orgCount }) {
 
 /** Bulk-PATCH every selected available contact into a campaign — instant even
  *  at 1k because it's one UPDATE. The feeder (queue-manager) then drips them
- *  into the send ledger. */
-export async function enrollPool(campaignId) {
+ *  into the send ledger. Tenant-scoped so one tenant's enroll can never grab
+ *  another tenant's selected contacts. */
+export async function enrollPool(campaignId, tenantId) {
   const now = new Date().toISOString();
-  const updated = await sb('contact_pool?selected=is.true&status=eq.found', {
+  const tf = await poolTenantFilter(tenantId || DEFAULTS.TENANT_ID);
+  const updated = await sb(`contact_pool?selected=is.true&status=eq.found${tf}`, {
     method: 'PATCH',
     body: { status: 'in_campaign', campaign_id: campaignId, sdr_state: 'awaiting', selected: false, enrolled_at: now },
     prefer: 'return=representation'
@@ -199,16 +214,23 @@ export default async (req) => {
   const cors = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Content-Type': 'application/json'
   };
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   try {
+    // Tenant scope: JWT → caller's tenant; no auth header → demo tenant
+    // (internal calls); a bad token must 401, never fall back to demo.
+    const authCtx = await resolveTenantContext(req);
+    if (authCtx.invalid) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: cors });
+    const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+    const tf = await poolTenantFilter(tenantId);
+
     if (req.method === 'GET') {
-      const { data: pool, count: total } = await sb('contact_pool?select=*&order=found_at.desc&limit=300', { count: true });
-      const { count: selectedCount } = await sb('contact_pool?select=id&selected=is.true&status=eq.found&limit=1', { count: true });
-      const { count: availableCount } = await sb('contact_pool?select=id&status=eq.found&limit=1', { count: true });
+      const { data: pool, count: total } = await sb(`contact_pool?select=*&order=found_at.desc&limit=300${tf}`, { count: true });
+      const { count: selectedCount } = await sb(`contact_pool?select=id&selected=is.true&status=eq.found&limit=1${tf}`, { count: true });
+      const { count: availableCount } = await sb(`contact_pool?select=id&status=eq.found&limit=1${tf}`, { count: true });
       const lock = await getBulkLock();
       return new Response(JSON.stringify({
         pool: pool || [],
@@ -225,7 +247,7 @@ export default async (req) => {
 
     if (action === 'find') {
       const orgCount = Math.min(Number(body.org_count) || 5, MAX_ORGS_PER_FIND);
-      const result = await findAndPoolContacts({ icp: (body.icp || '').trim(), role: (body.role || 'CEO').trim(), orgCount });
+      const result = await findAndPoolContacts({ icp: (body.icp || '').trim(), role: (body.role || 'CEO').trim(), orgCount, tenantId });
       if (result.error) return new Response(JSON.stringify(result), { status: 422, headers: cors });
       return new Response(JSON.stringify({ found: result.inserted, ...result }), { headers: cors });
     }
@@ -233,14 +255,14 @@ export default async (req) => {
     if (action === 'select') {
       const ids = (body.ids || []).filter(Boolean);
       if (!ids.length) return new Response(JSON.stringify({ updated: 0 }), { headers: cors });
-      const updated = await sb(`contact_pool?id=in.(${ids.join(',')})&status=eq.found`, {
+      const updated = await sb(`contact_pool?id=in.(${ids.join(',')})&status=eq.found${tf}`, {
         method: 'PATCH', body: { selected: body.selected !== false }, prefer: 'return=representation'
       });
       return new Response(JSON.stringify({ updated: (updated || []).length }), { headers: cors });
     }
 
     if (action === 'select_all') {
-      const updated = await sb('contact_pool?status=eq.found', {
+      const updated = await sb(`contact_pool?status=eq.found${tf}`, {
         method: 'PATCH', body: { selected: body.selected !== false }, prefer: 'return=representation'
       });
       return new Response(JSON.stringify({ updated: (updated || []).length }), { headers: cors });

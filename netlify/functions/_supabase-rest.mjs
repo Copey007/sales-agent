@@ -50,3 +50,29 @@ export async function sb(pathWithQuery, opts = {}) {
   }
   return data;
 }
+
+// ─── contact_pool tenancy probe ─────────────────────────────────────────────
+// The tenant_id column lands via a manual migration in the Supabase SQL
+// editor. Until it exists, tenant scoping on the pool is a no-op (everything
+// behaves as one demo-tenant pool, same as before). Probe once per lambda.
+
+let _poolTenantReady = null;
+export async function poolTenantReady() {
+  if (_poolTenantReady !== null) return _poolTenantReady;
+  try {
+    await sb('contact_pool?select=tenant_id&limit=1');
+    _poolTenantReady = true;
+  } catch (e) {
+    // 42703 = undefined column (pre-migration). Any other error: leave the
+    // probe unset so a transient failure doesn't lock in the wrong answer.
+    if (e.code === '42703' || /tenant_id/i.test(e.message || '')) _poolTenantReady = false;
+    else return false;
+  }
+  return _poolTenantReady;
+}
+
+/** Query-string fragment scoping a contact_pool query to a tenant ('' pre-migration). */
+export async function poolTenantFilter(tenantId) {
+  if (!tenantId) return '';
+  return (await poolTenantReady()) ? `&tenant_id=eq.${tenantId}` : '';
+}

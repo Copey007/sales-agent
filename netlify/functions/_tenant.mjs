@@ -119,3 +119,23 @@ export async function tenantFromRequest(req, { tenantSlug = null } = {}) {
   if (!row) return null;
   return { user, role: row.role, tenant: row.tenants };
 }
+
+/**
+ * Per-request tenant resolution for the campaign engine.
+ *
+ * Three outcomes, so endpoints can distinguish "no auth at all" (Mark's
+ * internal/legacy calls — fall back to the demo tenant) from "auth that
+ * doesn't check out" (expired token, non-member — must 401, never silently
+ * write to the demo tenant):
+ *   no Authorization header      → { tenantId: null, invalid: false }
+ *   bad token / no membership    → { tenantId: null, invalid: true }
+ *   valid                        → { tenantId, user, role, tenant, invalid: false }
+ */
+export async function resolveTenantContext(req) {
+  const auth = req.headers.get('authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return { tenantId: null, user: null, invalid: false };
+  const ctx = await tenantFromRequest(req);
+  if (!ctx?.tenant?.id) return { tenantId: null, user: null, invalid: true };
+  return { tenantId: ctx.tenant.id, user: ctx.user, role: ctx.role, tenant: ctx.tenant, invalid: false };
+}

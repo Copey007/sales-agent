@@ -10,7 +10,7 @@
  */
 
 import {
-  getFeatureFlag, listActiveCampaigns, getCampaign,
+  getFeatureFlag, listAllActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
   getProspect, putProspect, putCampaignProspect,
   putEmailSend, logActivity, listRecords, DEFAULTS
@@ -70,8 +70,9 @@ async function processQueue() {
     errors: []
   };
 
-  // Get all active campaigns
-  const campaigns = await listActiveCampaigns(DEFAULTS.TENANT_ID);
+  // Get all active campaigns across every tenant — this cron has no JWT, so
+  // each campaign's own tenant_id is the source of truth for scoping.
+  const campaigns = await listAllActiveCampaigns();
   results.campaigns_checked = campaigns.length;
 
   // Cross-campaign dedup context: last successful send per prospect, loaded
@@ -90,6 +91,7 @@ async function processQueue() {
 
   for (const campaign of campaigns) {
     try {
+      const campaignTenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
       // Check daily limit
       const sentToday = await countSentToday(campaign.id);
       const effectiveLimit = getEffectiveDailyLimit(campaign);
@@ -116,7 +118,7 @@ async function processQueue() {
 
         // Check suppression
         const prospect = await getProspect(send.prospect_id);
-        if (prospect && await isEmailSuppressed(DEFAULTS.TENANT_ID, prospect.email)) {
+        if (prospect && await isEmailSuppressed(campaignTenantId, prospect.email)) {
           // Mark as suppressed
           send.status = "suppressed";
           send.suppressed_at = now.toISOString();
@@ -221,7 +223,7 @@ async function processQueue() {
       for (const c of awaiting) {
         const prospect = {
           id: crypto.randomUUID(),
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: campaign.tenant_id || DEFAULTS.TENANT_ID,
           contact_name: c.name,
           first_name: c.first_name,
           last_name: c.last_name,
@@ -237,7 +239,7 @@ async function processQueue() {
         await putCampaignProspect({ campaign_id: campaign.id, prospect_id: prospect.id, enrolled_at: now.toISOString(), status: 'active' });
         await putEmailSend({
           id: crypto.randomUUID(),
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: campaign.tenant_id || DEFAULTS.TENANT_ID,
           campaign_id: campaign.id,
           prospect_id: prospect.id,
           step_number: 1,
