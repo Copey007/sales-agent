@@ -151,7 +151,10 @@ export async function resolveTenantContext(req) {
   if (!user?.id) return { tenantId: null, user: null, invalid: true };
 
   // Platform operator → master tenant, regardless of membership rows.
-  if (operatorEmails().has((user.email || '').toLowerCase())) {
+  // Operators: the explicit list, plus any account on the platform's own
+  // @a-gent.co domain (trial customers sign up with their own domains).
+  const email = (user.email || '').toLowerCase();
+  if (operatorEmails().has(email) || email.endsWith('@a-gent.co')) {
     return { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true, invalid: false };
   }
 
