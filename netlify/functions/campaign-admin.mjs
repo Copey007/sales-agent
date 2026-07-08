@@ -87,28 +87,33 @@ export default async (req, context) => {
         // contact counts (awaiting/queued/sent/replied) in one call.
         const { sb } = await import('./_supabase-rest.mjs');
         const campaigns = (await listCampaigns(tenantId)).filter(c => c.status !== 'archived');
-        let poolRows = [];
-        try { poolRows = await sb('contact_pool?select=campaign_id,sdr_state&campaign_id=not.is.null&limit=10000') || []; } catch { poolRows = []; }
         const sends = await listRecords('email_sends');
-        const overview = campaigns
-          .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
-          .map(c => {
-            const pool = poolRows.filter(p => p.campaign_id === c.id);
-            const cs = sends.filter(s => s.campaign_id === c.id);
-            return {
-              id: c.id,
-              name: c.name,
-              status: c.status,
-              created_at: c.created_at,
-              auto_source: c.auto_source === true,
-              persona: c.brief?.target_persona || null,
-              contacts_enrolled: pool.length,
-              awaiting: pool.filter(p => p.sdr_state === 'awaiting').length,
-              queued: cs.filter(s => ['queued', 'dispatched'].includes(s.status)).length,
-              sent: cs.filter(s => s.status === 'sent').length,
-              replied: cs.filter(s => s.status === 'cancelled_replied').length
-            };
+        // Pool numbers via count=exact head queries — plain row fetches are
+        // silently capped at 1000 rows by PostgREST, which distorts every
+        // count for large campaigns.
+        const poolCount = async (filter) => {
+          try {
+            const { count } = await sb(`contact_pool?select=id&${filter}&limit=1`, { count: true });
+            return count ?? 0;
+          } catch { return 0; }
+        };
+        const overview = [];
+        for (const c of campaigns.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))) {
+          const cs = sends.filter(s => s.campaign_id === c.id);
+          overview.push({
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            created_at: c.created_at,
+            auto_source: c.auto_source === true,
+            persona: c.brief?.target_persona || null,
+            contacts_enrolled: await poolCount(`campaign_id=eq.${c.id}`),
+            awaiting: await poolCount(`campaign_id=eq.${c.id}&sdr_state=eq.awaiting`),
+            queued: cs.filter(s => ['queued', 'dispatched'].includes(s.status)).length,
+            sent: cs.filter(s => s.status === 'sent').length,
+            replied: cs.filter(s => s.status === 'cancelled_replied').length
           });
+        }
         result = { campaigns: overview };
         break;
       }
