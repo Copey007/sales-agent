@@ -128,14 +128,40 @@ export async function tenantFromRequest(req, { tenantSlug = null } = {}) {
  * doesn't check out" (expired token, non-member — must 401, never silently
  * write to the demo tenant):
  *   no Authorization header      → { tenantId: null, invalid: false }
- *   bad token / no membership    → { tenantId: null, invalid: true }
- *   valid                        → { tenantId, user, role, tenant, invalid: false }
+ *   bad token                    → { tenantId: null, invalid: true }
+ *   operator / legacy account    → { tenantId: MASTER, user, role: 'owner', invalid: false }
+ *   valid membership             → { tenantId, user, role, tenant, invalid: false }
  */
+
+// The platform operator's accounts run the master/demo tenant where all
+// pre-tenancy data lives. Extendable via PLATFORM_OPERATOR_EMAILS env
+// (comma-separated) without a code change.
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+function operatorEmails() {
+  const extra = ((typeof Netlify !== 'undefined' && Netlify.env?.get('PLATFORM_OPERATOR_EMAILS')) || process.env.PLATFORM_OPERATOR_EMAILS || '')
+    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  return new Set(['mark.cope.roarr@gmail.com', ...extra]);
+}
+
 export async function resolveTenantContext(req) {
   const auth = req.headers.get('authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) return { tenantId: null, user: null, invalid: false };
+  const user = await userFromToken(token);
+  if (!user?.id) return { tenantId: null, user: null, invalid: true };
+
+  // Platform operator → master tenant, regardless of membership rows.
+  if (operatorEmails().has((user.email || '').toLowerCase())) {
+    return { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true, invalid: false };
+  }
+
   const ctx = await tenantFromRequest(req);
-  if (!ctx?.tenant?.id) return { tenantId: null, user: null, invalid: true };
-  return { tenantId: ctx.tenant.id, user: ctx.user, role: ctx.role, tenant: ctx.tenant, invalid: false };
+  if (ctx?.tenant?.id) {
+    return { tenantId: ctx.tenant.id, user: ctx.user, role: ctx.role, tenant: ctx.tenant, invalid: false };
+  }
+
+  // Valid login but no membership row: a legacy pre-tenancy account (signup
+  // has always created memberships, so trial users never land here). Treat
+  // as master-tenant access rather than locking the account out of its data.
+  return { tenantId: MASTER_TENANT_ID, user, role: 'owner', legacy: true, invalid: false };
 }
