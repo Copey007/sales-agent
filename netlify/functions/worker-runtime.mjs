@@ -20,7 +20,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { callLLM } from './_llm.mjs';
 import { userFromToken, tenantFromRequest } from './_tenant.mjs';
-import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect } from './_campaign-store.mjs';
+import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect, putEmailSend, logActivity } from './_campaign-store.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -205,10 +205,75 @@ Build on it; don't repeat. Return ONLY JSON: {"action":"<past-tense, <=9 words>"
   return { action: 'Advanced the goal', detail: 'Completed the next step this cycle.' };
 }
 
+
+// ─── Manager: pipeline health sweep ──────────────────────────────────────────
+// The Mission Control Manager OWNS send-pipeline supervision — the duties a
+// human ops manager would run before standup: audit the live ledger, repair
+// stranded work, flag exhausted retries, and report campaign pacing. The
+// queue-manager cron keeps a silent 5-minute safety net, but the Manager is
+// the accountable owner: his feed and daily report show what he found.
+
+const MGR_STALE_DISPATCH_MS = 2 * 60 * 60 * 1000;
+
+async function pipelineHealthSweep() {
+  const now = Date.now();
+  const sends = await listRecords('email_sends');
+  let recovered = 0, exhausted = 0;
+  for (const s of sends) {
+    if (s.status === 'dispatched' && !s.resend_result && s.dispatched_at &&
+        (now - new Date(s.dispatched_at).getTime()) > MGR_STALE_DISPATCH_MS) {
+      if ((s.redispatch_count || 0) >= 2) { s.status = 'failed'; s.error = 'stale dispatch, retries exhausted'; exhausted++; }
+      else { s.status = 'queued'; s.redispatch_count = (s.redispatch_count || 0) + 1; recovered++; }
+      await putEmailSend(s);
+    }
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const active = (await listCampaigns(DEFAULTS.TENANT_ID)).filter(c => c.status === 'active');
+  const lines = active.map(c => {
+    const cs = sends.filter(s => s.campaign_id === c.id);
+    const queued = cs.filter(s => s.status === 'queued').length;
+    const sentToday = cs.filter(s => s.status === 'sent' && (s.sent_at || '').slice(0, 10) === today).length;
+    const failed = cs.filter(s => s.status === 'failed').length;
+    return `${c.name}: ${queued} queued, ${sentToday} sent today${failed ? `, ${failed} FAILED (needs attention)` : ''}`;
+  });
+  return { recovered, exhausted, lines, sends_total: sends.length };
+}
+
+async function managerStep(hire) {
+  let health = null;
+  try { health = await pipelineHealthSweep(); } catch (e) { health = { error: e.message }; }
+
+  // Keep the strategic planning move, now informed by real ops data.
+  const planning = await roleStep(hire);
+
+  const healthNote = health?.error
+    ? `Pipeline sweep FAILED: ${health.error}`
+    : `Pipeline sweep: ${health.recovered ? `recovered ${health.recovered} stranded send(s)` : 'no stranded work'}` +
+      `${health.exhausted ? `; ${health.exhausted} send(s) marked failed after exhausted retries` : ''}. ` +
+      (health.lines.length ? health.lines.join(' · ') : 'No active campaigns.');
+
+  try {
+    await logActivity({
+      type: 'manager_health_sweep',
+      by: hire.name || 'Mission Control Manager',
+      hire_id: hire.id,
+      recovered: health?.recovered || 0,
+      exhausted: health?.exhausted || 0,
+      summary: healthNote.slice(0, 300)
+    });
+  } catch { /* reporting is best-effort */ }
+
+  const action = health?.recovered
+    ? `Recovered ${health.recovered} stranded send(s); pipeline audited`
+    : (health?.error ? 'Pipeline audit hit an error (see detail)' : 'Pipeline audit clean; advanced growth plan');
+  return { action: action.slice(0, 80), detail: `${healthNote}\n\nGrowth move: ${planning.detail}` };
+}
+
 async function runCycle(hire) {
   let step;
   if (hire.worker_id === 'researcher') step = await researcherStep(hire);
   else if (hire.worker_id === 'sdr') step = await sdrStep(hire);
+  else if (hire.worker_id === 'manager') step = await managerStep(hire);
   else if (ROLE_BRIEFS[hire.worker_id]) step = await roleStep(hire);
   else step = await llmStep(hire);
   const entry = { ts: new Date().toISOString(), action: step.action, detail: step.detail };
