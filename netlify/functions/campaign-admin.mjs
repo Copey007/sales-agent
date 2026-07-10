@@ -399,7 +399,7 @@ export default async (req, context) => {
           // Call send-worker directly
           const sendIds = batch.map(s => s.id);
           const campaignId = batch[0].campaign_id;
-          const workerResp = await fetch(`https://aisdr.a-gent.co/api/send-worker`, {
+          const workerResp = await fetch(`https://aisdr.a-gent.co/.netlify/functions/send-worker-background`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ campaign_id: campaignId, send_ids: sendIds, batch_index: 0, dry_run: url.searchParams.get("dry_run") === "true" })

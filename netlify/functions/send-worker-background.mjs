@@ -295,7 +295,11 @@ async function enqueueNextStep(send, prospect, campaign, sequence) {
 
   const delayDays = Number(delays[nextStep - 1]) || 3;
   const next = {
-    id: crypto.randomUUID(),
+    // Deterministic id: one follow-up slot per prospect+step per campaign.
+    // A double-processed step-1 now OVERWRITES the same follow-up record
+    // instead of creating a duplicate (the Blobs-list dedup check above is
+    // eventually consistent and can miss a sibling written seconds ago).
+    id: `fu_${campaign.id}_${send.prospect_id}_s${nextStep}`,
     tenant_id: send.tenant_id || campaign.tenant_id || DEFAULTS.TENANT_ID,
     campaign_id: campaign.id,
     prospect_id: send.prospect_id,
@@ -496,6 +500,7 @@ async function shouldTriggerLoopIteration(campaignId) {
   }
 }
 
-export const config = {
-  path: "/api/send-worker"
-};
+// Background function (filename suffix): 15-minute budget so a batch of
+// LLM-generated emails can never be killed mid-flight — the cause of the
+// stuck-'dispatched' strays and double-processed sends.
+export const config = {};

@@ -49,7 +49,7 @@ function getSendWorkerUrl() {
   const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
     ? Netlify.env.get('URL')
     : (process.env.URL || 'https://aisdr.a-gent.co');
-  return `${siteUrl}/api/send-worker`;
+  return `${siteUrl}/.netlify/functions/send-worker-background`;
 }
 
 // ─── Main Queue Processing ──────────────────────────────────────────────────
@@ -88,6 +88,30 @@ async function processQueue() {
     results.errors.push(`ledger scan failed: ${e.message}`);
     return results;
   }
+  // De-dupe the scan defensively: Blobs pagination has produced the same key
+  // twice, and a duplicated ledger row means a double-dispatched email.
+  {
+    const seen = new Set();
+    allSends = allSends.filter(s => s && s.id && !seen.has(s.id) && seen.add(s.id));
+  }
+
+  // Stale-dispatch recovery: a send marked dispatched with no Resend result
+  // after 2h+ means its worker batch died before processing it. Requeue with
+  // a retry cap so nothing is stranded forever.
+  const STALE_DISPATCH_MS = 2 * 60 * 60 * 1000;
+  for (const s of allSends) {
+    if (s.status === "dispatched" && !s.resend_result &&
+        s.dispatched_at && (now.getTime() - new Date(s.dispatched_at).getTime()) > STALE_DISPATCH_MS) {
+      if ((s.redispatch_count || 0) >= 2) {
+        s.status = "failed"; s.error = "stale dispatch, retries exhausted";
+      } else {
+        s.status = "queued"; s.redispatch_count = (s.redispatch_count || 0) + 1;
+      }
+      await putEmailSend(s);
+      results.stale_recovered = (results.stale_recovered || 0) + 1;
+    }
+  }
+
   const today = now.toISOString().slice(0, 10);
   const queuedFor = (cid) => allSends.filter(s => s.campaign_id === cid && s.status === "queued");
   const sentTodayFor = (cid) => allSends.filter(s =>
@@ -126,7 +150,11 @@ async function processQueue() {
 
       // Apply suppression check and budget limit
       const eligibleSends = [];
+      const takenSlots = new Set(); // one send per prospect+step per run
       for (const send of dueSends) {
+        const slot = `${send.prospect_id}:${send.step_number}`;
+        if (takenSlots.has(slot)) continue;
+        takenSlots.add(slot);
         if (eligibleSends.length >= remainingBudget) {
           results.sends_over_limit += (dueSends.length - eligibleSends.length);
           break;
