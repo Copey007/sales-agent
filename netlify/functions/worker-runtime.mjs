@@ -310,9 +310,13 @@ export default async (req) => {
 };
 
 /** Batch-advance due active workers. Called by worker-runtime-cron on a schedule. */
-export async function runDueWorkers() {
+export async function runDueWorkers({ rolesOnly = null } = {}) {
   const cutoff = new Date(Date.now() - 50 * 60000).toISOString();   // ~hourly per worker
-  const r = await rest(`workforce_hires?status=eq.active&or=(last_active_at.is.null,last_active_at.lt.${cutoff})&select=*&order=last_active_at.asc.nullsfirst&limit=8`);
+  // rolesOnly restricts the sweep (e.g. ['manager'] — pipeline supervision
+  // runs even when full workforce autonomy is switched off).
+  const roleFilter = Array.isArray(rolesOnly) && rolesOnly.length
+    ? `&worker_id=in.(${rolesOnly.join(',')})` : '';
+  const r = await rest(`workforce_hires?status=eq.active${roleFilter}&or=(last_active_at.is.null,last_active_at.lt.${cutoff})&select=*&order=last_active_at.asc.nullsfirst&limit=8`);
   const due = r.ok ? await r.json() : [];
   let ran = 0;
   for (const hire of due) {

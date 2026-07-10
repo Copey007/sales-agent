@@ -11,12 +11,17 @@ import { env } from './_mcp-connectors.mjs';
 import { runDueWorkers } from './worker-runtime.mjs';
 
 export default async () => {
-  if (env('WORKER_RUNTIME_AUTO') !== '1') {
-    return new Response(JSON.stringify({ skipped: 'auto disabled' }), { headers: { 'Content-Type': 'application/json' } });
-  }
+  // Full autonomy (every worker, hourly) stays opt-in via WORKER_RUNTIME_AUTO=1.
+  // But pipeline supervision is the Mission Control Manager's standing
+  // RESPONSIBILITY — manager hires run their cycle (health sweep + planning)
+  // on this cron regardless, so stranded work is found and repaired even when
+  // the rest of the workforce is in manual mode.
+  const full = env('WORKER_RUNTIME_AUTO') === '1';
   let result = {};
-  try { result = await runDueWorkers(); } catch (e) { console.error('[worker-runtime-cron]', e.message); result = { error: e.message }; }
-  return new Response(JSON.stringify({ ok: true, ...result }), { headers: { 'Content-Type': 'application/json' } });
+  try {
+    result = await runDueWorkers({ rolesOnly: full ? null : ['manager'] });
+  } catch (e) { console.error('[worker-runtime-cron]', e.message); result = { error: e.message }; }
+  return new Response(JSON.stringify({ ok: true, mode: full ? 'all_workers' : 'manager_only', ...result }), { headers: { 'Content-Type': 'application/json' } });
 };
 
 export const config = { schedule: '*/30 * * * *' };
