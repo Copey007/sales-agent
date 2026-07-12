@@ -249,8 +249,14 @@ export default async (req, context) => {
     // --- 3. Reply correlation: stop the machine for this prospect ---
     // Mark the prospect replied and cancel every still-queued send for them
     // across ALL campaigns, so a reply immediately halts the cadence.
+    // EXCEPTION: out-of-office/auto-replies are not engagement — forward and
+    // log them, but keep the cadence alive for when the person is back.
+    const isAutoReply = /^(automatic reply|auto(matic)? response|out of office|abwesenheit|absence)/i.test(subject || '') ||
+      /auto-?submitted:\s*auto/i.test(String(data.headers?.['auto-submitted'] || ''));
     let cancelledSends = 0;
-    try {
+    if (isAutoReply) {
+      console.log('[inbound-webhook] Auto-reply detected — cadence left running for', prospectEmail);
+    } else try {
       const {
         putProspect, listRecords, putEmailSend, logActivity
       } = await import('./_campaign-store.mjs');

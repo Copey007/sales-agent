@@ -169,6 +169,64 @@ Assess this data against the GTM REVolution methodology.`;
   return analysis;
 }
 
+
+// ─── GTM Plan (assessment × the book) ────────────────────────────────────────
+
+async function getPlan(tenantId) {
+  try { return await (await store('gtm_plans')).get(tenantId, { type: 'json' }); } catch { return null; }
+}
+
+const ASSESSMENT_LABELS = {
+  workflow: 'Outbound workflow repeatability',
+  data: 'Account & contact data strength',
+  signals: 'Buying-signal visibility',
+  support: 'AI implementation support needed',
+  gap: 'Cost of staying manual'
+};
+
+async function generatePlan(tenantId, assessment) {
+  const digest = await bookDigest();
+  const answers = Object.entries(assessment.answers || {})
+    .map(([k, v]) => `- ${ASSESSMENT_LABELS[k] || k}: ${v}/3`).join('\n');
+
+  const system = `You are the A-Gent GTM Brain, built on Mark Cope's "The GTM REVolution: A New Playbook for the AI-Era Chief Revenue Officer". A prospect just completed the 5-question readiness assessment. Produce their initial GTM plan strictly from the book's methodology.
+
+## Core methodology (distilled from the book)
+${digest?.text || ''}
+
+Return ONLY JSON (no markdown fences):
+{"summary":"<2-3 sentence read of where they are, direct CRO voice>",
+ "priorities":[{"title":"<short>","detail":"<what to do first and why, per the book>"}],
+ "quick_wins":["<thing they can do this week>"],
+ "full_readout_needs":"<one sentence: what connecting their real CRM/Gong data will unlock that the questionnaire cannot>"}
+EXACTLY 3 priorities and 2 quick wins. Every field under 50 words. Valid complete JSON only.`;
+
+  const user = `Assessment result: ${assessment.title || ''} — ${assessment.pct || '?'}% readiness.
+Scores (1=weakest, 3=strongest):
+${answers}
+
+Build their initial plan.`;
+
+  const out = await callLLM([
+    { role: 'system', content: system },
+    { role: 'user', content: user }
+  ], { maxTokens: 1200, temperature: 0.4 });
+
+  let parsed = null;
+  try { parsed = parseLLMJson(out); } catch { /* fall through */ }
+  if (!parsed) { try { parsed = JSON.parse((String(out).match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch { parsed = null; } }
+
+  const plan = {
+    tenant_id: tenantId,
+    assessment: { pct: assessment.pct, title: assessment.title, answers: assessment.answers },
+    plan: parsed || { summary: String(out).slice(0, 1200) },
+    created_at: new Date().toISOString()
+  };
+  await (await store('gtm_plans')).setJSON(tenantId, plan);
+  await logActivity({ type: 'gtm_plan_generated', tenant_id: tenantId, readiness: assessment.pct });
+  return plan;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export default async (req) => {
@@ -180,13 +238,14 @@ export default async (req) => {
 
   try {
     if (req.method === 'GET') {
-      const [meta, digest, docs, analyses] = await Promise.all([
-        bookMeta(), bookDigest(), listDocs(tenantId), listAnalyses(tenantId)
+      const [meta, digest, docs, analyses, plan] = await Promise.all([
+        bookMeta(), bookDigest(), listDocs(tenantId), listAnalyses(tenantId), getPlan(tenantId)
       ]);
       return json({
         brain: meta ? { title: meta.title, author: meta.author, word_count: meta.word_count, chunk_count: meta.chunk_count, digest_ready: !!digest } : null,
         docs,
         analyses,
+        plan,
         assessment_url: 'https://a-gent.co/assessment#assessment-flow'
       });
     }
@@ -221,6 +280,13 @@ export default async (req) => {
       const docs = await listDocs(tenantId);
       const analysis = await analyzeAgainstBrain(tenantId, String(filename).slice(0, 120), String(text).slice(0, 500000), docs);
       return json({ ok: true, analysis });
+    }
+
+    if (action === 'save_assessment') {
+      const { pct, title, answers } = body;
+      if (!answers || typeof answers !== 'object') return json({ error: 'answers required' }, 400);
+      const plan = await generatePlan(tenantId, { pct: Number(pct) || null, title: String(title || '').slice(0, 160), answers });
+      return json({ ok: true, plan });
     }
 
     if (action === 'seed_digest') {
