@@ -239,18 +239,76 @@ async function pipelineHealthSweep() {
   return { recovered, exhausted, lines, sends_total: sends.length };
 }
 
+// Property health: the hourly steward check across every A-Gent surface.
+// Marcus runs this each cycle — if a property is down or the pipeline needed
+// repair, he escalates by email immediately (not just the daily report).
+const WATCHED_PROPERTIES = [
+  ['Marketing site', 'https://a-gent.co/'],
+  ['Mission Control', 'https://missioncontrol.a-gent.co/'],
+  ['AI SDR', 'https://aisdr.a-gent.co/'],
+  ['CRM', 'https://crm.a-gent.co/'],
+  ['Live demo', 'https://aisdr.a-gent.co/a/demo']
+];
+
+async function propertyHealth() {
+  const results = [];
+  for (const [name, url] of WATCHED_PROPERTIES) {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 6000);
+      const r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': 'A-Gent-Marcus-HealthCheck' } });
+      clearTimeout(t);
+      results.push({ name, ok: r.ok, status: r.status });
+    } catch (e) {
+      results.push({ name, ok: false, status: 'unreachable' });
+    }
+  }
+  return { results, allUp: results.every(r => r.ok) };
+}
+
+async function sendManagerAlert(hire, subject, body) {
+  const key = env('RESEND_API_KEY');
+  if (!key) return false;
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${hire.name || 'Marcus'} — Mission Control <fleet@a-gent.co>`,
+        to: ['mark.cope.roarr@gmail.com'],
+        subject: `[${hire.name || 'Marcus'}] ${subject}`,
+        text: body
+      })
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
 async function managerStep(hire) {
   let health = null;
   try { health = await pipelineHealthSweep(); } catch (e) { health = { error: e.message }; }
+  let sites = null;
+  try { sites = await propertyHealth(); } catch (e) { sites = null; }
 
   // Keep the strategic planning move, now informed by real ops data.
   const planning = await roleStep(hire);
 
-  const healthNote = health?.error
+  const siteNote = sites
+    ? (sites.allUp ? `All ${sites.results.length} properties up.` : `PROPERTY DOWN: ${sites.results.filter(r => !r.ok).map(r => `${r.name} (${r.status})`).join(', ')}.`)
+    : 'Property check unavailable.';
+  const healthNote = (health?.error
     ? `Pipeline sweep FAILED: ${health.error}`
     : `Pipeline sweep: ${health.recovered ? `recovered ${health.recovered} stranded send(s)` : 'no stranded work'}` +
       `${health.exhausted ? `; ${health.exhausted} send(s) marked failed after exhausted retries` : ''}. ` +
-      (health.lines.length ? health.lines.join(' · ') : 'No active campaigns.');
+      (health.lines.length ? health.lines.join(' · ') : 'No active campaigns.')) + ' ' + siteNote;
+
+  // Escalate immediately when something needs a human: a property down,
+  // sends failing out, or the sweep itself erroring.
+  const needsHuman = (sites && !sites.allUp) || (health?.exhausted > 0) || !!health?.error;
+  if (needsHuman) {
+    await sendManagerAlert(hire, sites && !sites.allUp ? 'Property down' : 'Pipeline needs attention',
+      `Steward check at ${new Date().toISOString()}:\n\n${healthNote}\n\n— ${hire.name || 'Marcus'}, Mission Control Manager`);
+  }
 
   try {
     await logActivity({
