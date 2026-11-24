@@ -26,9 +26,16 @@
   var readyResolve;
   var ready = new Promise(function (r) { readyResolve = r; });
 
+  // The server-side edge gate (netlify/edge-functions/aisdr-gate.js) reads
+  // this cookie; keep it in sync with the session so reloads stay signed in.
+  function setCookie(s) {
+    var maxAge = s ? Math.max(0, (s.expires_at | 0) - Math.floor(Date.now() / 1000)) : 0;
+    document.cookie = 'agent_at=' + (s ? encodeURIComponent(s.access_token) : '') + '; Path=/; Max-Age=' + maxAge + '; Secure; SameSite=Lax';
+  }
   function save(s) {
     session = s;
     try { if (s) localStorage.setItem(STORE, JSON.stringify(s)); else localStorage.removeItem(STORE); } catch (e) {}
+    setCookie(s);
   }
   function load() { try { return JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { return null; } }
   function withExpiry(t) {
@@ -81,21 +88,31 @@
 
   // ── Sign-in overlay ──────────────────────────────────────────────────────
   var overlay;
+  // Never paint the dashboard shell for a signed-out visitor.
+  function hideApp(on) {
+    var el = document.getElementById('agent-auth-hide');
+    if (on && !el) {
+      el = document.createElement('style'); el.id = 'agent-auth-hide';
+      el.textContent = 'body > *:not(#agent-auth-gate){visibility:hidden !important}';
+      document.head.appendChild(el);
+    } else if (!on && el) { el.remove(); }
+  }
   function showLogin(msg) {
+    hideApp(true);
     if (overlay) { overlay.style.display = 'grid'; setMsg(msg); return; }
     overlay = document.createElement('div');
     overlay.id = 'agent-auth-gate';
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:rgba(8,10,16,.92);font-family:system-ui,-apple-system,sans-serif');
     overlay.innerHTML =
-      '<form style="background:#12151d;border:1px solid #2a3040;border-radius:14px;padding:28px;width:min(360px,90vw);color:#e6e8ee;box-shadow:0 20px 60px rgba(0,0,0,.5)">' +
-      '<h2 style="margin:0 0 6px;font-size:20px">Sign in to A-Gent</h2>' +
+      '<main aria-labelledby="agent-auth-title"><form style="background:#12151d;border:1px solid #2a3040;border-radius:14px;padding:28px;width:min(360px,90vw);color:#e6e8ee;box-shadow:0 20px 60px rgba(0,0,0,.5)">' +
+      '<h1 id="agent-auth-title" style="margin:0 0 6px;font-size:20px">Sign in to A-Gent</h1>' +
       '<p style="margin:0 0 18px;color:#9aa3b5;font-size:13px">Operator access only.</p>' +
-      '<label style="display:block;font-size:12px;color:#9aa3b5">Email</label>' +
-      '<input name="email" type="email" autocomplete="username" required style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:10px;border-radius:8px;border:1px solid #2a3040;background:#0b0d12;color:#e6e8ee">' +
-      '<label style="display:block;font-size:12px;color:#9aa3b5">Password</label>' +
-      '<input name="password" type="password" autocomplete="current-password" required style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:10px;border-radius:8px;border:1px solid #2a3040;background:#0b0d12;color:#e6e8ee">' +
+      '<label for="agent-auth-email" style="display:block;font-size:12px;color:#9aa3b5">Email</label>' +
+      '<input id="agent-auth-email" name="email" type="email" autocomplete="username" required style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:10px;border-radius:8px;border:1px solid #2a3040;background:#0b0d12;color:#e6e8ee">' +
+      '<label for="agent-auth-password" style="display:block;font-size:12px;color:#9aa3b5">Password</label>' +
+      '<input id="agent-auth-password" name="password" type="password" autocomplete="current-password" required style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:10px;border-radius:8px;border:1px solid #2a3040;background:#0b0d12;color:#e6e8ee">' +
       '<button type="submit" style="width:100%;padding:11px;border:0;border-radius:8px;background:#4f7cff;color:#fff;font-weight:600;cursor:pointer">Sign in</button>' +
-      '<p data-msg style="min-height:18px;margin:12px 0 0;color:#ff8a8a;font-size:13px"></p></form>';
+      '<p data-msg role="alert" style="min-height:18px;margin:12px 0 0;color:#ff8a8a;font-size:13px"></p></form></main>';
     var form = overlay.querySelector('form');
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -104,7 +121,7 @@
       tokenGrant('password', { email: email, password: password }).then(function (t) {
         var s = withExpiry(t); if (!s) throw new Error('Sign-in failed');
         if (!s.email) s.email = email;
-        save(s); form.password.value = ''; overlay.style.display = 'none'; badge(); readyResolve();
+        save(s); form.password.value = ''; overlay.style.display = 'none'; hideApp(false); badge(); readyResolve();
       }).catch(function (err) { setMsg(err.message); });
     });
     (document.body || document.documentElement).appendChild(overlay);
@@ -143,5 +160,5 @@
   if (session && session.expires_at - 60 > Date.now() / 1000) { readyResolve(); whenBody(badge); }
   else if (session && session.refresh_token) {
     refresh().then(function () { readyResolve(); whenBody(badge); }, function () { signOut(); });
-  } else { save(null); whenBody(function () { showLogin(''); }); }
+  } else { save(null); hideApp(true); whenBody(function () { showLogin(''); }); }
 })();

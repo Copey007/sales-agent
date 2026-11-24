@@ -207,20 +207,102 @@
 # CORS for /api/* is handled per-request by the functions (strict origin
 # allowlist in netlify/functions/_auth.mjs) — no blanket "*" here.
 
+# ── Security + noindex headers (AG-08) ─────────────────────────────────────
+# Every response: nosniff, referrer policy, HSTS, noindex (app host — not for
+# search engines).
 [[headers]]
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Robots-Tag = "noindex, nofollow"
     Permissions-Policy = "geolocation=(), payment=(), usb=()"
 
+# Anti-framing on every app/marketing page. DOCUMENTED EXCEPTION: the hosted
+# avatar widget (/a/<slug> → /agent.html) is intentionally NOT listed so a
+# customer can embed their agent on their own site.
+# {{MARK: allow customer-site iframe embedding of /a/<slug>? If no, add
+#   "/agent.html" and "/a/*" to this list.}}
+# (Kept as an explicit list because Netlify merges headers from all matching
+# rules and has no "exclude" syntax.)
 [[headers]]
-  for = "/dashboard/*"
+  for = "/"
   [headers.values]
     X-Frame-Options = "DENY"
-
+    Content-Security-Policy = "frame-ancestors 'none'"
 [[headers]]
   for = "/index.html"
   [headers.values]
     X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/index"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/dashboard"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/dashboard/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/signup"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/signup.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/workers.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/offers-demo.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/concierge.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/copilot.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/demo.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/demo-live.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/extension/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/404.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/auth-gate.js"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
