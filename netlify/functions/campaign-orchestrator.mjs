@@ -31,6 +31,7 @@ import { sb, poolTenantFilter } from "./_supabase-rest.mjs";
 import { resolveTenantContext } from "./_tenant.mjs";
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
+import { hunterResultAcceptable } from './_hunter-policy.mjs';
 
 // Enroll every selected Researcher-pool contact into the campaign: one bulk
 // UPDATE (instant even at 1000 contacts). The queue-manager feeder then drips
@@ -688,6 +689,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
             title: e.position || targetRole,
             linkedin_url: e.linkedin || null,
             hunter_confidence: e.confidence || null,
+            hunter_verification: e.verification?.status || null,
             source: 'hunter_domain_search'
           });
           discoverStats.emails_found++;
@@ -697,10 +699,18 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
       }
     }
 
-    // Verify only low-confidence emails (< 90) to preserve quota
+    // Verify only low-confidence emails (< 90) to preserve quota.
+    // Policy: docs/hunter-verification.md (rejects catch-all/unknown/disposable by default).
     const highConf = rawProspects.filter(p => (p.hunter_confidence || 0) >= 90);
     const lowConf = rawProspects.filter(p => (p.hunter_confidence || 0) < 90).slice(0, 3); // max 3 verifications
-    const verified = [...highConf.map(p => ({ ...p, verified: true, verification_status: 'high_confidence' }))];
+    const verified = [];
+    for (const p of highConf) {
+      if (p.hunter_verification && !hunterResultAcceptable(p.hunter_verification, p.hunter_confidence)) {
+        console.log(`[researcher] Rejected high-confidence ${p.email}: ${p.hunter_verification}`);
+        continue;
+      }
+      verified.push({ ...p, verified: true, verification_status: p.hunter_verification || 'high_confidence' });
+    }
     for (const p of lowConf) {
       try {
         const vRes = await fetch(`https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(p.email)}&api_key=${HUNTER_KEY}`);
@@ -708,9 +718,11 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
           const vData = await vRes.json();
           const status = vData?.data?.status;
           const score = vData?.data?.score || 0;
-          if (status === 'valid' || status === 'accept_all' || score > 50) {
+          if (hunterResultAcceptable(status, score)) {
             verified.push({ ...p, verified: true, verification_status: status, verification_score: score });
             discoverStats.verified++;
+          } else {
+            console.log(`[researcher] Rejected ${p.email}: ${status} score=${score}`);
           }
         }
       } catch { verified.push({ ...p, verified: false, verification_status: 'error' }); }
