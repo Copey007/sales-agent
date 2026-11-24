@@ -88,3 +88,11 @@ for (const p of ['/agent.html', '/a/acme']) {
 test('exception is documented with a MARK decision marker', () => {
   assert.match(toml, /\{\{MARK: allow customer-site iframe embedding of \/a\/<slug>\?/);
 });
+
+test('login shell carries anti-framing / nosniff headers (edge responses skip netlify.toml headers)', async () => {
+  const r = await handleGate(get(), deps());
+  assert.equal(r.headers.get('x-frame-options'), 'DENY');
+  assert.match(r.headers.get('content-security-policy') || '', /frame-ancestors 'none'/);
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('x-robots-tag'), 'noindex, nofollow');
+});
