@@ -104,7 +104,7 @@
     overlay.id = 'agent-auth-gate';
     overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:rgba(10,10,12,.92);font-family:Inter,system-ui,-apple-system,sans-serif');
     overlay.innerHTML =
-      '<style>#agent-auth-gate :focus-visible{outline:2px solid #c8b48c;outline-offset:2px}</style>' +
+      '<style>#agent-auth-gate :focus-visible{outline:2px solid #c8b48c;outline-offset:2px}#agent-auth-gate input:hover{border-color:#8a8a90 !important}</style>' +
       '<main aria-labelledby="agent-auth-title"><form style="background:#131316;border:1px solid #2a2a30;border-radius:14px;padding:28px;width:min(360px,90vw);color:#f0f0f2;box-shadow:0 20px 60px rgba(0,0,0,.5)">' +
       '<h1 id="agent-auth-title" style="margin:0 0 6px;font-size:20px">Sign in to A-Gent</h1>' +
       '<p style="margin:0 0 18px;color:#a1a1a6;font-size:13px">Operator access only.</p>' +

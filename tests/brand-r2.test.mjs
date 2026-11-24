@@ -54,4 +54,6 @@ test('auth-gate: Inter + focus-visible ring', () => {
   const s = r('auth-gate.js');
   assert.doesNotMatch(s, /font-family:system-ui|font:12px system-ui/);
   assert.match(s, /#agent-auth-gate :focus-visible\{outline:2px solid #c8b48c;outline-offset:2px\}/);
+  assert.match(s, /#agent-auth-gate input:hover\{border-color:#8a8a90 !important\}/);
+  assert.match(r('netlify/edge-lib/gate-core.mjs'), /input:hover\{border-color:#8a8a90\}/);
 });
