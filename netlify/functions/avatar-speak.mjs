@@ -1,3 +1,5 @@
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 /**
  * Generate a HeyGen video on demand from text
  * 
@@ -13,7 +15,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -126,3 +128,6 @@ export default async (req, context) => {
 };
 
 export const config = { path: "/api/avatar-speak" };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

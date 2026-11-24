@@ -1,3 +1,4 @@
+import { withCors } from './_auth.mjs';
 /**
  * LiveAvatar Session API
  * 
@@ -18,7 +19,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -53,7 +54,7 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/avatar-session" };
+export const config = { path: "/api/avatar-session", rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
 
 async function startSession(apiKey, body, corsHeaders) {
   const avatarId = body.avatar_id || 'ebdfdc7e-7e2c-4d2c-8407-a78883e5000a'; // Anastasia in Black Suit
@@ -164,3 +165,6 @@ async function stopSession(apiKey, body, corsHeaders) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

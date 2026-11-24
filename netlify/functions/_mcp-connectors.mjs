@@ -219,8 +219,8 @@ function createSupabaseConnector() {
 
   function getCredentials() {
     const url = env('SUPABASE_URL');
-    const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
-    if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY/ANON_KEY required');
+    const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
+    if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required');
     return { url, key };
   }
 
@@ -428,6 +428,11 @@ function createResendConnector() {
     html: { type: 'string', required: true },
     replyTo: { type: 'string' }
   }, async ({ to, from, subject, html, replyTo }) => {
+    // SECURITY: generic agent-driven sending is disabled. Every outbound email
+    // must pass a human approval gate (send-worker-background approved pass,
+    // worker-outreach approve). Re-enable only behind such a gate.
+    throw new Error('resend.send is disabled for agents — outbound email requires human approval');
+    // eslint-disable-next-line no-unreachable
     const apiKey = env('RESEND_API_KEY');
     if (!apiKey) throw new Error('RESEND_API_KEY not set');
 

@@ -9,6 +9,13 @@
  *   GET  ?action=list_campaigns — List all campaigns
  *   GET  ?action=get_flags      — Get all feature flags
  *   GET  ?action=status         — System status
+ *   GET  ?action=list_pending   — Drafts awaiting human approval (tenant-scoped)
+ *   POST ?action=approve_sends  — {send_ids, edits?:{[id]:{subject,body}}} approve drafts for delivery
+ *   POST ?action=reject_sends   — {send_ids, reason?} reject drafts (never sent)
+ *
+ * SECURITY: every action requires a verified tenant JWT (or the internal
+ * token); seed/set_flag are platform-operator only. No email is ever sent
+ * without an explicit approve_sends.
  */
 
 import {
@@ -17,24 +24,53 @@ import {
   getCampaignPersona, getCampaignSignalConfig, getCampaignSequence, getCampaignTerritory,
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
-  listActivityLog, countSentToday, listQueuedSends
+  listActivityLog, countSentToday, listQueuedSends,
+  listRecords, getProspect, listAllReplies, getEmailSend, putEmailSend
 } from "./_campaign-store.mjs";
+import { resolveTenantContext } from "./_tenant.mjs";
+import { withCors, internalHeaders, siteUrl } from "./_auth.mjs";
 
-export default async (req, context) => {
+async function handler(req, context) {
   // CORS
   if (req.method === "OPTIONS") {
-    return new Response("", {
+    return new Response(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
       }
     });
   }
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "status";
+
+  // Tenant scope: verified JWT → the caller's tenant (operators → master);
+  // internal token → master. No token / bad token / no membership → 401/403.
+  const authCtx = await resolveTenantContext(req);
+  if (authCtx.invalid) {
+    return new Response(JSON.stringify({ error: authCtx.status === 403 ? "forbidden" : "unauthorized" }), {
+      status: authCtx.status || 401,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    });
+  }
+  const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+  const ownsCampaign = (campaign) =>
+    campaign && (campaign.tenant_id || DEFAULTS.TENANT_ID) === tenantId;
+  const isPrivileged = !!(authCtx.internal || authCtx.operator);
+  if ((action === "seed" || action === "set_flag") && !isPrivileged) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403, headers: { "Content-Type": "application/json" }
+    });
+  }
+  const ownedSend = async (id) => {
+    const send = await getEmailSend(id);
+    if (!send) return null;
+    if ((send.tenant_id || null) && send.tenant_id !== tenantId) return null;
+    const camp = await getCampaign(send.campaign_id);
+    return ownsCampaign(camp) ? send : null;
+  };
 
   try {
     let result;
@@ -48,7 +84,7 @@ export default async (req, context) => {
       case "status": {
         const orchestrationEnabled = await getFeatureFlag("multi_campaign_orchestration");
         const queueManagerActive = await getFeatureFlag("queue_manager_active");
-        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaigns = await listCampaigns(tenantId);
         const activeCampaigns = campaigns.filter(c => c.status === "active");
 
         result = {
@@ -58,7 +94,7 @@ export default async (req, context) => {
             multi_campaign_orchestration: orchestrationEnabled,
             queue_manager_active: queueManagerActive
           },
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           campaigns_total: campaigns.length,
           campaigns_active: activeCampaigns.length,
           data_store: "netlify_blobs",
@@ -67,10 +103,170 @@ export default async (req, context) => {
         break;
       }
 
+      case "campaigns_overview": {
+        // Campaign Agent panel feed: every non-archived campaign with its
+        // contact counts (awaiting/queued/sent/replied) in one call.
+        const { sb } = await import('./_supabase-rest.mjs');
+        const campaigns = (await listCampaigns(tenantId)).filter(c => c.status !== 'archived');
+        const sends = await listRecords('email_sends');
+        // Pool numbers via count=exact head queries — plain row fetches are
+        // silently capped at 1000 rows by PostgREST, which distorts every
+        // count for large campaigns.
+        const poolCount = async (filter) => {
+          try {
+            const { count } = await sb(`contact_pool?select=id&${filter}&limit=1`, { count: true });
+            return count ?? 0;
+          } catch { return 0; }
+        };
+        const overview = [];
+        for (const c of campaigns.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))) {
+          const cs = sends.filter(s => s.campaign_id === c.id);
+          overview.push({
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            created_at: c.created_at,
+            auto_source: c.auto_source === true,
+            persona: c.brief?.target_persona || null,
+            contacts_enrolled: await poolCount(`campaign_id=eq.${c.id}`),
+            awaiting: await poolCount(`campaign_id=eq.${c.id}&sdr_state=eq.awaiting`),
+            queued: cs.filter(s => ['queued', 'dispatched'].includes(s.status)).length,
+            sent: cs.filter(s => s.status === 'sent').length,
+            replied: cs.filter(s => s.status === 'cancelled_replied').length
+          });
+        }
+        result = { campaigns: overview };
+        break;
+      }
+
+      case "pipeline_stats": {
+        // Single-call feed for the dashboard: real numbers from the live
+        // email_sends ledger (not the legacy Supabase email_steps table).
+        const campaigns = await listCampaigns(tenantId);
+        const campaignName = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
+        // Records written before multi-tenancy carry no tenant_id — they all
+        // belong to the demo tenant.
+        const sends = (await listRecords("email_sends"))
+          .filter(s => (s.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
+        // Real replies only: sender must be a prospect we actually emailed
+        // (filters spam/marketing hitting the domain catch-all), and drop
+        // tagged test artifacts, simulated events, and OOO auto-replies.
+        // The tenant-scoped prospect set also keeps replies tenant-scoped.
+        const prospectEmails = new Set(
+          (await listRecords("prospects"))
+            .filter(p => (p.tenant_id || DEFAULTS.TENANT_ID) === tenantId)
+            .map(p => (p.email || '').toLowerCase()).filter(Boolean));
+        const replies = (await listAllReplies()).filter(r => {
+          if (r.is_test === true) return false;
+          if (['test', 'unknown'].includes(r.event_type)) return false;
+          const sender = (r.from_email || r.prospect_email || r.from || '')
+            .toLowerCase().replace(/^.*</, '').replace(/>$/, '').trim();
+          if (!sender || !prospectEmails.has(sender)) return false;
+          if (/^(automatic reply|auto(matic)? response|out of office)/i.test(r.subject || '')) return false;
+          return true;
+        });
+
+        const byStatus = {};
+        for (const s of sends) byStatus[s.status || 'unknown'] = (byStatus[s.status || 'unknown'] || 0) + 1;
+
+        const prospectCache = {};
+        const hydrate = async (s) => {
+          if (s.prospect_id && !(s.prospect_id in prospectCache)) {
+            prospectCache[s.prospect_id] = await getProspect(s.prospect_id).catch(() => null);
+          }
+          const p = prospectCache[s.prospect_id] || {};
+          return {
+            id: s.id, status: s.status, step: s.step_number,
+            email: p.email, name: p.contact_name || p.name, company: p.company_name,
+            campaign: campaignName[s.campaign_id] || s.campaign_id,
+            subject: s.email_subject || null,
+            scheduled_at: s.scheduled_at, sent_at: s.sent_at || null,
+            enqueued_by: s.enqueued_by || null
+          };
+        };
+
+        const sentRows = sends.filter(s => s.status === 'sent')
+          .sort((a, b) => String(b.sent_at || '').localeCompare(String(a.sent_at || ''))).slice(0, 60);
+        const queuedRows = sends.filter(s => ['queued', 'dispatched'].includes(s.status))
+          .sort((a, b) => String(a.scheduled_at || '').localeCompare(String(b.scheduled_at || ''))).slice(0, 90);
+
+        result = {
+          generated_at: new Date().toISOString(),
+          totals: {
+            sent: byStatus.sent || 0,
+            queued: (byStatus.queued || 0) + (byStatus.dispatched || 0),
+            replied: replies.length,
+            suppressed: byStatus.suppressed || 0,
+            cancelled_replied: byStatus.cancelled_replied || 0,
+            failed: byStatus.failed || 0
+          },
+          last_send_at: sentRows[0]?.sent_at || null,
+          campaigns_active: campaigns.filter(c => c.status === 'active').length,
+          campaigns_total: campaigns.length,
+          sent_rows: await Promise.all(sentRows.map(hydrate)),
+          queued_rows: await Promise.all(queuedRows.map(hydrate)),
+          reply_rows: replies
+            .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || ''))).slice(0, 30)
+            .map(r => ({
+              from: r.from_email || r.from, name: r.from_name, subject: r.subject,
+              at: r.received_at, campaign: campaignName[r.campaign_id] || null,
+              preview: String(r.text_body || '').slice(0, 160)
+            }))
+        };
+        break;
+      }
+
+      case "set_campaign_status": {
+        if (req.method !== "POST") { result = { error: "POST required" }; break; }
+        const body = await req.json();
+        const { campaign_id, status, auto_source } = body;
+        if (!campaign_id) { result = { error: "campaign_id required" }; break; }
+        const campaign = await getCampaign(campaign_id);
+        if (!ownsCampaign(campaign)) { result = { error: `Campaign ${campaign_id} not found` }; break; }
+        if (status && !["active", "ready", "paused", "archived"].includes(status)) {
+          result = { error: "status must be active | ready | paused | archived" }; break;
+        }
+        if (status) campaign.status = status;
+        if (typeof auto_source === "boolean") campaign.auto_source = auto_source;
+        campaign.updated_at = new Date().toISOString();
+        await putCampaign(campaign);
+        result = { success: true, campaign: { id: campaign.id, name: campaign.name, status: campaign.status, auto_source: campaign.auto_source === true } };
+        break;
+      }
+
+      case "icp_test": {
+        const { icpDiscoverCompanies } = await import('./researcher-background.mjs');
+        const hunterKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
+          ? Netlify.env.get('HUNTER_API_KEY') : (process.env.HUNTER_API_KEY || '');
+        const icp = url.searchParams.get("icp") || "B2B technology companies between 15-100 employees - no competitors like GONG";
+        result = await icpDiscoverCompanies(icp, url.searchParams.get("role") || "CEO", hunterKey);
+        break;
+      }
+
+      case "discover_raw": {
+        const hunterKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('HUNTER_API_KEY'))
+          ? Netlify.env.get('HUNTER_API_KEY') : (process.env.HUNTER_API_KEY || '');
+        let payload = {};
+        try { payload = JSON.parse(url.searchParams.get("body") || "{}"); } catch { payload = {}; }
+        const method = url.searchParams.get("method") || "POST";
+        let res;
+        if (method === "GET") {
+          const params = new URLSearchParams({ api_key: hunterKey, ...payload });
+          res = await fetch(`https://api.hunter.io/v2/discover?${params}`);
+        } else {
+          res = await fetch(`https://api.hunter.io/v2/discover?api_key=${hunterKey}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+          });
+        }
+        const text = await res.text();
+        result = { http: res.status, body: text.slice(0, 3000) };
+        break;
+      }
+
       case "get_campaign": {
         const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
         const campaign = await getCampaign(campaignId);
-        if (!campaign) {
+        if (!ownsCampaign(campaign)) {
           return new Response(JSON.stringify({ error: "Campaign not found" }), {
             status: 404,
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -95,7 +291,7 @@ export default async (req, context) => {
       }
 
       case "list_campaigns": {
-        const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+        const campaigns = await listCampaigns(tenantId);
         result = { campaigns };
         break;
       }
@@ -111,7 +307,7 @@ export default async (req, context) => {
         const id = crypto.randomUUID();
         const campaign = {
           id,
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           name: body.name || "New Campaign",
           status: body.status || "draft",
           daily_send_limit: body.daily_send_limit || 50,
@@ -125,7 +321,7 @@ export default async (req, context) => {
           const personaId = crypto.randomUUID();
           await putPersona({
             id: personaId,
-            tenant_id: DEFAULTS.TENANT_ID,
+            tenant_id: tenantId,
             campaign_id: id,
             target_role: body.persona.target_role || "Decision Maker",
             pain_points: body.persona.pain_points || [],
@@ -140,7 +336,7 @@ export default async (req, context) => {
           const scId = crypto.randomUUID();
           await putSignalConfig({
             id: scId,
-            tenant_id: DEFAULTS.TENANT_ID,
+            tenant_id: tenantId,
             campaign_id: id,
             signal_types: body.signal_config.signal_types || ["company_news", "hiring"],
             serp_query_templates: body.signal_config.serp_query_templates || ["{company} news {year}"]
@@ -151,7 +347,7 @@ export default async (req, context) => {
         const seqId = crypto.randomUUID();
         await putSequence({
           id: seqId,
-          tenant_id: DEFAULTS.TENANT_ID,
+          tenant_id: tenantId,
           campaign_id: id,
           step_count: body.step_count || 12,
           cadence_config: body.cadence_config || { step_delays_days: [0, 3, 3, 4, 5, 5, 7, 7, 7, 10, 10, 14] },
@@ -193,33 +389,106 @@ export default async (req, context) => {
       }
 
       case "activity_log": {
-        const log = await listActivityLog(50);
+        // Activity entries predate tenancy — scope them via campaign ownership
+        // for non-demo tenants (demo keeps the full internal feed).
+        let log = await listActivityLog(50);
+        if (tenantId !== DEFAULTS.TENANT_ID) {
+          const ownIds = new Set((await listCampaigns(tenantId)).map(c => c.id));
+          log = log.filter(e => e.campaign_id && ownIds.has(e.campaign_id));
+        }
         result = { entries: log };
         break;
       }
 
       case "list_queued_sends": {
-        const sends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
+        if (!ownsCampaign(await getCampaign(campaignId))) { result = { error: "Campaign not found" }; break; }
+        const sends = await listQueuedSends(campaignId);
         result = { sends };
+        break;
+      }
+
+      case "list_pending": {
+        const campaignId = url.searchParams.get("campaign_id");
+        const ownIds = new Set((await listCampaigns(tenantId)).map(c => c.id));
+        const sends = (await listRecords("email_sends")).filter(s =>
+          s.status === "pending_approval" && ownIds.has(s.campaign_id) &&
+          (!campaignId || s.campaign_id === campaignId));
+        const pending = [];
+        for (const s of sends.slice(0, 200)) {
+          const p = await getProspect(s.prospect_id);
+          pending.push({
+            send_id: s.id, campaign_id: s.campaign_id, step_number: s.step_number,
+            drafted_at: s.drafted_at, subject: s.email_subject, body: s.email_body,
+            to: p?.email || null, contact_name: p?.contact_name || null, company: p?.company_name || p?.company || null,
+            signals_used: s.signals_used || []
+          });
+        }
+        result = { count: pending.length, pending };
+        break;
+      }
+
+      case "approve_sends":
+      case "reject_sends": {
+        if (req.method !== "POST") { result = { error: "POST required" }; break; }
+        if (!authCtx.user && !authCtx.internal) { result = { error: "user approval required" }; break; }
+        const body = await req.json().catch(() => ({}));
+        const ids = Array.isArray(body.send_ids) ? body.send_ids.slice(0, 100) : [];
+        const edits = body.edits && typeof body.edits === "object" ? body.edits : {};
+        const nowIso = new Date().toISOString();
+        const done = [], skipped = [];
+        for (const id of ids) {
+          const send = await ownedSend(String(id));
+          if (!send || send.status !== "pending_approval") { skipped.push(id); continue; }
+          if (action === "approve_sends") {
+            const e = edits[id] || {};
+            if (typeof e.subject === "string" && e.subject.trim()) send.email_subject = e.subject.trim().slice(0, 300);
+            if (typeof e.body === "string" && e.body.trim()) send.email_body = e.body.slice(0, 20000);
+            send.status = "queued";              // queue-manager delivers approved sends (budget, suppression re-checked)
+            send.approved_at = nowIso;
+            send.approved_by = authCtx.user?.email || "internal";
+            send.scheduled_at = nowIso;
+            send.dispatched_at = null;
+          } else {
+            send.status = "rejected";
+            send.rejected_at = nowIso;
+            send.rejected_by = authCtx.user?.email || "internal";
+            send.rejection_reason = String(body.reason || "").slice(0, 500) || null;
+          }
+          await putEmailSend(send);
+          done.push(id);
+        }
+        result = { action, updated: done.length, send_ids: done, skipped };
         break;
       }
 
       case "trigger_queue": {
         // Manual trigger for queue-manager logic (for testing)
-        const allSends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
+        const triggerCampaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
+        if (!ownsCampaign(await getCampaign(triggerCampaignId))) { result = { error: "Campaign not found" }; break; }
+        const allSends = await listQueuedSends(triggerCampaignId);
         const batch = allSends.slice(0, 5);
         if (batch.length === 0) {
           result = { message: "No queued sends found" };
         } else {
-          // Call send-worker directly
+          // Hand to the send worker. It only processes 'dispatched' sends:
+          // unapproved ones are drafted to pending_approval, approved ones are
+          // delivered. Authenticated with the internal service token.
+          const nowIso = new Date().toISOString();
+          for (const s of batch) { s.status = "dispatched"; s.dispatched_at = nowIso; await putEmailSend(s); }
           const sendIds = batch.map(s => s.id);
           const campaignId = batch[0].campaign_id;
-          const workerResp = await fetch(`https://aisdr.a-gent.co/api/send-worker`, {
+          const workerResp = await fetch(`${siteUrl()}/.netlify/functions/send-worker-background`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({ campaign_id: campaignId, send_ids: sendIds, batch_index: 0, dry_run: url.searchParams.get("dry_run") === "true" })
           });
-          result = { dispatched: sendIds.length, send_ids: sendIds, worker_status: workerResp.status, worker_response: await workerResp.json() };
+          if (!workerResp.ok) {
+            for (const s of batch) { s.status = "queued"; s.dispatched_at = null; await putEmailSend(s); }
+          }
+          const text = await workerResp.text();
+          let worker_response = null; try { worker_response = text ? JSON.parse(text) : null; } catch { worker_response = null; }
+          result = { dispatched: workerResp.ok ? sendIds.length : 0, send_ids: sendIds, worker_status: workerResp.status, worker_response };
         }
         break;
       }
@@ -234,7 +503,8 @@ export default async (req, context) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
+    console.error("[campaign-admin]", err.message, err.stack);
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
@@ -243,4 +513,6 @@ export default async (req, context) => {
 
 export const config = {
   path: "/api/campaign-admin"
-};
+}
+
+export default withCors(handler);

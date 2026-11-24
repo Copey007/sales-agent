@@ -25,10 +25,45 @@ import {
   listRecords, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
+import { syncContactToSupabase, icpDiscoverCompanies } from "./researcher-background.mjs";
+import { enrollPool } from "./researcher-find.mjs";
+import { sb, poolTenantFilter } from "./_supabase-rest.mjs";
+import { resolveTenantContext } from "./_tenant.mjs";
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
-export default async (req, context) => {
+// Enroll every selected Researcher-pool contact into the campaign: one bulk
+// UPDATE (instant even at 1000 contacts). The queue-manager feeder then drips
+// them into the send ledger ~30 at a time, so the ledger never bloats.
+async function enrollSelectedContacts(campaignId, contactIds, tenantId) {
+  const tf = await poolTenantFilter(tenantId);
+  // Explicit ids (small hand-picked lists): mark just those selected first.
+  if (Array.isArray(contactIds) && contactIds.length) {
+    await sb(`contact_pool?id=in.(${contactIds.join(',')})&status=eq.found${tf}`, {
+      method: 'PATCH', body: { selected: true }, prefer: 'return=minimal'
+    }).catch(() => {});
+  }
+  const enrolled = await enrollPool(campaignId, tenantId);
+
+  const fresh = await getCampaign(campaignId);
+  if (fresh) {
+    fresh.agent_status.researcher = {
+      state: 'COMPLETE',
+      last_action: `Enrolled ${enrolled} contacts from the Researcher pool`,
+      updated_at: new Date().toISOString(),
+      prospects_found: enrolled
+    };
+    fresh.agent_status.ops = { state: 'ACTIVE', last_action: `Feeder queues sends progressively (${enrolled} awaiting)`, updated_at: new Date().toISOString() };
+    fresh.agent_status.sdr = { state: 'ACTIVE', last_action: 'Sequencing as the queue fills', updated_at: new Date().toISOString() };
+    await putCampaign(fresh);
+  }
+
+  return { prospects_enrolled: enrolled, source: 'researcher_pool', feeder: true };
+}
+
+const __handler = async (req, context) => {
   if (req.method === "OPTIONS") {
-    return new Response("", { status: 204, headers: corsHeaders() });
+    return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   const url = new URL(req.url);
@@ -41,17 +76,40 @@ export default async (req, context) => {
   // Wrap body data so handleLaunch can read it without re-parsing
   const reqWithBody = { method: req.method, url: req.url, _body: bodyData, json: async () => bodyData };
 
+  // Tenant scope: resolve BEFORE wrapping (reqWithBody drops the headers).
+  // JWT → caller's tenant; no auth header → demo tenant (internal calls);
+  // a bad token must 401, never fall back to the demo tenant.
+  const authCtx = await resolveTenantContext(req);
+  if (authCtx.invalid) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...corsHeaders() }
+    });
+  }
+  const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+
   try {
     let result;
 
     const cid = url.searchParams.get("campaign_id") || bodyData.campaign_id;
 
+    // Campaign-scoped sub-actions: the campaign must belong to this tenant.
+    if (["detail", "funnel", "replies", "loop", "prospects", "sends"].includes(action) && cid && cid !== "all") {
+      const owned = await getCampaign(cid);
+      if (!owned || (owned.tenant_id || DEFAULTS.TENANT_ID) !== tenantId) {
+        return new Response(JSON.stringify({ error: "Campaign not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", ...corsHeaders() }
+        });
+      }
+    }
+
     switch (action) {
       case "launch":
-        result = await handleLaunch(reqWithBody);
+        result = await handleLaunch(reqWithBody, tenantId);
         break;
       case "status":
-        result = await handleStatus();
+        result = await handleStatus(tenantId);
         break;
       case "detail":
         result = await handleDetail(cid);
@@ -60,7 +118,7 @@ export default async (req, context) => {
         result = await handleFunnel(cid);
         break;
       case "replies":
-        result = await handleReplies(cid);
+        result = await handleReplies(cid, tenantId);
         break;
       case "loop":
         result = await handleLoopState(cid);
@@ -94,7 +152,7 @@ export const config = {
 
 // ─── Launch Handler ─────────────────────────────────────────────────────────
 
-async function handleLaunch(req) {
+async function handleLaunch(req, requestTenantId) {
   const body = await req.json();
   // Support both field name conventions (UI sends persona/problem, API docs say target_persona/problem_we_solve)
   const campaign_name = body.campaign_name;
@@ -107,7 +165,7 @@ async function handleLaunch(req) {
   }
 
   const campaignId = crypto.randomUUID();
-  const tenantId = DEFAULTS.TENANT_ID;
+  const tenantId = requestTenantId || DEFAULTS.TENANT_ID;
   const now = new Date().toISOString();
 
   // 1. Create Campaign record
@@ -115,7 +173,9 @@ async function handleLaunch(req) {
     id: campaignId,
     tenant_id: tenantId,
     name: campaign_name,
-    status: "active",
+    // Campaigns are created READY, not sending. Nothing dispatches until the
+    // user presses "Send to AI SDR" in Mission Control (status -> active).
+    status: "ready",
     daily_send_limit: 25,
     sending_domain: "a-gent.co",
     sender_name: "Mark",
@@ -210,9 +270,19 @@ async function handleLaunch(req) {
   campaign.agent_status.researcher = { state: "ACTIVE", last_action: "Sourcing prospects via Hunter.io", updated_at: now };
   await putCampaign(campaign);
 
-  console.log(`[orchestrator] launch: running inline researcher for campaign ${campaignId}`);
-  const researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
-  console.log(`[orchestrator] inline researcher returned: ${JSON.stringify(researchResult)}`);
+  // Two enrollment modes:
+  //  - contact_ids provided → enroll exactly the contacts the user selected
+  //    in the A-Gent Researcher panel (the find → select → campaign flow)
+  //  - otherwise → auto-source via the inline ICP researcher
+  let researchResult;
+  if (body.use_pool === true || (Array.isArray(body.contact_ids) && body.contact_ids.length)) {
+    console.log(`[orchestrator] launch: enrolling selected Researcher-pool contacts`);
+    researchResult = await enrollSelectedContacts(campaignId, body.contact_ids, tenantId);
+  } else {
+    console.log(`[orchestrator] launch: running inline researcher for campaign ${campaignId}`);
+    researchResult = await runResearcherAgent(campaignId, parsedICP, target_persona);
+    console.log(`[orchestrator] inline researcher returned: ${JSON.stringify(researchResult)}`);
+  }
 
   // Log activity
   await logActivity({
@@ -230,18 +300,18 @@ async function handleLaunch(req) {
     success: true,
     campaign_id: campaignId,
     campaign_name: campaign_name,
-    status: "active",
+    status: "ready",
     agent_status: updated?.agent_status || campaign.agent_status,
     metrics: updated?.metrics || {},
     research_result: researchResult,
-    message: `Campaign "${campaign_name}" is live. Agent Researcher sourced ${researchResult.prospects_enrolled} real prospects, Agent Ops queued ${researchResult.prospects_enrolled} sends, Agent SDR is ready.`
+    message: `Campaign "${campaign_name}" created with ${researchResult.prospects_enrolled} contacts — press "Send to AI SDR" in the Campaign Agent panel to start the 12-step sequence.`
   };
 }
 
 // ─── Status Handler ─────────────────────────────────────────────────────────
 
-async function handleStatus() {
-  const campaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+async function handleStatus(tenantId = DEFAULTS.TENANT_ID) {
+  const campaigns = await listCampaigns(tenantId);
   const activeCampaigns = campaigns.filter(c => c.status === "active");
 
   // Use cached metrics from the campaign record to avoid N*3 Blobs list calls
@@ -338,12 +408,16 @@ async function handleFunnel(campaignId) {
 
 // ─── Replies Handler (campaign-scoped) ──────────────────────────────────────
 
-async function handleReplies(campaignId) {
+async function handleReplies(campaignId, tenantId = DEFAULTS.TENANT_ID) {
   if (!campaignId) return { error: "campaign_id required" };
   const { listCampaignReplies, listAllReplies } = await import('./_campaign-store.mjs');
   let replies;
   if (campaignId === 'all') {
-    replies = await listAllReplies();
+    // Tenant-scope the "all" feed via campaign attribution (replies predating
+    // tenancy have no tenant_id; unattributed ones stay on the demo feed).
+    const ownIds = new Set((await listCampaigns(tenantId)).map(c => c.id));
+    replies = (await listAllReplies()).filter(r =>
+      r.campaign_id ? ownIds.has(r.campaign_id) : tenantId === DEFAULTS.TENANT_ID);
   } else {
     replies = await listCampaignReplies(campaignId);
   }
@@ -553,6 +627,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
 
   const campaign = await getCampaign(campaignId);
   if (!campaign) return { prospects_enrolled: 0, stats: {} };
+  const tenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
 
   const now = new Date().toISOString();
   let rawProspects = [];
@@ -565,8 +640,24 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
   } else {
     const seniority = mapRoleToSeniority(targetRole);
     const department = mapRoleToDepartment(targetRole);
-    // Use only first 3 domains to stay within timeout
-    const domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
+    // ICP Agent first: real companies matching the campaign's ICP text;
+    // static domain map only as an honest fallback. discover_offset advances
+    // so the auto-source top-up continues where the launch left off.
+    const icpText = campaign?.brief?.icp || '';
+    const discOffset = Number(campaign.discover_offset) || 0;
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, RESEARCHER_DOMAINS_PER_RUN, discOffset);
+    let domains;
+    if (disc.companies.length) {
+      domains = disc.companies.slice(0, RESEARCHER_DOMAINS_PER_RUN);
+      discoverStats.discover_mode = disc.mode;
+      discoverStats.discover_filters = disc.filters;
+      discoverStats.market_size = disc.total;
+      campaign.discover_offset = disc.next_offset;
+      await putCampaign(campaign);
+    } else {
+      domains = selectICPDomains(parsedICP, targetRole).slice(0, RESEARCHER_DOMAINS_PER_RUN);
+      discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
+    }
     discoverStats.companies_searched = domains.length;
 
     for (const { domain, company_name } of domains) {
@@ -637,7 +728,9 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
       const s = getStore('prospects');
       const list = await s.list();
       const records = await Promise.all(list.blobs.map(b => s.get(b.key, { type: 'json' })));
-      return records.filter(Boolean);
+      // Dedup within this campaign's tenant only — records written before
+      // multi-tenancy (no tenant_id) belong to the demo tenant.
+      return records.filter(Boolean).filter(p => (p.tenant_id || DEFAULTS.TENANT_ID) === tenantId);
     } catch { return []; }
   })();
   const allProspectEmailSet = new Set(allProspects.map(p => (p.email || '').toLowerCase()));
@@ -655,7 +748,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
     const emailLower = (p.email || '').toLowerCase();
     if (!emailLower || seenEmails.has(emailLower)) { discoverStats.deduped++; continue; }
     seenEmails.add(emailLower);
-    if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) { discoverStats.suppressed++; continue; }
+    if (await isEmailSuppressed(tenantId, emailLower)) { discoverStats.suppressed++; continue; }
     if (existingProspectEmails.has(emailLower)) { discoverStats.deduped++; continue; }
     const existingProspect = allProspects.find(pr => pr.email === emailLower) || null;
     toEnroll.push({ ...p, _existing: existingProspect });
@@ -668,7 +761,7 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
     if (!prospect) {
       prospect = {
         id: crypto.randomUUID(),
-        tenant_id: DEFAULTS.TENANT_ID,
+        tenant_id: tenantId,
         email: p.email.toLowerCase(),
         name: p.name || null,
         first_name: p.first_name || null,
@@ -692,11 +785,13 @@ async function runResearcherAgent(campaignId, parsedICP, targetRole) {
       await putProspect(prospect);
     }
     await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
+    await syncContactToSupabase(prospect, campaign?.name);
     enrolled.push(prospect);
   }
 
   // Update researcher agent status on campaign
   const freshCampaign = await getCampaign(campaignId);
+  if (freshCampaign && campaign.discover_offset != null) freshCampaign.discover_offset = campaign.discover_offset;
   if (freshCampaign) {
     const sourceLabel = discoverStats.fallback ? 'demo (no Hunter key)' : 'Hunter.io live';
     freshCampaign.agent_status.researcher = {
@@ -732,7 +827,7 @@ async function runOpsAgent(campaignId, prospects, campaignRecord) {
 
     await putEmailSend({
       id: sendId,
-      tenant_id: DEFAULTS.TENANT_ID,
+      tenant_id: campaign.tenant_id || DEFAULTS.TENANT_ID,
       campaign_id: campaignId,
       prospect_id: prospect.id,
       prospect_email: prospect.email,
@@ -830,6 +925,9 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization"
   };
 }
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

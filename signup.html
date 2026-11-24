@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get your live AI agent — A-Gent</title>
+  <meta name="description" content="Create a real-time AI avatar agent for your company in under a minute.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--black:#0a0a0c;--panel:#131316;--panel-2:#1a1a1f;--gold:#c8b48c;--gold-2:#d4c9a8;--green:#7eb88a;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(200,180,140,.18);--red:#ff5c7a}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{min-height:100%;background:radial-gradient(120% 120% at 50% 0%,#1a1a1f 0%,#0a0a0c 70%);color:var(--text);font-family:'Inter',sans-serif}
+    body{display:flex;flex-direction:column;align-items:center;padding:32px 18px 60px}
+    .logo{height:34px;margin:8px 0 26px}
+    .card{width:100%;max-width:440px;background:rgba(10,13,16,.7);border:1px solid var(--line);border-radius:20px;padding:30px 28px;box-shadow:0 16px 60px rgba(0,0,0,.5)}
+    h1{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+    .sub{color:var(--soft);font-size:.9rem;line-height:1.5;margin-bottom:22px}
+    .plan-pill{display:inline-block;margin:4px 0 14px;padding:6px 14px;border:1px solid var(--line);background:rgba(200,180,140,.10);border-radius:999px;font-size:.8rem;font-weight:600;color:var(--gold-2)}
+    label{display:block;font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}
+    input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.92rem;outline:none}
+    input:focus{border-color:var(--gold)}
+    .handle{display:flex;align-items:center;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);overflow:hidden}
+    .handle span{padding:12px 4px 12px 14px;color:var(--muted);font-size:.92rem;white-space:nowrap}
+    .handle input{border:0;padding-left:0;border-radius:0}
+    .btn{width:100%;margin-top:24px;padding:14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:1rem;cursor:pointer;transition:transform .12s}
+    .btn:hover{transform:translateY(-1px)}
+    .btn:disabled{opacity:.6;cursor:wait;transform:none}
+    .err{color:var(--red);font-size:.84rem;margin-top:14px;min-height:1em;text-align:center}
+    .fine{color:var(--muted);font-size:.74rem;text-align:center;margin-top:16px;line-height:1.5}
+    .fine a{color:var(--gold-2);text-decoration:none}
+    /* success */
+    .success{display:none;text-align:center}
+    .success .check{font-size:2.4rem}
+    .success h2{font-size:1.4rem;font-weight:800;margin:8px 0 6px}
+    .success p{color:var(--soft);font-size:.92rem;line-height:1.6;margin-bottom:8px}
+    .urlbox{margin:16px 0;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);font-size:.9rem;color:var(--gold-2);word-break:break-all}
+    .go{display:inline-block;margin-top:8px;padding:13px 26px;border-radius:999px;background:linear-gradient(135deg,var(--green),#4e7d5a);color:#021006;font-weight:700;text-decoration:none}
+  </style>
+</head>
+<body>
+  <img class="logo" src="assets/agent-logo-master.svg" alt="A-Gent"/>
+  <div class="card">
+    <!-- form -->
+    <div id="form">
+      <h1>Start your 15-day free trial</h1>
+      <div class="plan-pill" id="planPill" style="display:none"></div>
+      <p class="sub">Set up your workspace in under a minute. Card required, no charge for 15 days — cancel anytime before the trial ends.</p>
+
+      <label>Company</label>
+      <input id="company" type="text" placeholder="Acme Corp" autocomplete="organization"/>
+      <label>Your name</label>
+      <input id="name" type="text" placeholder="Jordan Lee" autocomplete="name"/>
+      <label>Work email</label>
+      <input id="email" type="email" placeholder="you@acme.com" autocomplete="email"/>
+      <label>Password</label>
+      <input id="password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/>
+      <label>Your agent's handle</label>
+      <div class="handle"><span>aisdr.a-gent.co/a/</span><input id="slug" type="text" placeholder="acme" autocomplete="off"/></div>
+
+      <button class="btn" id="submit" onclick="submitSignup()">Start 15-day free trial →</button>
+      <div class="err" id="err"></div>
+      <div class="fine">By signing up you agree to our terms. Already have an account? <a href="#">Sign in</a></div>
+    </div>
+
+    <!-- success -->
+    <div class="success" id="success">
+      <div class="check">🎉</div>
+      <h2>Your workspace is live!</h2>
+      <p>Your 15-day free trial has started. Set up your AI agent, persona, and branding anytime — manage everything in Mission Control.</p>
+      <a class="go" id="goBtn" href="https://missioncontrol.a-gent.co/?welcome=1">▶ Go to Mission Control</a>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const SB_URL = 'https://byospmliiokgrdjjxsde.supabase.co';
+    const SB_ANON = 'sb_publishable_sQAEX9fp8QuAOwIjPLG1cQ_Um-j1Yi2';
+    const TRIAL_DAYS = 15;
+
+    // Selected plan (from offers page ?plan=...)
+    const PLANS = {
+      'live-agent': { label: 'Live Agent', price: '$499/month' },
+      'starter':    { label: 'Live Agent Starter', price: '$99/month' },
+    };
+    const planKey = new URLSearchParams(location.search).get('plan');
+    const selectedPlan = PLANS[planKey] || null;
+    if (selectedPlan) {
+      const pill = $('planPill');
+      pill.textContent = `Selected plan: ${selectedPlan.label} — ${selectedPlan.price}`;
+      pill.style.display = 'inline-block';
+    }
+
+    // Auto-suggest a handle from the company name (until the user edits it).
+    let slugEdited = false;
+    $('slug').addEventListener('input', () => { slugEdited = true; });
+    $('company').addEventListener('input', () => {
+      if (slugEdited) return;
+      $('slug').value = $('company').value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    });
+
+    async function submitSignup() {
+      const btn = $('submit'); $('err').textContent = '';
+      const email = $('email').value, password = $('password').value;
+      if (!$('company').value || !$('name').value || !email || !password || !$('slug').value) {
+        $('err').textContent = 'Please fill in all fields.'; return;
+      }
+      if (password.length < 8) { $('err').textContent = 'Password must be at least 8 characters.'; return; }
+
+      const payload = {
+        company: $('company').value, name: $('name').value,
+        email, password, slug: $('slug').value, plan: planKey || null,
+      };
+      btn.disabled = true; btn.textContent = 'Creating workspace…';
+      try {
+        const res = await fetch('/api/signup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Signup failed.');
+
+        // PLG: card-required 15-day free trial checkout (same motion as the other CTAs)
+        btn.textContent = 'Starting your 15-day free trial…';
+        let token = null;
+        try {
+          const gr = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
+            method: 'POST', headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          token = (await gr.json())?.access_token || null;
+        } catch {}
+
+        if (token) {
+          try {
+            const co = await fetch('/api/billing-checkout', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({
+                trial_days: TRIAL_DAYS, plan: planKey || null,
+                success_url: 'https://missioncontrol.a-gent.co/?welcome=1',
+                cancel_url: 'https://missioncontrol.a-gent.co/?billing=cancelled',
+              }),
+            });
+            const cod = await co.json();
+            if (cod.url) { window.location.href = cod.url; return; } // → Stripe card capture
+          } catch {}
+        }
+
+        // Stripe not wired yet (or token hiccup) — workspace is live on trial; go manage.
+        $('form').style.display = 'none';
+        $('success').style.display = 'block';
+      } catch (e) {
+        $('err').textContent = e.message;
+        btn.disabled = false; btn.textContent = 'Start 15-day free trial →';
+      }
+    }
+  </script>
+</body>
+</html>

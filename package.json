@@ -1,11 +1,12 @@
 {
   "name": "sales-agent",
   "version": "1.0.0",
-  "description": "Autonomous AI sales agent — account research, prospecting, email outreach, signal detection",
+  "description": "Autonomous AI sales agent \u2014 account research, prospecting, email outreach, signal detection",
   "main": "cli.js",
   "scripts": {
     "start": "node cli.js",
-    "test": "echo \"No tests yet\""
+    "test": "node scripts/check-syntax.mjs && node --import ./tests/helpers/register-blobs-mock.mjs --test \"tests/*.test.mjs\"",
+    "check": "node scripts/check-syntax.mjs"
   },
   "keywords": [
     "sales",

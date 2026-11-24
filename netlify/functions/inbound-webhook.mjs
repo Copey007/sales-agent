@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 /**
  * Inbound Webhook — Reply Capture & Forward
  *
@@ -7,7 +8,34 @@
  * and logs each reply to the Netlify Blobs 'replies' store for Loop Engine Phase 2.
  */
 
-export default async (req, context) => {
+
+/**
+ * Verify a Resend (Svix / Standard Webhooks) signature over the RAW body.
+ * Headers: svix-id, svix-timestamp, svix-signature ("v1,<base64> ...").
+ * Secret: RESEND_WEBHOOK_SECRET ("whsec_<base64>") from the Resend dashboard.
+ */
+function verifyResendSignature(req, rawBody) {
+  const secret = (typeof Netlify !== 'undefined' && Netlify.env?.get('RESEND_WEBHOOK_SECRET'))
+    || process.env.RESEND_WEBHOOK_SECRET || '';
+  if (!secret) return { ok: false, reason: 'RESEND_WEBHOOK_SECRET not configured' };
+  const id = req.headers.get('svix-id') || req.headers.get('webhook-id');
+  const ts = req.headers.get('svix-timestamp') || req.headers.get('webhook-timestamp');
+  const sigHeader = req.headers.get('svix-signature') || req.headers.get('webhook-signature');
+  if (!id || !ts || !sigHeader) return { ok: false, reason: 'missing signature headers' };
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(ts));
+  if (!Number.isFinite(age) || age > 300) return { ok: false, reason: 'timestamp outside tolerance' };
+  const key = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+  const expected = createHmac('sha256', key).update(`${id}.${ts}.${rawBody}`).digest('base64');
+  const exp = Buffer.from(expected);
+  const match = sigHeader.split(' ').some(part => {
+    const sig = part.split(',')[1] || '';
+    const got = Buffer.from(sig);
+    return got.length === exp.length && timingSafeEqual(got, exp);
+  });
+  return match ? { ok: true } : { ok: false, reason: 'bad signature' };
+}
+
+const __handler = async (req, context) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -16,7 +44,17 @@ export default async (req, context) => {
   }
 
   try {
-    const payload = await req.json();
+    // Unsigned requests could forge "prospect replies" into the Loop Engine
+    // and trigger forwarded email → verify the Svix signature before parsing.
+    const rawBody = await req.text();
+    const verdict = verifyResendSignature(req, rawBody);
+    if (!verdict.ok) {
+      console.warn('[inbound-webhook] rejected:', verdict.reason);
+      return new Response(JSON.stringify({ error: 'invalid signature' }), {
+        status: 401, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const payload = JSON.parse(rawBody);
 
     const eventType = payload.type || 'unknown';
     const data = payload.data || payload;
@@ -246,6 +284,65 @@ export default async (req, context) => {
       console.error('[inbound-webhook] Blobs logging failed:', blobErr.message);
     }
 
+    // --- 3. Reply correlation: stop the machine for this prospect ---
+    // Mark the prospect replied and cancel every still-queued send for them
+    // across ALL campaigns, so a reply immediately halts the cadence.
+    // EXCEPTION: out-of-office/auto-replies are not engagement — forward and
+    // log them, but keep the cadence alive for when the person is back.
+    const isAutoReply = /^(automatic reply|auto(matic)? response|out of office|abwesenheit|absence)/i.test(subject || '') ||
+      /auto-?submitted:\s*auto/i.test(String(data.headers?.['auto-submitted'] || ''));
+    let cancelledSends = 0;
+    if (isAutoReply) {
+      console.log('[inbound-webhook] Auto-reply detected — cadence left running for', prospectEmail);
+    } else try {
+      const {
+        putProspect, listRecords, putEmailSend, logActivity
+      } = await import('./_campaign-store.mjs');
+
+      // Inbound mail carries no tenant. Match the sender against EVERY
+      // tenant's prospects (the same address can exist in more than one) and
+      // stop the cadence wherever it exists — a reply/opt-out must always win.
+      const emailLower = (prospectEmail || '').toLowerCase();
+      const prospects = (await listRecords('prospects'))
+        .filter(p => (p.email || '').toLowerCase() === emailLower);
+      if (prospects.length) {
+        const prospectIds = new Set();
+        for (const prospect of prospects) {
+          prospect.replied_at = prospect.replied_at || receivedAt;
+          prospect.status = 'replied';
+          prospect.last_reply_id = replyId;
+          await putProspect(prospect);
+          prospectIds.add(prospect.id);
+        }
+
+        for (const send of await listRecords('email_sends')) {
+          if (prospectIds.has(send.prospect_id) && ['queued', 'dispatched'].includes(send.status)) {
+            send.status = 'cancelled_replied';
+            send.cancelled_at = receivedAt;
+            send.cancelled_reason = `prospect replied (${replyId})`;
+            await putEmailSend(send);
+            cancelledSends++;
+          }
+        }
+
+        await logActivity({
+          type: 'reply_received',
+          prospect_id: prospects[0].id,
+          prospect_email: prospectEmail,
+          prospect_name: prospectName,
+          campaign_id: attributedCampaignId,
+          reply_id: replyId,
+          subject,
+          followups_cancelled: cancelledSends
+        });
+        console.log(`[inbound-webhook] Correlated: ${prospects.length} prospect record(s) marked replied, ${cancelledSends} pending send(s) cancelled`);
+      } else {
+        console.log('[inbound-webhook] No prospect record for', prospectEmail, '— reply logged without correlation');
+      }
+    } catch (corrErr) {
+      console.error('[inbound-webhook] Reply correlation failed:', corrErr.message);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       reply_id: replyId,
@@ -253,6 +350,7 @@ export default async (req, context) => {
       subject: subject,
       forwarded: forwarded,
       logged: blobsLogged,
+      followups_cancelled: cancelledSends,
       received_at: receivedAt
     }), {
       status: 200,
@@ -293,3 +391,7 @@ function stripHtml(html) {
     .replace(/&nbsp;/g, ' ')
     .trim();
 }
+
+// 2026-11 lockdown: Svix signature verification (RESEND_WEBHOOK_SECRET).
+export { verifyResendSignature };
+export default __handler;  // server-to-server webhook: no CORS

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Talk to a Live AI Agent</title>
+  <meta name="description" content="Have a real-time conversation with a live AI agent. Ask anything — it answers live, on video.">
+  <meta property="og:title" content="Talk to a Live AI Agent">
+  <meta property="og:description" content="A real-time AI agent you can actually talk to. Ask anything, get answers live.">
+  <meta property="og:type" content="website">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--black:#0d0f18;--panel:#151827;--panel-2:#1b1e2e;--gold:#8b5cf6;--gold-2:#a78bfa;--green:#4ade80;--text:#f4f5fa;--soft:#c3c8d8;--muted:#7d84a0;--line:rgba(139,124,247,.20);--red:#ff5c7a}
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
+    .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(120% 120% at 50% 30%,#1c2033 0%,#0d0f18 70%)}
+    .stage video{width:100%;height:100%;object-fit:contain;object-position:center 25%;transform:scale(0.92);transform-origin:center center;opacity:0;transition:opacity .6s ease}
+    .stage.live video{opacity:1}
+    .vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(10,12,20,.65) 100%)}
+    .brand-bg{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .8s ease}
+    .stage.live ~ .brand-bg{opacity:1}
+    .brand-bg img{width:54vmin;max-width:620px;opacity:.16;filter:drop-shadow(0 0 40px rgba(0,0,0,.5))}
+    .slide-panel{position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;padding:64px 28px 176px;pointer-events:none}
+    .slide-panel.show{display:flex}
+    .slide-panel img,.slide-panel iframe,.slide-panel video{max-width:min(960px,93vw);max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:14px;border:1px solid var(--line);box-shadow:0 14px 70px rgba(0,0,0,.6);background:#151827}
+    .slide-panel iframe,.slide-panel video{width:min(960px,93vw);height:100%}
+    .slide-close{position:absolute;top:66px;right:30px;z-index:16;pointer-events:auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:rgba(13,15,24,.88);color:var(--soft);cursor:pointer;font-size:1rem}
+    /* Presenter mode: avatar shrinks to a corner, slide takes the stage */
+    .stage{transition:right .35s ease,bottom .35s ease,width .35s ease,height .35s ease,border-radius .35s ease}
+    body.presenting .stage{inset:auto;right:20px;bottom:96px;width:clamp(220px,26vw,330px);height:clamp(300px,44vh,440px);border-radius:18px;border:1px solid var(--line);box-shadow:0 10px 50px rgba(0,0,0,.6);z-index:18}
+    body.presenting .slide-panel{padding:46px clamp(240px,30vw,380px) 150px 30px;justify-content:flex-start}
+    .topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:12px;padding:14px 22px;background:linear-gradient(180deg,rgba(10,12,20,.7),transparent)}
+    .topbar img{height:26px}.topbar .spacer{flex:1}
+    .status{display:none;align-items:center;gap:7px;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--green);padding:5px 11px;border:1px solid rgba(126,184,138,.3);border-radius:999px;background:rgba(126,184,138,.06)}
+    .status .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+    .overlay{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px;background:rgba(13,15,24,.82);backdrop-filter:blur(6px)}
+    .overlay h1{font-size:clamp(1.5rem,4vw,2.4rem);font-weight:800;letter-spacing:-.02em}
+    .overlay p{font-size:.95rem;color:var(--soft);max-width:440px;line-height:1.6}
+    .start-btn{margin-top:6px;padding:15px 34px;border:0;border-radius:999px;background:linear-gradient(135deg,#6e3af5,#8b5cf6);color:#fff;font-weight:700;font-size:1rem;cursor:pointer;box-shadow:0 8px 32px rgba(110,58,245,.45);transition:transform .15s}
+    .start-btn:hover{transform:scale(1.04)}.start-btn:disabled{opacity:.6;cursor:wait;transform:none}
+    .overlay .err{color:var(--red);font-size:.84rem;max-width:440px;min-height:1em}
+    .overlay .tiny{color:var(--muted);font-size:.72rem}
+    .caption{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:20;max-width:min(720px,90vw);padding:13px 20px;background:rgba(13,15,24,.75);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;font-size:.95rem;line-height:1.5;color:var(--text);text-align:center;display:none}
+    .caption.thinking{color:var(--muted)}
+    .chips{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:20;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:min(760px,94vw);padding:0 10px}
+    .chip{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(13,15,24,.65);backdrop-filter:blur(8px);color:var(--soft);font-size:.78rem;cursor:pointer;transition:all .15s}
+    .chip:hover{border-color:var(--gold);color:var(--gold-2)}
+    .dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:25;display:none;align-items:center;gap:8px;padding:8px;background:rgba(16,18,30,.88);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:999px;box-shadow:0 8px 40px rgba(0,0,0,.5);max-width:94vw}
+    .dock input{width:min(360px,52vw);padding:11px 16px;border:1px solid var(--line);border-radius:999px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.88rem;outline:none}
+    .dock input:focus{border-color:var(--gold)}.dock input::placeholder{color:var(--muted)}
+    .icon-btn{width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:var(--panel-2);color:var(--soft);cursor:pointer;display:grid;place-items:center;font-size:1.1rem;flex-shrink:0;transition:all .15s}
+    .icon-btn:hover{border-color:var(--gold);color:var(--gold-2)}
+    .icon-btn.send{background:linear-gradient(135deg,#6e3af5,#8b5cf6);color:#fff;border:0;box-shadow:0 4px 18px rgba(110,58,245,.4)}
+    .icon-btn.mic.listening{background:var(--red);border-color:var(--red);color:#fff;animation:pulse 1.2s infinite}
+    .icon-btn.speaker.off{opacity:.45}
+    .icon-btn.end{border-color:rgba(255,92,122,.35);color:var(--red)}.icon-btn.end:hover{background:rgba(255,92,122,.12)}
+    .icon-btn.cta{width:auto;border-radius:999px;padding:0 16px;gap:6px;font-size:.8rem;font-weight:600;background:rgba(139,124,247,.14);color:var(--gold-2);border:1px solid rgba(139,124,247,.35)}
+    .drawer{position:fixed;top:0;right:0;bottom:0;width:340px;max-width:88vw;z-index:35;background:rgba(14,16,26,.97);border-left:1px solid var(--line);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
+    .drawer.open{transform:none}
+    .drawer h3{padding:16px;font-size:.8rem;color:var(--gold-2);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    .drawer .close{cursor:pointer;color:var(--muted);font-size:1.1rem}
+    .messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px}
+    .msg{max-width:88%;padding:9px 13px;border-radius:13px;font-size:.83rem;line-height:1.5}
+    .msg.bot{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+    .msg.user{align-self:flex-end;background:rgba(139,124,247,.14);border:1px solid var(--line);border-bottom-right-radius:4px}
+    .lead{padding:12px 14px;border-top:1px solid var(--line);display:flex;gap:8px}
+    .lead input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);font-size:.82rem;outline:none}
+    .lead button{padding:0 14px;border:0;border-radius:10px;background:linear-gradient(135deg,#6e3af5,#8b5cf6);color:#fff;font-weight:700;font-size:.8rem;cursor:pointer}
+    @media(max-width:600px){.caption{bottom:160px}.chips{bottom:104px}.dock input{width:46vw}}
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage"><video id="avatar" autoplay playsinline onclick="interruptAvatar()" title="Tap to interrupt" style="cursor:pointer"></video></div>
+  <div class="vignette"></div>
+  <div class="brand-bg"><img id="brandBg" src="assets/agent-logo.svg" alt=""/></div>
+  <div class="slide-panel" id="slidePanel"><button class="slide-close" onclick="hideSlide()" title="Hide slide">✕</button><img id="slideImg" alt=""/><iframe id="slideFrame" style="display:none" title="slide" allow="autoplay; fullscreen; picture-in-picture"></iframe><video id="slideVideo" style="display:none" playsinline controls></video></div>
+
+  <!-- Framing tuner (only shows with ?tune=1) -->
+  <div id="tuner" style="display:none;position:fixed;top:54px;left:14px;z-index:60;background:rgba(14,16,26,.95);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.72rem;color:var(--soft);min-width:200px">
+    <div style="font-weight:600;color:var(--gold-2);margin-bottom:6px">Framing tuner</div>
+    <div>Zoom: <b id="tunerZoomVal">1.20</b>×</div>
+    <input id="tunerZoom" type="range" min="0.6" max="2.4" step="0.01" value="1.1" style="width:100%">
+    <div style="margin-top:8px">Vertical: <b id="tunerPanVal">30</b>%</div>
+    <input id="tunerPan" type="range" min="0" max="70" step="1" value="30" style="width:100%">
+    <div style="margin-top:8px;color:var(--muted)">Tell me these two numbers and I'll lock it in.</div>
+  </div>
+  <div class="topbar">
+    <img src="assets/agent-logo.svg" alt="" id="logo"/>
+    <div class="spacer"></div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusLabel">Live</span></div>
+  </div>
+  <div class="overlay" id="overlay">
+    <div style="font-size:.66rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:#a78bfa">A-Gent &middot; Live AI Demo</div>
+    <h1 id="headline">Talk to a Live AI Agent</h1>
+    <p id="subcopy">Ask anything you'd ask a human. I answer in real time.</p>
+    <button class="start-btn" id="startBtn" onclick="startSession()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align:-2px;margin-right:8px"><polygon points="6 4 20 12 6 20 6 4"/></svg>Start Conversation</button>
+    <div class="err" id="err"></div>
+    <div class="tiny">Voice or text. Works best in Chrome.</div>
+  </div>
+  <div class="caption" id="caption"></div>
+  <div class="chips" id="chips"></div>
+  <div class="dock" id="dock">
+    <input type="text" id="input" placeholder="Type a message…" onkeydown="if(event.key==='Enter')handleSend()"/>
+    <button class="icon-btn send" onclick="handleSend()" title="Send"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
+    <button class="icon-btn mic" id="micBtn" onclick="toggleMic()" title="Voice input"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
+    <button class="icon-btn speaker" id="speakerBtn" onclick="toggleSpeaker()" title="Mute avatar"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+    <button class="icon-btn cta" onclick="toggleDrawer(true)" title="Transcript & contact"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Transcript</button>
+    <button class="icon-btn end" onclick="endSession()" title="End"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+  </div>
+  <div class="drawer" id="drawer">
+    <h3>Transcript <span class="close" onclick="toggleDrawer(false)">✕</span></h3>
+    <div class="messages" id="messages"></div>
+    <div class="lead">
+      <input type="email" id="email" placeholder="Email — have the team reach out"/>
+      <button onclick="submitLead()">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { LiveAvatarSession, SessionEvent, AgentEventsEnum } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
+
+    const $ = (id) => document.getElementById(id);
+    const video = $('avatar');
+    const params = new URLSearchParams(location.search);
+    const SLUG = params.get('slug') || 'demo';
+
+    // ── Framing: zoom + vertical pan (live-tunable via ?tune=1) ──────────
+    let frameZoom = parseFloat(params.get('zoom')) || 0.92;
+    let framePan = params.get('pan') != null ? parseFloat(params.get('pan')) : 25;
+    function applyFraming() {
+      video.style.transform = `scale(${frameZoom})`;
+      video.style.objectPosition = `center ${framePan}%`;
+    }
+    applyFraming();
+    if (params.has('tune')) {
+      const t = document.getElementById('tuner'); t.style.display = 'block';
+      const z = document.getElementById('tunerZoom'), zv = document.getElementById('tunerZoomVal');
+      const p = document.getElementById('tunerPan'), pv = document.getElementById('tunerPanVal');
+      z.value = frameZoom; zv.textContent = frameZoom.toFixed(2);
+      p.value = framePan; pv.textContent = framePan;
+      z.oninput = () => { frameZoom = parseFloat(z.value); zv.textContent = frameZoom.toFixed(2); applyFraming(); };
+      p.oninput = () => { framePan = parseFloat(p.value); pv.textContent = framePan; applyFraming(); };
+    }
+
+    let cfg = null;
+    let session = null, started = false, connecting = false, speaking = false, speakerOn = true, spokeOnce = false;
+    let presenting = false, presentIdx = 0, deckStarted = false, lastNarrate = false;
+    let curStep = -1;   // active Content Journey step index (-1 = none)
+    let pendingVideo = false;   // a clip waiting to play until the avatar's intro finishes
+    let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
+    let messages = [];
+
+    // ─── Load per-tenant config + theme the page ─────────────────────────
+    async function loadConfig() {
+      try {
+        const res = await fetch(`/api/agent-config?slug=${encodeURIComponent(SLUG)}`);
+        const data = await res.json();
+        if (!res.ok || !data.config) throw new Error(data.error || 'not found');
+        cfg = data.config;
+        const t = cfg.theme || {};
+        if (t.primary_color) { document.documentElement.style.setProperty('--gold', t.primary_color); }
+        if (t.headline) { $('headline').textContent = t.headline; document.title = `${t.headline} — ${cfg.name}`; }
+        if (t.subcopy) $('subcopy').textContent = t.subcopy;
+        if (t.logo_url) $('logo').src = t.logo_url; else $('logo').style.display = 'none';
+        $('brandBg').src = t.logo_url || 'assets/agent-logo.svg';
+      } catch (e) {
+        cfg = { slug: SLUG, name: 'AI Agent', greeting: "Hi! Ask me anything.", chips: [], theme: {} };
+        $('err').textContent = '';
+        console.warn('config load failed', e);
+      }
+    }
+
+    // ─── Session lifecycle ───────────────────────────────────────────────
+    window.startSession = async function () {
+      if (started || connecting) return;
+      connecting = true;
+      const btn = $('startBtn'); btn.disabled = true; btn.textContent = 'Connecting…'; $('err').textContent = '';
+      try {
+        const res = await fetch('/api/avatar-token', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: SLUG }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.session_token) {
+          const msg = data.message || ({
+            at_capacity: 'All live slots are busy right now — please try again in a moment.',
+            quota_exceeded: 'This agent has reached its limit for now. Please check back later.',
+            rate_limited: 'Too many attempts — give it a few seconds and try again.',
+          })[data.error] || (data.error || 'Could not start session');
+          throw new Error(msg);
+        }
+        sessionRow = data.session_row;
+        session = new LiveAvatarSession(data.session_token, { voiceChat: false, apiUrl: 'https://api.liveavatar.com' });
+
+        // The video/audio tracks only exist after the stream-ready event —
+        // attach + greet there, not right after start().
+        session.on(SessionEvent.SESSION_STREAM_READY, () => onStreamReady());
+        session.on(SessionEvent.SESSION_DISCONNECTED, (reason) => {
+          console.warn('avatar session disconnected', reason);
+          if (!started) fail('The session ended before connecting. Please try again.');
+        });
+        // Real talking state — makes barge-in / interrupt reliable.
+        try {
+          session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => { speaking = true; spokeOnce = true; setStatus('Speaking'); });
+          session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+            speaking = false; setStatus('Live');
+            // Journey: a video step's intro has finished — now play the clip (no talk-over).
+            if (pendingVideo) { pendingVideo = false; const sl = (cfg && cfg.slides) ? cfg.slides : []; const s = sl[curStep]; if (s) showSlide(s, true); }
+            // Auto-advance the deck once she finishes narrating a slide (legacy deck-walk).
+            if (presenting && lastNarrate) { lastNarrate = false; setTimeout(() => { if (presenting) stepPresent(1); }, 800); }
+          });
+        } catch (e) { console.warn('speak events unavailable', e); }
+
+        await session.start();
+        // Safety net: surface an error if the stream never becomes ready.
+        readyTimeout = setTimeout(() => { if (!started) fail('Avatar stream did not start. Please retry.'); }, 25000);
+      } catch (err) {
+        console.error(err);
+        fail(err.message || 'Failed to start. Please try again.');
+      }
+    };
+
+    async function onStreamReady() {
+      if (started) return;
+      clearTimeout(readyTimeout);
+      try { session.attach(video); } catch (e) { console.warn('attach failed', e); }
+      video.muted = !speakerOn;
+      started = true; connecting = false; startedAt = Date.now();
+      $('overlay').style.display = 'none';
+      $('stage').classList.add('live'); $('status').style.display = 'flex';
+      $('dock').style.display = 'flex'; $('input').focus();
+      keepAliveTimer = setInterval(() => { try { session.keepAlive(); } catch {} }, 30000);
+      heartbeatTimer = setInterval(() => meter('heartbeat'), 20000);
+      const greeting = cfg.greeting || `Hi! I'm ${cfg.name}. Ask me anything.`;
+      addMsg('bot', greeting);
+      // Let the avatar fully initialize so the opening line isn't dropped, then
+      // retry once if she never actually started speaking it.
+      spokeOnce = false;
+      await new Promise(r => setTimeout(r, 700));
+      await speak(greeting);
+      setTimeout(() => { if (started && !spokeOnce) { try { session.repeat(greeting); } catch {} } }, 1800);
+      showChips(cfg.chips || []);
+    }
+
+    function fail(msg) {
+      connecting = false;
+      try { session?.stop(); } catch {}
+      $('err').textContent = msg;
+      const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Conversation';
+    }
+
+    window.endSession = async function () {
+      await meter('end');
+      try { await session?.stop(); } catch {}
+      clearInterval(keepAliveTimer); clearInterval(heartbeatTimer);
+      started = false; session = null; sessionRow = null; messages = [];
+      $('stage').classList.remove('live'); $('status').style.display = 'none';
+      $('dock').style.display = 'none'; $('caption').style.display = 'none';
+      $('chips').innerHTML = ''; $('messages').innerHTML = ''; toggleDrawer(false); hideSlide();
+      const o = $('overlay'); o.style.display = 'flex';
+      o.querySelector('h1').textContent = 'Thanks for chatting!';
+      o.querySelector('p').textContent = 'You can start a new conversation anytime.';
+      const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Again';
+    };
+
+    // report running/final duration for metering + freeing the seat
+    function meter(event) {
+      if (!sessionRow) return;
+      const duration_seconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+      const payload = JSON.stringify({ session_row: sessionRow, duration_seconds, event });
+      if (event === 'end' && navigator.sendBeacon) {
+        navigator.sendBeacon('/api/avatar-session-end', new Blob([payload], { type: 'application/json' }));
+        return Promise.resolve();
+      }
+      return fetch('/api/avatar-session-end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload }).catch(() => {});
+    }
+    window.addEventListener('beforeunload', () => { if (started) meter('end'); });
+
+    // ─── Speaking (FULL mode: avatar speaks text in its own voice) ───────
+    async function speak(text) {
+      const cap = $('caption'); setStatus('Speaking');
+      cap.style.display = 'block'; cap.className = 'caption'; cap.textContent = text;
+      speaking = true;                    // optimistic; AVATAR_SPEAK_ENDED clears it
+      try { session.repeat(text); } catch (e) { console.warn('repeat failed', e); }
+    }
+    // Stop the avatar mid-sentence.
+    window.interruptAvatar = function () { if (speaking) { try { session.interrupt(); } catch {} } speaking = false; setStatus('Live'); };
+
+    // ─── Conversation ────────────────────────────────────────────────────
+    window.handleSend = function () {
+      const input = $('input'); const text = input.value.trim();
+      if (!text || !started) return; input.value = ''; send(text);
+    };
+    async function send(text) {
+      lastNarrate = false; pendingVideo = false;  // an interrupt must not auto-advance or auto-play
+      if (speaking) { try { session.interrupt(); } catch {} }
+      addMsg('user', text); messages.push({ role: 'user', content: text }); $('chips').innerHTML = '';
+      const q = (text || '').toLowerCase();
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+
+      // ── Content Journey: enter / exit / advance ─────────────────────────
+      if (slides.length) {
+        const isStop = /\b(stop|pause|enough)\b/.test(q) || q.includes('hold on') || (presenting && /\bexit\b/.test(q));
+        if (presenting && isStop) { presenting = false; curStep = -1; hideSlide(); const l = 'Sure — what would you like to know?'; addMsg('bot', l); await speak(l); return; }
+        if ((/\b(back|previous)\b/.test(q) || q.includes('go back')) && curStep > 0) { gotoStep(curStep - 1); return; }
+        // Exit words of the current step (or a generic "next") advance the journey.
+        const cur = curStep >= 0 ? slides[curStep] : null;
+        const exitWords = cur ? (cur.exit || []) : [];
+        const isNext = /\b(next|continue|resume)\b/.test(q) || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next step') || q.includes('move on') || exitWords.some(w => w && q.includes(String(w).toLowerCase()));
+        if (cur && isNext) { gotoStep(curStep + 1); return; }
+        // Enter words jump straight to a step.
+        const ent = matchEnterStep(q);
+        if (ent >= 0) { gotoStep(ent); return; }
+        // Generic "start the journey".
+        if (/\b(present|begin|overview)\b/.test(q) || q.includes('walk me through') || q.includes('get started') || q.includes('guided') || q.includes('show me')) { gotoStep(curStep < 0 ? 0 : curStep); return; }
+      }
+
+      // Any other question answers normally (and ends any active journey step).
+      presenting = false; curStep = -1;
+      const cap = $('caption'); cap.style.display = 'block'; cap.className = 'caption thinking'; cap.textContent = '● ● ●'; setStatus('Thinking');
+      let reply = '';
+      try {
+        const res = await fetch('/api/concierge', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'chat', slug: SLUG, messages, speak: false }),
+        });
+        const data = await res.json();
+        reply = data.reply || "Sorry, I didn't catch that — could you say it another way?";
+      } catch (e) { reply = "I'm having a little trouble connecting right now. Mind trying again?"; }
+      messages.push({ role: 'assistant', content: reply });
+      addMsg('bot', reply); await speak(reply);
+    }
+
+    // ─── UI helpers ──────────────────────────────────────────────────────
+    function addMsg(role, text) { const d = document.createElement('div'); d.className = 'msg ' + role; d.textContent = text; $('messages').appendChild(d); $('messages').scrollTop = 99999; }
+    function showChips(list) { const c = $('chips'); c.innerHTML = ''; (list || []).forEach((t) => { const b = document.createElement('button'); b.className = 'chip'; b.textContent = t; b.onclick = () => send(t); c.appendChild(b); }); }
+    function setStatus(label) { $('statusLabel').textContent = label; }
+
+    // ─── Content Journey (sequential steps with enter / exit / advance) ──────
+    let slideIdx = 0;
+    // Find a step the message should ENTER (by its enter words). Returns index or -1.
+    function matchEnterStep(q){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const msg = new Set(slideTokens(q));
+      for (let i = 0; i < slides.length; i++){
+        const enter = slides[i].triggers || [];
+        if (enter.some(w => w && q.includes(String(w).toLowerCase()))) return i;
+        if (slideTokens(enter.join(' ')).some(t => msg.has(t))) return i;
+      }
+      return -1;
+    }
+    // Show step i: render its content, narrate, and mark it active. i past the end ends the journey.
+    function gotoStep(i){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!slides.length) return;
+      if (i < 0) i = 0;
+      if (i >= slides.length){ presenting = false; curStep = -1; hideSlide(); const l = "That's everything — happy to take any questions."; addMsg('bot', l); speak(l); return; }
+      curStep = i; presenting = true; lastNarrate = false; pendingVideo = false;
+      const s = slides[i];
+      $('chips').innerHTML = '';
+      const isVid = /youtu\.?be|vimeo\.com|\.(mp4|webm|mov|m4v)(\?|$)/i.test(s.url || '');
+      const narr = (s.narration && s.narration.trim()) ? s.narration.trim() : '';
+      if (isVid && narr) {
+        // Sequence: show the clip paused, speak the intro, then play it when the intro ends.
+        showSlide(s, false); pendingVideo = true;
+        addMsg('bot', narr); messages.push({ role: 'assistant', content: narr }); speak(narr);
+      } else {
+        // Image/PDF steps narrate normally; a video with no narration just plays (no talk-over).
+        showSlide(s);
+        const line = narr || (isVid ? '' : `Here's ${s.title || 'the next step'}.`);
+        if (line) { addMsg('bot', line); messages.push({ role: 'assistant', content: line }); speak(line); }
+      }
+    }
+    // A finished clip auto-advances the journey to the next step (unless the step waits for words).
+    document.getElementById('slideVideo').addEventListener('ended', () => {
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const s = slides[curStep];
+      if (s && s.advance !== 'words') gotoStep(curStep + 1);
+    });
+    const SLIDE_STOP = new Set(['show','when','asked','ask','or','and','the','an','are','about','can','could','would','please','for','this','that','its','our','will','tell','give','want','see','how','much','does','what','you','your','they','them','from','with','have','has']);
+    const slideTokens = (s) => ((s || '').toLowerCase().match(/[a-z0-9-]+/g) || []).filter(t => t.length > 2 && !SLIDE_STOP.has(t));
+    function matchSlide(text){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!slides.length) return null;
+      const q = (text || '').toLowerCase();
+      const msg = new Set(slideTokens(q));
+      // 1) a slide whose trigger phrase or any keyword matches the message
+      for (const s of slides) {
+        const trigs = s.triggers || [];
+        if (trigs.some(t => t && q.includes(String(t).toLowerCase()))) { slideIdx = slides.indexOf(s) + 1; return s; }
+        if (slideTokens(trigs.join(' ')).some(t => msg.has(t))) { slideIdx = slides.indexOf(s) + 1; return s; }
+      }
+      // 2) generic "present / show me the slides / next slide" -> cycle through them
+      if (/\b(present|presentation|slides?|deck|next|overview|continue)\b/.test(q) || q.includes('show me') || q.includes('show us') || q.includes('walk me through') || q.includes('pull up') || q.includes('go on') || q.includes('keep going') || q.includes("what's next") || q.includes('whats next') || q.includes('next one')) {
+        const s = slides[slideIdx % slides.length]; slideIdx++; return s;
+      }
+      return null;
+    }
+    // Turn a YouTube / Vimeo watch URL into an embed URL (null if neither). autoplay toggles auto-start.
+    function videoEmbed(url, autoplay = true){
+      const ap = autoplay ? 1 : 0;
+      let m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+      if (m) return `https://www.youtube.com/embed/${m[1]}?autoplay=${ap}&rel=0&modestbranding=1`;
+      m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+      if (m) return `https://player.vimeo.com/video/${m[1]}?autoplay=${ap}`;
+      return null;
+    }
+    // autoplay=false defers a clip's playback (used when an avatar intro should finish first).
+    function showSlide(slide, autoplay = true){
+      const url = slide.url || '';
+      const img = $('slideImg'), frame = $('slideFrame'), vid = $('slideVideo');
+      // reset all three media holders
+      img.style.display='none'; img.src='';
+      frame.style.display='none'; frame.src='about:blank';
+      vid.style.display='none'; try { vid.pause(); } catch {} vid.removeAttribute('src');
+      const embed = videoEmbed(url, autoplay);
+      if (embed){                                              // YouTube / Vimeo demo clip
+        frame.style.display='block'; frame.src = embed;
+      } else if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)){      // hosted pre-recorded demo video
+        vid.style.display='block'; vid.src = url; vid.currentTime = 0;
+        if (autoplay) { const p = vid.play(); if (p && p.catch) p.catch(()=>{}); }
+        else { try { vid.pause(); } catch {} }                 // deferred — plays after the intro
+      } else if (/\.pdf(\?|$)/i.test(url)){                    // PDF deck
+        frame.style.display='block'; frame.src = url + '#toolbar=0&navpanes=0&view=FitH';
+      } else {                                                 // image slide
+        img.style.display='block'; img.src = url;
+      }
+      $('slidePanel').classList.add('show');
+      document.body.classList.add('presenting');     // avatar -> corner PiP
+      console.log('[slide] presenting', slide.title || url);
+    }
+    window.hideSlide = function(){
+      $('slidePanel').classList.remove('show'); document.body.classList.remove('presenting'); presenting = false;
+      $('slideImg').src=''; $('slideFrame').src='about:blank';
+      const vid = $('slideVideo'); try { vid.pause(); } catch {} vid.removeAttribute('src');
+    };
+
+    // ─── Auto-advancing deck walk ────────────────────────────────────────
+    function startPresent(){
+      const slides = (cfg && cfg.slides) ? cfg.slides : []; if (!slides.length) return;
+      deckStarted = true; presenting = true; presentIdx = 0; presentCurrent();
+    }
+    function presentCurrent(){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      if (!presenting || presentIdx < 0 || presentIdx >= slides.length) { presenting = false; return; }
+      const s = slides[presentIdx];
+      showSlide(s); $('chips').innerHTML = '';
+      const line = (s.narration && s.narration.trim()) ? s.narration.trim() : `Here's ${s.title || 'the next slide'}.`;
+      addMsg('bot', line);
+      lastNarrate = true;            // tells the speak-ended handler to auto-advance
+      speak(line);
+    }
+    function stepPresent(dir){
+      const slides = (cfg && cfg.slides) ? cfg.slides : [];
+      const ni = presentIdx + dir;
+      if (ni >= slides.length) { presenting = false; lastNarrate = false; const l = "That's the end of the deck — happy to take any questions."; addMsg('bot', l); speak(l); return; }
+      presentIdx = Math.max(0, ni); presentCurrent();
+    }
+    window.toggleSpeaker = function () { speakerOn = !speakerOn; video.muted = !speakerOn; const b = $('speakerBtn'); b.classList.toggle('off', !speakerOn); b.textContent = speakerOn ? '🔊' : '🔇'; };
+    window.toggleDrawer = function (open) { $('drawer').classList.toggle('open', open); };
+    window.submitLead = function () {
+      const el = $('email'); const email = el.value.trim();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { el.focus(); return; }
+      el.value = ''; el.placeholder = 'Thanks — we’ll be in touch!';
+      send(`My email is ${email}. Please have the team reach out to me.`);
+    };
+
+    // ─── Voice input (Web Speech API) ─────────────────────────────────────
+    function showCaption(msg){ const cap = $('caption'); cap.style.display='block'; cap.className='caption'; cap.textContent = msg; }
+    let rec = null, listening = false;
+    window.toggleMic = function () {
+      if (listening) { try { rec?.stop(); } catch {} return; }
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { showCaption('Voice needs Chrome or Edge — you can type instead.'); return; }
+      rec = new SR(); rec.continuous = false; rec.interimResults = false; rec.lang = 'en-US';
+      const b = $('micBtn');
+      rec.onstart = () => { listening = true; b.classList.add('listening'); interruptAvatar(); setStatus('Listening'); };
+      rec.onresult = (e) => { const t = e.results[0][0].transcript; if (t) send(t); };
+      rec.onerror = (e) => {
+        listening = false; b.classList.remove('listening');
+        const m = (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+          ? 'Microphone is blocked. Click the padlock in your address bar → allow Microphone, then tap the mic again.'
+          : e.error === 'no-speech' ? "Didn't hear anything — tap the mic and speak."
+          : e.error === 'audio-capture' ? 'No microphone found. Check your mic, then try again.'
+          : 'Mic error: ' + e.error;
+        showCaption(m);
+      };
+      rec.onend = () => { listening = false; b.classList.remove('listening'); if (!speaking) setStatus('Live'); };
+      try { rec.start(); } catch { listening = false; b.classList.remove('listening'); showCaption('Could not start the mic — tap it again.'); }
+    };
+
+    loadConfig();
+  </script>
+</body>
+</html>

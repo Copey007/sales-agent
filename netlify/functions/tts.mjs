@@ -10,8 +10,10 @@
  */
 
 import { MsEdgeTTS } from 'msedge-tts';
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -101,3 +103,6 @@ export default async (req, context) => {
 };
 
 export const config = { path: "/api/tts" };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

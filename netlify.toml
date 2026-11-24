@@ -18,9 +18,291 @@
 [functions."workforce-heartbeat"]
   schedule = "*/30 * * * *"
 
+[functions."avatar-reaper"]
+  schedule = "*/5 * * * *"
+
+# Hosted per-tenant avatar pages: /a/<slug> -> agent.html?slug=<slug>
+[[redirects]]
+  from = "/a/:slug"
+  to = "/agent.html?slug=:slug"
+  status = 200
+
+# Self-serve signup
+[[redirects]]
+  from = "/signup"
+  to = "/signup.html"
+  status = 200
+
+# ── Security: never serve source, data or tooling files ───────────────────
+# publish = "." deploys the whole repo as static files. These forced 404s stop
+# Netlify from serving function source (netlify/functions/*.mjs), agent memory
+# JSON, node_modules, docs and config. Forced rules win over existing files.
+# (Keep this list in sync with tests/netlify-toml.test.mjs.)
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/memory/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/core/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/capabilities/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/integrations/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/agents/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/node_modules/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tests/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/scripts/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/provisioner/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.git/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/deno.lock"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.gitignore"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/ARCHITECTURE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/PROVISIONER_ARCHITECTURE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/cli.js"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/integrate.js"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/cron_signal_scan.js"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/dashboard/login.html"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/dashboard/netlify.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/extension/package.json"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/extension/README.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# CORS for /api/* is handled per-request by the functions (strict origin
+# allowlist in netlify/functions/_auth.mjs) — no blanket "*" here.
+
+# ── Security + noindex headers (AG-08) ─────────────────────────────────────
+# Every response: nosniff, referrer policy, HSTS, noindex (app host — not for
+# search engines).
 [[headers]]
-  for = "/api/*"
+  for = "/*"
   [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "Content-Type, Authorization, apikey"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Robots-Tag = "noindex, nofollow"
+    Permissions-Policy = "geolocation=(), payment=(), usb=()"
+
+# Anti-framing on every app/marketing page. DOCUMENTED EXCEPTION: the hosted
+# avatar widget (/a/<slug> → /agent.html) is intentionally NOT listed so a
+# customer can embed their agent on their own site.
+# {{MARK: allow customer-site iframe embedding of /a/<slug>? If no, add
+#   "/agent.html" and "/a/*" to this list.}}
+# (Kept as an explicit list because Netlify merges headers from all matching
+# rules and has no "exclude" syntax.)
+[[headers]]
+  for = "/"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/index"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/dashboard"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/dashboard/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/signup"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/signup.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/workers.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/offers-demo.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/concierge.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/copilot.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/demo.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/demo-live.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/extension/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/404.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/auth-gate.js"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"

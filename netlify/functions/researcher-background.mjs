@@ -19,13 +19,102 @@
 
 import {
   getCampaign, putCampaign,
-  listCampaigns,
+  listCampaigns, listAllActiveCampaigns, listQueuedSends,
   listCampaignProspects, getCampaignProspect, putCampaignProspect,
   getProspect, putProspect, findProspectByEmail,
   putEmailSend,
   isEmailSuppressed, logActivity,
   DEFAULTS
 } from "./_campaign-store.mjs";
+import { env } from './_mcp-connectors.mjs';
+import { resolveTenantContext } from './_tenant.mjs';
+import { isInternalCall } from './_auth.mjs';
+import { requireOperator } from './_tenant.mjs';
+import { callLLM, parseLLMJson } from './_llm.mjs';
+
+export { icpDiscoverCompanies } from "./_icp-agent.mjs";
+import { icpDiscoverCompanies } from "./_icp-agent.mjs";
+import { findAndPoolContacts, getBulkLock, setBulkLock } from "./researcher-find.mjs";
+
+// ─── Bulk Find ───────────────────────────────────────────────────────────────
+// Fill the contact pool toward a target count (up to 1000) inside this
+// background function's 15-minute budget. Each pass discovers the next page
+// of ICP-matching companies and pools their contacts; the pool's UNIQUE email
+// constraint guarantees zero duplication across every campaign.
+
+const BULK_TIME_BUDGET_MS = 12 * 60 * 1000;
+const BULK_ORGS_PER_PASS = 10;
+
+async function runBulkFind({ icp, role, target, tenantId }) {
+  // Single-flight: a second bulk job started while one is running would only
+  // burn Hunter credits re-finding the first job's contacts.
+  const existing = await getBulkLock();
+  if (existing) {
+    return { skipped: 'bulk job already running', running_icp: existing.icp, running_since: existing.started_at };
+  }
+  await setBulkLock({ icp, target, started_at: new Date().toISOString() });
+
+  const started = Date.now();
+  let inserted = 0, passes = 0, exhausted = false, lastError = null;
+  let emptyStreak = 0, errorStreak = 0;
+  // Keep pushing through gate-rejected pages and transient hiccups: only a
+  // true end-of-market (Discover returns nothing), a hard error streak, or
+  // the time budget stops the job.
+  while (
+    inserted < target &&
+    (Date.now() - started) < BULK_TIME_BUDGET_MS &&
+    !exhausted && emptyStreak < 8 && errorStreak < 4 && passes < 200
+  ) {
+    let r;
+    try { r = await findAndPoolContacts({ icp, role, orgCount: BULK_ORGS_PER_PASS, tenantId }); }
+    catch (e) { r = { error: e.message, transient: true }; }
+    passes++;
+    if (r.error) {
+      lastError = r.error; errorStreak++;
+      console.warn(`[bulk-find] pass ${passes} error (${errorStreak}/4): ${r.error}`);
+      continue;
+    }
+    errorStreak = 0;
+    inserted += r.inserted;
+    exhausted = r.exhausted === true;
+    emptyStreak = r.inserted === 0 ? emptyStreak + 1 : 0;
+    console.log(`[bulk-find] pass ${passes}: +${r.inserted} (total ${inserted}/${target})${r.inserted === 0 ? ` [empty streak ${emptyStreak}]` : ''}`);
+  }
+  const stop_reason = inserted >= target ? 'target_reached'
+    : exhausted ? 'market_exhausted'
+    : errorStreak >= 4 ? `errors: ${lastError}`
+    : emptyStreak >= 8 ? 'eight_empty_pages'
+    : (Date.now() - started) >= BULK_TIME_BUDGET_MS ? 'time_budget'
+    : 'pass_cap';
+  await setBulkLock({ icp, target, started_at: new Date(started).toISOString(), released_at: new Date().toISOString(), inserted, stop_reason });
+  await logActivity({ type: 'researcher_bulk_find', target, inserted, passes, exhausted, stop_reason, icp });
+  return { inserted, target, passes, exhausted, stop_reason, error: lastError, elapsed_s: Math.round((Date.now() - started) / 1000) };
+}
+
+export async function syncContactToSupabase(prospect, campaignName) {
+  try {
+    const url = env('SUPABASE_URL');
+    const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
+    if (!url || !key || !prospect.email) return false;
+    const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+    const existing = await fetch(
+      `${url}/rest/v1/contacts?select=id&email=eq.${encodeURIComponent(prospect.email)}&limit=1`,
+      { headers: h }).then(r => r.ok ? r.json() : []);
+    if (existing.length) return false;
+    const res = await fetch(`${url}/rest/v1/contacts`, {
+      method: 'POST',
+      headers: { ...h, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        name: prospect.name || prospect.contact_name || prospect.email.split('@')[0],
+        email: prospect.email,
+        company_name: prospect.company_name || null,
+        type: 'Prospect',
+        source: campaignName ? `Campaign: ${campaignName}` : 'campaign_researcher'
+      })
+    });
+    return res.ok;
+  } catch { return false; }
+}
 
 const RESEARCHER_MAX_PROSPECTS = 20;
 
@@ -140,6 +229,8 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     console.error(`[researcher-bg] Campaign ${campaignId} not found`);
     return;
   }
+  // No JWT here (background/cron) — the campaign record carries the tenant.
+  const tenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
 
   const now = new Date().toISOString();
   let rawProspects = [];
@@ -152,10 +243,28 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
   } else {
     const seniority = mapRoleToSeniority(targetRole);
     const department = mapRoleToDepartment(targetRole);
-    const domains = selectICPDomains(parsedICP, targetRole);
+
+    // ICP Agent first: real companies matching the campaign's ICP text.
+    // discover_offset walks the full Discover result set (often 10k+
+    // companies) so successive runs source NEW companies, not page 1 forever.
+    const icpText = campaign?.brief?.icp || parsedICP?.raw || '';
+    const discOffset = Number(campaign.discover_offset) || 0;
+    const disc = await icpDiscoverCompanies(icpText, targetRole, HUNTER_KEY, 10, discOffset);
+    let domains;
+    if (disc.companies.length) {
+      domains = disc.companies;
+      discoverStats.discover_mode = disc.mode;
+      discoverStats.discover_filters = disc.filters;
+      discoverStats.market_size = disc.total;
+      campaign.discover_offset = disc.next_offset;
+      await putCampaign(campaign);
+    } else {
+      domains = selectICPDomains(parsedICP, targetRole);
+      discoverStats.discover_mode = `fallback_domain_map (${disc.mode})`;
+    }
     discoverStats.companies_found = domains.length;
 
-    console.log(`[researcher-bg] Running domain search on ${domains.length} companies for "${targetRole}"`);
+    console.log(`[researcher-bg] Sourcing via ${discoverStats.discover_mode}: ${domains.map(d => d.domain).join(', ')} for "${targetRole}"`);
 
     // Domain Search per company
     for (const { domain, company_name } of domains) {
@@ -232,8 +341,8 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     console.log(`[researcher-bg] After verification: ${rawProspects.length} prospects`);
   }
 
-  // Cross-campaign dedup + suppression
-  const allCampaigns = await listCampaigns(DEFAULTS.TENANT_ID);
+  // Cross-campaign dedup + suppression (within this campaign's tenant)
+  const allCampaigns = await listCampaigns(tenantId);
   const otherActiveIds = allCampaigns
     .filter(c => c.status === 'active' && c.id !== campaignId)
     .map(c => c.id);
@@ -255,9 +364,9 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     if (!emailLower) continue;
     if (seenEmails.has(emailLower)) { discoverStats.deduped++; continue; }
     seenEmails.add(emailLower);
-    if (await isEmailSuppressed(DEFAULTS.TENANT_ID, emailLower)) { discoverStats.suppressed++; continue; }
+    if (await isEmailSuppressed(tenantId, emailLower)) { discoverStats.suppressed++; continue; }
     if (crossCampaignEmails.has(emailLower)) { discoverStats.deduped++; continue; }
-    const existing = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    const existing = await findProspectByEmail(tenantId, emailLower);
     if (existing) {
       const junction = await getCampaignProspect(campaignId, existing.id).catch(() => null);
       if (junction) { discoverStats.deduped++; continue; }
@@ -269,11 +378,11 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
   const enrolled = [];
   for (const p of toEnroll) {
     const emailLower = p.email.toLowerCase();
-    let prospect = await findProspectByEmail(DEFAULTS.TENANT_ID, emailLower);
+    let prospect = await findProspectByEmail(tenantId, emailLower);
     if (!prospect) {
       prospect = {
         id: crypto.randomUUID(),
-        tenant_id: DEFAULTS.TENANT_ID,
+        tenant_id: tenantId,
         email: emailLower,
         name: p.name || null,
         first_name: p.first_name || null,
@@ -297,6 +406,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
       await putProspect(prospect);
     }
     await putCampaignProspect({ campaign_id: campaignId, prospect_id: prospect.id, enrolled_at: now, status: 'active' });
+    await syncContactToSupabase(prospect, campaign?.name);
     enrolled.push(prospect);
   }
 
@@ -308,7 +418,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
     const scheduledAt = new Date(scheduleNow.getTime() + scheduledCount * 120000);
     await putEmailSend({
       id: sendId,
-      tenant_id: DEFAULTS.TENANT_ID,
+      tenant_id: tenantId,
       campaign_id: campaignId,
       prospect_id: prospect.id,
       step_number: 1,
@@ -321,6 +431,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
 
   // Update campaign with final status + cached metrics
   const freshCampaign = await getCampaign(campaignId);
+  if (freshCampaign && campaign.discover_offset != null) freshCampaign.discover_offset = campaign.discover_offset;
   if (freshCampaign) {
     const sourceLabel = discoverStats.fallback ? 'demo (fallback)' : 'Hunter.io live';
     freshCampaign.agent_status.researcher = {
@@ -381,33 +492,132 @@ function generateDemoProspects(parsedICP, targetRole, count) {
 
 // ─── Netlify Background Function Handler ────────────────────────────────────
 
+// ─── Auto-Source Top-Up Sweep ────────────────────────────────────────────────
+// For every ACTIVE campaign with auto_source === true whose queued-send count
+// has dropped below its floor (auto_source_min_queue, default 5), re-run the
+// researcher against the campaign's stored brief. Rate-limited per campaign
+// via last_sourced_at (min 6h between sourcing runs) so a busy cron cadence
+// never turns into prospect spam.
+
+const TOPUP_MIN_QUEUE_DEFAULT = 5;
+const TOPUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+async function runTopUpSweep() {
+  const summary = { campaigns_checked: 0, campaigns_topped_up: 0, skipped: [] };
+  // Sweep every tenant's active campaigns — runResearcher scopes each run to
+  // the campaign's own tenant_id.
+  const campaigns = (await listAllActiveCampaigns()).filter(c => c.auto_source === true);
+  summary.campaigns_checked = campaigns.length;
+
+  for (const campaign of campaigns) {
+    const minQueue = Number(campaign.auto_source_min_queue) || TOPUP_MIN_QUEUE_DEFAULT;
+    const queued = await listQueuedSends(campaign.id);
+    if (queued.length >= minQueue) {
+      summary.skipped.push({ campaign: campaign.name, reason: `queue healthy (${queued.length})` });
+      continue;
+    }
+    if (campaign.last_sourced_at && (Date.now() - new Date(campaign.last_sourced_at).getTime()) < TOPUP_COOLDOWN_MS) {
+      summary.skipped.push({ campaign: campaign.name, reason: 'sourced within last 6h' });
+      continue;
+    }
+
+    campaign.last_sourced_at = new Date().toISOString();
+    await putCampaign(campaign);
+
+    const role = campaign.target_role || campaign.brief?.target_persona || '';
+    console.log(`[researcher-bg] TOP-UP campaign=${campaign.id} "${campaign.name}" queue=${queued.length} role="${role}"`);
+    try {
+      await runResearcher(campaign.id, campaign.parsed_icp || {}, role);
+      summary.campaigns_topped_up++;
+      await logActivity({
+        type: 'auto_source_topup',
+        campaign_id: campaign.id,
+        campaign_name: campaign.name,
+        queue_before: queued.length
+      });
+    } catch (e) {
+      console.error(`[researcher-bg] top-up failed for ${campaign.name}:`, e.message);
+      summary.skipped.push({ campaign: campaign.name, reason: `error: ${e.message}` });
+    }
+  }
+  return summary;
+}
+
 export default async (req) => {
   // Background functions return 202 immediately; work runs after response
   let body = {};
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
+    body = {};
   }
 
   const { campaign_id, parsed_icp, target_role } = body;
-  if (!campaign_id) {
-    return new Response(JSON.stringify({ error: 'campaign_id required' }), { status: 400 });
+
+  // Bulk find: fill the contact pool toward a target count for the Researcher
+  // panel. Runs here for the 15-minute background budget.
+  if (body.action === 'bulk_find') {
+    // Pool inserts are tenant-scoped: JWT → caller's tenant; no auth header →
+    // demo tenant (internal calls); bad token → 401.
+    const authCtx = await resolveTenantContext(req);
+    if (authCtx.invalid) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: authCtx.status || 401, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const result = await runBulkFind({
+      icp: (body.icp || '').trim(),
+      role: (body.role || 'CEO').trim(),
+      target: Math.min(Number(body.target_contacts) || 100, 1000),
+      tenantId: authCtx.tenantId || DEFAULTS.TENANT_ID
+    }).catch(err => ({ error: err.message }));
+    return new Response(JSON.stringify({ mode: 'bulk_find', ...result }), {
+      status: result.error ? 500 : 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
-  // Run researcher in background (after response is sent)
-  // Netlify background functions: the handler must return a response,
-  // then any remaining async work continues until the function exits
-  runResearcher(campaign_id, parsed_icp || {}, target_role || '').catch(err => {
+  // SECURITY: background functions are URL-invocable
+  // (/.netlify/functions/researcher-background). Every mode other than a
+  // tenant-JWT bulk_find is internal-only (queue-manager sends X-Internal-Token)
+  // or a platform operator.
+  if (!isInternalCall(req)) {
+    const op = await requireOperator(req, { allowInternal: false });
+    if (op.response) return op.response;
+  }
+
+  // Top-up mode: scheduled invocations carry no campaign_id. Instead of the old
+  // 400 no-op, sweep active campaigns that opted into auto-sourcing (auto_source
+  // = true) and refill any whose queue has run low. This is what keeps campaigns
+  // fed after the initial launch batch is exhausted.
+  if (!campaign_id) {
+    const summary = await runTopUpSweep().catch(err => ({ error: err.message }));
+    return new Response(JSON.stringify({ mode: 'top_up_sweep', ...summary }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // Await the full run: fire-and-forget proved unreliable (the runtime can
+  // freeze right after the response, killing the researcher mid-run). As a
+  // background function we have minutes of budget — completing the work
+  // before responding guarantees enrollment actually happens.
+  try {
+    await runResearcher(campaign_id, parsed_icp || {}, target_role || '');
+  } catch (err) {
     console.error('[researcher-bg] FATAL campaign=' + campaign_id + ':', err.message, err.stack);
-  });
+    return new Response(JSON.stringify({ error: err.message, campaign_id }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 
   return new Response(JSON.stringify({
-    accepted: true,
+    completed: true,
     campaign_id,
-    message: 'Agent Researcher started — prospects will be enrolled within 60 seconds'
+    message: 'Agent Researcher finished — prospects enrolled and sends queued'
   }), {
-    status: 202,
+    status: 200,
     headers: { 'Content-Type': 'application/json' }
   });
 };

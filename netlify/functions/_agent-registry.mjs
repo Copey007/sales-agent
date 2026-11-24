@@ -112,7 +112,7 @@ class Agent {
 
 function getSupabaseCreds() {
   const url = env('SUPABASE_URL');
-  const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
   return { url, key };
 }
 
@@ -462,15 +462,14 @@ Write a GAP Prospecting email. Return JSON only.`
         company: context.company
       }, context.company?.toLowerCase().replace(/\s+/g, '_'));
 
-      // Send via Resend if requested
-      if (context.send !== false && context.toEmail) {
-        const sendResult = await this.use('resend', 'send', {
-          to: context.toEmail,
-          from: context.from || 'mark@a-gent.co',
-          subject: email.subject,
-          html: email.body.replace(/\n/g, '<br>')
-        });
-        email.sendResult = sendResult;
+      // SECURITY: agents NEVER send email directly. The old path here sent to
+      // any context.toEmail from any context.from (an open relay reachable via
+      // /api/workforce execute/delegate). Drafts now go to human review:
+      // campaign sends via the campaign approval queue (campaign-admin
+      // list_pending/approve_sends), worker outreach via /api/worker-outreach.
+      if (context.toEmail) {
+        email.status = 'pending_approval';
+        email.note = 'Draft only — outbound email requires human approval (campaign approval queue or /api/worker-outreach).';
       }
 
       await this.updateStatus('idle', null, `Email generated${email.sendResult ? ' and sent' : ''}`);

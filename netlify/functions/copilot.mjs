@@ -16,8 +16,9 @@
 
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { remember, recall } from './_supabase-memory.mjs';
+import { withCors } from './_auth.mjs';
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -67,7 +68,7 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/copilot" };
+export const config = { path: "/api/copilot", rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
 
 // ─── Coaching System Prompt ────────────────────────────────────────────────────
 
@@ -249,3 +250,6 @@ async function handleStore(body, corsHeaders) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

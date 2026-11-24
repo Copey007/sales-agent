@@ -1,3 +1,5 @@
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 /**
  * GAP Email Pipeline — End-to-End Signal Gathering + Email Generation
  * 
@@ -234,7 +236,7 @@ Return ONLY valid JSON:
 async function generateGapEmail(prospect, signals, sender, productContext) {
   const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
     ? Netlify.env.get('OPENAI_API_KEY')
-    : (process.env.OPENAI_API_KEY || 'sk-iVJWw2GcvmPsr7AceUSTcf');
+    : process.env.OPENAI_API_KEY;
   const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
     ? Netlify.env.get('OPENAI_API_BASE')
     : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
@@ -320,7 +322,7 @@ async function generateGapEmail(prospect, signals, sender, productContext) {
 }
 
 // ─── Netlify Function Handler ──────────────────────────────────────────────────
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -421,3 +423,6 @@ export default async (req, context) => {
 export const config = {
   path: "/api/gap-email-pipeline"
 };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

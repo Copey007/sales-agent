@@ -4,8 +4,9 @@
  * DELETE after setup is complete.
  */
 import { env } from './_mcp-connectors.mjs';
+import { withCors, safeEqual } from './_auth.mjs';
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
   }
@@ -15,9 +16,12 @@ export default async (req, context) => {
   try {
     const body = await req.json().catch(() => ({}));
     
-    // Simple auth check
-    const setupSecret = env('QUEUE_MANAGER_SECRET', 'setup');
-    if (body.secret !== setupSecret && body.secret !== 'setup') {
+    // Auth check — fail closed: no secret configured => endpoint disabled.
+    const setupSecret = env('QUEUE_MANAGER_SECRET');
+    if (!setupSecret) {
+      return new Response(JSON.stringify({ error: 'Setup disabled: QUEUE_MANAGER_SECRET not configured' }), { status: 503, headers: corsHeaders });
+    }
+    if (!safeEqual(String(body.secret || ''), setupSecret)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
 
@@ -232,8 +236,11 @@ ON CONFLICT (agent_id) DO NOTHING;
     return new Response(JSON.stringify({ success: true, result }), { status: 200, headers: corsHeaders });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message, stack: err.stack }), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: 'internal_error' }), { status: 500, headers: corsHeaders });
   }
 };
 
-export const config = { path: "/api/setup-schema" };
+export const config = { path: "/api/setup-schema", rateLimit: { windowLimit: 5, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);
