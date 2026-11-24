@@ -140,9 +140,9 @@
     if (document.getElementById('agent-auth-badge') || !session) return;
     var b = document.createElement('div');
     b.id = 'agent-auth-badge';
-    b.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483645;background:#131316;border:1px solid #2a2a30;color:#a1a1a6;font:12px system-ui;padding:6px 10px;border-radius:999px');
+    b.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483645;background:#131316;border:1px solid #2a2a30;color:#8a8a90;font:12px system-ui;padding:6px 10px;border-radius:999px');
     b.textContent = (session.email || 'signed in') + ' · ';
-    var a = document.createElement('a'); a.href = '#'; a.textContent = 'Sign out'; a.style.color = '#c8b48c';
+    var a = document.createElement('a'); a.href = '#'; a.textContent = 'Sign out'; a.style.color = '#f0f0f2';
     a.addEventListener('click', function (e) {
       e.preventDefault();
       nativeFetch(SB_URL + '/auth/v1/logout', { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + (session && session.access_token) } }).catch(function () {});
