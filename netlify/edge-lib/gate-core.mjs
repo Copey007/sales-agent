@@ -70,7 +70,9 @@ export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey
     .replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow"><title>Sign in · ${esc(title)}</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="/site-aisdr.webmanifest"><meta name="theme-color" content="#0a0a0c">
+<title>Sign in · ${esc(title)}</title>
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,-apple-system,sans-serif;background:#0a0a0c;color:#f0f0f2}

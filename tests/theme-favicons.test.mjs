@@ -53,3 +53,14 @@ test('netlify.toml serves the webmanifest as application/manifest+json', () => {
   const re = new RegExp(`for = "/${MANIFEST.replace('.', '\\.')}"\\s*\\n\\s*\\[headers\\.values\\]\\s*\\n\\s*Content-Type = "application/manifest\\+json"`);
   assert.match(t, re);
 });
+
+test('gate-core login shell <head> carries the favicon + manifest tags', async () => {
+  const { loginShell } = await import('../netlify/edge-lib/gate-core.mjs');
+  const html = loginShell({ title: 'T', subtitle: 'S', supabaseUrl: 'https://x.supabase.co', publicKey: 'sb_publishable_x', storageKey: 'k' });
+  const head = html.slice(0, html.indexOf('</head>'));
+  assert.match(head, /<link rel="icon" href="\/favicon\.ico" sizes="32x32">/);
+  assert.match(head, /<link rel="icon" href="\/icon\.svg" type="image\/svg\+xml">/);
+  assert.match(head, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png" sizes="180x180">/);
+  assert.ok(head.includes(`<link rel="manifest" href="/${MANIFEST}">`));
+  assert.match(head, /<meta name="theme-color" content="#0a0a0c">/);
+});
