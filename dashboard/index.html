@@ -40,7 +40,7 @@
 </head>
 <body><div id="app" class="app"></div><script>
 const SUPABASE_URL='https://byospmliiokgrdjjxsde.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3NwbWxpaW9rZ3Jkamp4c2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MjQ0NzUsImV4cCI6MjA5NTQwMDQ3NX0.KvzaEuEH9nRlBBSUOyg7kTKHvLFfR6CvmZbjVHZQ83I';
+const SUPABASE_ANON_KEY='sb_publishable_sQAEX9fp8QuAOwIjPLG1cQ_Um-j1Yi2';
 const CRM_URL='https://a-gent-crm.netlify.app';
 const headers={apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,'Content-Type':'application/json',Accept:'application/json'};
 const $=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); const fmt=v=>v?new Date(v).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'; const pct=(a,b)=>b?Math.round(a/b*100):0; const uniq=list=>new Set(list.filter(Boolean)).size;

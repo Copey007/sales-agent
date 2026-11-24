@@ -6,10 +6,11 @@
  * GET  /api/gen-impl-video?video_id=...  (Authorization: Bearer <jwt>)
  *                                        → { status, url } (poll until completed)
  *
- * Uses the HeyGen Video Generation API (api.heygen.com/v2/video/generate) with the
- * platform HeyGen/LiveAvatar key. JWT-guarded so it can't be spammed (costs money).
- * NOTE: the avatar_id we use is a LiveAvatar (streaming) id; if HeyGen's video API
- * rejects it, the error is surfaced so we know it's studio-only.
+ * Uses the HeyGen V3 Video API (api.heygen.com/v3/videos) with the platform
+ * HeyGen/LiveAvatar key. V1/V2 endpoints sunset October 31, 2026.
+ * JWT-guarded so it can't be spammed (costs money).
+ * NOTE: avatar_id must be a V3 look id (see ?list=avatars); LiveAvatar streaming
+ * ids are a different product and are rejected by this API.
  */
 
 import { userFromToken } from './_tenant.mjs';
@@ -17,8 +18,8 @@ import { userFromToken } from './_tenant.mjs';
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
 
-const DEFAULT_AVATAR = '26393b8e-e944-4367-98ef-e2bc75c4b792';
-const DEFAULT_VOICE = '864a26b8-bfba-4435-9cc5-1dd593de5ca7';
+const DEFAULT_AVATAR = 'b6132b8df299488d8e886d471dc424ba'; // "Professional Presenter" V3 look id (private photo avatar)
+const DEFAULT_VOICE = ''; // empty → V3 uses the look's default voice
 const DEFAULT_SCRIPT = `Welcome aboard — and congratulations on signing your contract. I'm your implementation guide, and I'll walk you through getting set up, step by step.
 
 Here's how the next few minutes will go. First, we'll give your agent its voice — your company's persona and the key things it should know about your product. Second, we'll add your demo material, so your agent can show, not just tell — slides, screenshots, even recorded demo clips that play on cue. And third, we'll put your agent on your site, or hand you a shareable link, so it greets and guides your customers around the clock.
@@ -44,29 +45,41 @@ export default async (req) => {
   if (req.method === 'GET' && new URL(req.url).searchParams.get('list')) {
     const what = new URL(req.url).searchParams.get('list');
     if (what === 'voices') {
-      const res = await hg('/v2/voices');
-      const data = await res.json().catch(() => ({}));
-      const voices = (data?.data?.voices || []).map(v => ({ id: v.voice_id, name: v.name, gender: v.gender, lang: v.language, preview: !!v.preview_audio }));
+      const voices = [];
+      let token = '';
+      do {
+        const res = await hg(`/v3/voices?limit=100${token ? `&token=${encodeURIComponent(token)}` : ''}`);
+        if (!res.ok) return json({ error: `voices ${res.status}`, body: (await res.text()).slice(0, 300) }, 502);
+        const data = await res.json().catch(() => ({}));
+        for (const v of data?.data || []) voices.push({ id: v.voice_id, name: v.name, gender: v.gender, lang: v.language, preview: !!v.preview_audio_url });
+        token = data?.has_more ? (data?.next_token || '') : '';
+      } while (token && voices.length < 400);
       return json({ count: voices.length, voices: voices.slice(0, 400) });
     }
     const q = (new URL(req.url).searchParams.get('q') || '').toLowerCase();
-    const res = await hg('/v2/avatars');
-    if (!res.ok) return json({ error: `avatars ${res.status}`, body: (await res.text()).slice(0, 300) }, 502);
-    const data = await res.json().catch(() => ({}));
-    let avatars = (data?.data?.avatars || []).map(a => ({ id: a.avatar_id, name: a.avatar_name, gender: a.gender }));
+    const all = [];
+    let token = '';
+    do {
+      const res = await hg(`/v3/avatars/looks?limit=50${token ? `&token=${encodeURIComponent(token)}` : ''}`);
+      if (!res.ok) return json({ error: `avatars ${res.status}`, body: (await res.text()).slice(0, 300) }, 502);
+      const data = await res.json().catch(() => ({}));
+      for (const a of data?.data || []) all.push({ id: a.id, name: a.name, gender: a.gender, engines: a.supported_api_engines || [] });
+      token = data?.has_more ? (data?.next_token || '') : '';
+    } while (token && all.length < 300);
+    let avatars = all;
     if (q) avatars = avatars.filter(a => (a.name || '').toLowerCase().includes(q) || (a.gender || '').toLowerCase() === q);
-    return json({ total: (data?.data?.avatars || []).length, count: avatars.length, avatars: avatars.slice(0, 60) });
+    return json({ total: all.length, count: avatars.length, avatars: avatars.slice(0, 60) });
   }
 
   // ── Poll status ─────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const id = new URL(req.url).searchParams.get('video_id');
     if (!id) return json({ error: 'video_id required' }, 400);
-    const res = await hg(`/v1/video_status.get?video_id=${encodeURIComponent(id)}`);
+    const res = await hg(`/v3/videos/${encodeURIComponent(id)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return json({ error: data?.error || `status ${res.status}`, raw: data }, 502);
     const d = data.data || {};
-    return json({ status: d.status, url: d.video_url || null, error: d.error || null });
+    return json({ status: d.status, url: d.video_url || null, error: d.failure_message || null });
   }
 
   // ── Re-host a (temporary) video URL into permanent Supabase Storage ──────────
@@ -106,14 +119,16 @@ export default async (req) => {
   const voice_id = b.voice_id || DEFAULT_VOICE;
 
   const body = {
-    video_inputs: [{
-      character: { type: 'avatar', avatar_id, avatar_style: 'normal' },
-      voice: { type: 'text', input_text: script, voice_id },
-    }],
-    dimension: { width: 1280, height: 720 },
+    type: 'avatar',
+    title: b.title || 'Implementation walkthrough',
+    avatar_id,
+    ...(voice_id ? { voice_id } : {}),
+    script,
+    resolution: '720p',
+    aspect_ratio: '16:9',
   };
 
-  const res = await hg('/v2/video/generate', { method: 'POST', body: JSON.stringify(body) });
+  const res = await hg('/v3/videos', { method: 'POST', body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return json({ error: data?.error || data?.message || `generate ${res.status}`, raw: data }, 502);
   return json({ video_id: data?.data?.video_id || data?.video_id || null, raw: data });
