@@ -19,9 +19,20 @@
 import {
   getCampaign, getCampaignPersona, getCampaignSignalConfig,
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
-  logActivity, getFeatureFlag, DEFAULTS
+  logActivity, getFeatureFlag, DEFAULTS,
+  countSentToday, isEmailSuppressed
 } from "./_campaign-store.mjs";
 import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
+import { corsHeaders as cors, preflight, requireInternal, internalHeaders, serverError, authEnv } from "./_auth.mjs";
+
+/**
+ * HUMAN-IN-THE-LOOP CONTRACT
+ *   1st pass (send.approved_at unset): generate the GAP draft, store it on the
+ *      send record, set status = "pending_approval". NOTHING is delivered.
+ *   Operator reviews in Mission Control → campaign-admin?action=approve_sends
+ *      sets approved_at / approved_by and re-queues the send.
+ *   2nd pass (send.approved_at set): deliver the exact approved subject/body.
+ */
 
 // ─── Signal Gathering (campaign-aware) ──────────────────────────────────────
 
@@ -184,14 +195,24 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "RESEND_API_KEY not configured", simulated: true };
   }
 
-  const sendingDomain = campaign?.sending_domain || 'a-gent.co';
-  const senderName = campaign?.sender_name || 'Mark';
-  const fromEmail = `A-Gent Fleet <fleet@${sendingDomain}>`;
+  // Sender identity comes from env (verified Resend domain), never from the request.
+  const senderName = authEnv('SENDER_FROM_NAME', campaign?.sender_name || 'A-Gent Fleet');
+  const senderAddress = authEnv('SENDER_FROM_EMAIL', `fleet@${campaign?.sending_domain || 'a-gent.co'}`);
+  const replyTo = authEnv('REPLY_TO_EMAIL', senderAddress);
+  const fromEmail = `${senderName} <${senderAddress}>`;
   const toEmail = prospect.email;
 
   if (!toEmail) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
+
+  // CAN-SPAM: physical postal address + working opt-out on every commercial email.
+  const postalAddress = authEnv('COMPANY_POSTAL_ADDRESS');
+  const unsubscribeEmail = authEnv('UNSUBSCRIBE_EMAIL', replyTo);
+  if (!postalAddress) {
+    return { sent: false, reason: "COMPANY_POSTAL_ADDRESS not configured — refusing to send without compliance footer", simulated: false };
+  }
+  const footer = `\n\n--\n${postalAddress}\nNot interested? Reply "unsubscribe" or email ${unsubscribeEmail} and we won't contact you again.`;
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -204,8 +225,9 @@ async function sendViaResend(emailData, prospect, campaign) {
         from: fromEmail,
         to: [toEmail],
         subject: emailData.subject,
-        text: emailData.body,
-        reply_to: 'fleet@a-gent.co'
+        text: `${emailData.body}${footer}`,
+        reply_to: replyTo,
+        headers: { 'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>` }
       })
     });
 
@@ -223,10 +245,14 @@ async function sendViaResend(emailData, prospect, campaign) {
 
 // ─── Process a Single Send ──────────────────────────────────────────────────
 
-async function processSend(sendId, campaign, persona, signalConfig) {
+async function processSend(sendId, campaign, persona, signalConfig, budget, dryRun) {
   const send = await getEmailSend(sendId);
-  if (!send || send.status === 'sent') {
-    return { skipped: true, reason: send ? 'already sent' : 'send not found' };
+  if (!send) return { skipped: true, reason: 'send not found' };
+  if (send.campaign_id !== campaign.id) return { skipped: true, reason: 'campaign mismatch' };
+  // Only sends the Queue Manager just dispatched are processed. This blocks
+  // re-sending sent / suppressed / failed / rejected records by ID.
+  if (send.status !== 'dispatched') {
+    return { skipped: true, reason: `status is ${send.status}, expected dispatched` };
   }
 
   const prospect = await getProspect(send.prospect_id);
@@ -238,22 +264,56 @@ async function processSend(sendId, campaign, persona, signalConfig) {
     return { failed: true, reason: 'prospect not found' };
   }
 
-  // 1. Gather signals
-  const signals = await gatherSignalsForProspect(prospect, signalConfig);
+  // Re-check suppression at the last moment (list may have changed since queueing).
+  if (prospect.email && await isEmailSuppressed(DEFAULTS.TENANT_ID, prospect.email)) {
+    send.status = "suppressed";
+    send.suppressed_at = new Date().toISOString();
+    send.suppression_reason = "email_on_suppression_list";
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'suppressed' };
+  }
 
-  // 2. Generate GAP email
-  const emailData = await generateEmail(prospect, signals, persona, campaign);
+  // ── Pass 1: draft only, never deliver ──────────────────────────────────
+  if (!send.approved_at) {
+    const signals = await gatherSignalsForProspect(prospect, signalConfig);
+    const emailData = await generateEmail(prospect, signals, persona, campaign);
+    send.status = "pending_approval";
+    send.drafted_at = new Date().toISOString();
+    send.email_subject = emailData.subject;
+    send.email_body = emailData.body;
+    send.signals_used = emailData.signals_used || [];
+    send.gap_analysis = emailData.gap_analysis || {};
+    await putEmailSend(send);
+    return { send_id: sendId, prospect: prospect.contact_name, status: send.status, subject: emailData.subject, signals_count: signals.length };
+  }
 
-  // 3. Send via Resend
-  const sendResult = await sendViaResend(emailData, prospect, campaign);
+  // ── Pass 2: deliver the exact approved content ─────────────────────────
+  if (!send.email_subject || !send.email_body) {
+    send.status = "failed";
+    send.error = "Approved send has no stored draft";
+    await putEmailSend(send);
+    return { failed: true, reason: 'approved send missing draft' };
+  }
+  if (budget.remaining <= 0) {
+    send.status = "queued"; // retry on a later run, approval is kept
+    send.dispatched_at = null;
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'deferred_daily_cap' };
+  }
+  if (prospect.is_demo) {
+    send.status = "simulated";
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'simulated', reason: 'demo prospect' };
+  }
 
-  // 4. Update send record
+  const emailData = { subject: send.email_subject, body: send.email_body };
+  const sendResult = dryRun
+    ? { sent: false, simulated: true, reason: 'dry_run' }
+    : await sendViaResend(emailData, prospect, campaign);
+  if (sendResult.sent) budget.remaining--;
+
   send.status = sendResult.sent ? "sent" : (sendResult.simulated ? "simulated" : "failed");
-  send.sent_at = new Date().toISOString();
-  send.email_subject = emailData.subject;
-  send.email_body = emailData.body;
-  send.signals_used = emailData.signals_used || [];
-  send.gap_analysis = emailData.gap_analysis || {};
+  send.sent_at = sendResult.sent ? new Date().toISOString() : null;
   send.resend_result = sendResult;
   await putEmailSend(send);
 
@@ -262,7 +322,6 @@ async function processSend(sendId, campaign, persona, signalConfig) {
     prospect: prospect.contact_name,
     status: send.status,
     subject: emailData.subject,
-    signals_count: signals.length,
     send_result: sendResult
   };
 }
@@ -270,15 +329,13 @@ async function processSend(sendId, campaign, persona, signalConfig) {
 // ─── Netlify Function Handler ───────────────────────────────────────────────
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+  const pf = preflight(req, { methods: 'POST, OPTIONS' });
+  if (pf) return pf;
+  const corsHeaders = cors(req, { methods: 'POST, OPTIONS' });
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  // Server-to-server only (queue-manager / campaign-admin with X-Internal-Token).
+  const denied = requireInternal(req);
+  if (denied) return denied;
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST required' }), {
@@ -290,6 +347,7 @@ export default async (req, context) => {
   try {
     const body = await req.json();
     const { campaign_id, send_ids, batch_index } = body;
+    const dryRun = body.dry_run === true;
 
     if (!campaign_id || !send_ids || !Array.isArray(send_ids)) {
       return new Response(JSON.stringify({
@@ -313,11 +371,16 @@ export default async (req, context) => {
     const signalConfig = await getCampaignSignalConfig(campaign_id);
     const sequence = await getCampaignSequence(campaign_id);
 
+    // Hard daily cap enforced here too (not only in queue-manager).
+    const maxLimit = Number(authEnv('MAX_DAILY_SEND_LIMIT', '50')) || 50;
+    const dailyLimit = Math.min(campaign.daily_send_limit || 25, maxLimit);
+    const budget = { remaining: dailyLimit - await countSentToday(campaign_id) };
+
     // Process each send in the batch (sequentially to manage timeout)
     const results = [];
     for (const sendId of send_ids.slice(0, BATCH_SIZE)) {
       try {
-        const result = await processSend(sendId, campaign, persona, signalConfig);
+        const result = await processSend(sendId, campaign, persona, signalConfig, budget, dryRun);
         results.push(result);
       } catch (sendErr) {
         results.push({ send_id: sendId, failed: true, error: sendErr.message });
@@ -347,7 +410,7 @@ export default async (req, context) => {
             : (process.env.URL || 'https://aisdr.a-gent.co');
           await fetch(`${siteUrl}/api/loop-engine`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({ action: 'run', campaign_id })
           });
         } catch (e) { /* non-critical */ }
@@ -366,13 +429,7 @@ export default async (req, context) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: err.message
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return serverError(req, err, 'send-worker');
   }
 };
 

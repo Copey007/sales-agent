@@ -5,7 +5,7 @@
   "main": "cli.js",
   "scripts": {
     "start": "node cli.js",
-    "test": "echo \"No tests yet\""
+    "test": "node --import ./tests/helpers/register-blobs-mock.mjs tests/smoke.test.mjs && node --import ./tests/helpers/register-blobs-mock.mjs tests/approval-flow.test.mjs"
   },
   "keywords": [
     "sales",

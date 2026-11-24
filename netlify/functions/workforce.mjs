@@ -15,17 +15,17 @@
 import { initAgents, getAgent, listAgents, getAgentStatuses } from './_agent-registry.mjs';
 import { initConnectors, listConnectors, invoke } from './_mcp-connectors.mjs';
 import { remember, recall, getAccountMemories, getPendingTasks, listHires } from './_supabase-memory.mjs';
+import { corsHeaders as cors, preflight, requireAuth, serverError } from './_auth.mjs';
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  const pf = preflight(req);
+  if (pf) return pf;
+  const corsHeaders = cors(req);
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  // Every workforce action (list, delegate, execute, memory, hire, team…)
+  // reads service-role data or triggers paid LLM / outbound work → operator only.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
 
   try {
     initAgents();
@@ -70,14 +70,14 @@ export default async (req, context) => {
         });
     }
   } catch (err) {
-    console.error('[workforce] Error:', err.message, err.stack);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return serverError(req, err, 'workforce');
   }
 };
 
-export const config = { path: "/api/workforce" };
+export const config = {
+  path: "/api/workforce",
+  rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ["ip", "domain"] }
+};
 
 // ─── Handlers ──────────────────────────────────────────────────────────────────
 

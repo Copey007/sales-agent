@@ -19,17 +19,17 @@ import {
   findProspectByEmail, isEmailSuppressed, getFeatureFlag,
   logActivity, DEFAULTS
 } from "./_campaign-store.mjs";
+import { corsHeaders as cors, preflight, requireAuth, serverError } from "./_auth.mjs";
+
+const MAX_PROSPECTS_PER_REQUEST = 100;
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+  const pf = preflight(req, { methods: 'POST, OPTIONS' });
+  if (pf) return pf;
+  const corsHeaders = cors(req, { methods: 'POST, OPTIONS' });
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  const denied = await requireAuth(req);
+  if (denied) return denied;
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST required' }), {
@@ -58,6 +58,13 @@ export default async (req, context) => {
     const prospects = body.prospects || [];
     const scheduledAt = body.scheduled_at || new Date().toISOString();
     const stepNumber = body.step_number || 1;
+
+    if (!Array.isArray(prospects) || prospects.length > MAX_PROSPECTS_PER_REQUEST) {
+      return new Response(JSON.stringify({ error: `prospects[] must be an array of at most ${MAX_PROSPECTS_PER_REQUEST}` }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     if (!prospects.length) {
       return new Response(JSON.stringify({ error: 'prospects[] required' }), {
@@ -145,8 +152,12 @@ export default async (req, context) => {
           campaign_id: campaignId,
           prospect_id: prospect.id,
           step_number: stepNumber,
+          // "queued" = eligible for DRAFT generation only. send-worker will
+          // not deliver anything until an operator approves the draft
+          // (campaign-admin?action=approve_sends sets approved_at).
           status: "queued",
           scheduled_at: scheduledAt,
+          enqueued_by: req.authUser?.email || 'internal',
           created_at: new Date().toISOString()
         });
 
@@ -178,13 +189,11 @@ export default async (req, context) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return serverError(req, err, 'enqueue-send');
   }
 };
 
 export const config = {
-  path: "/api/enqueue-send"
+  path: "/api/enqueue-send",
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };

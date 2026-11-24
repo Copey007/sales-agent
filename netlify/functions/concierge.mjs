@@ -18,13 +18,10 @@
 
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { remember, recall } from './_supabase-memory.mjs';
+import { corsHeaders as cors } from './_auth.mjs';
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  const corsHeaders = cors(req, { methods: 'GET, POST, OPTIONS' });
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -69,7 +66,10 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/concierge" };
+export const config = {
+  path: "/api/concierge",
+  rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ["ip", "domain"] }
+};
 
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 

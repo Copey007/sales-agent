@@ -25,11 +25,16 @@ import {
   listRecords, logActivity, setFeatureFlag,
   DEFAULTS
 } from "./_campaign-store.mjs";
+import { corsHeaders as cors, preflight, requireAuth, serverError, authEnv } from "./_auth.mjs";
 
 export default async (req, context) => {
-  if (req.method === "OPTIONS") {
-    return new Response("", { status: 204, headers: corsHeaders() });
-  }
+  const pf = preflight(req);
+  if (pf) return pf;
+  // Launch starts paid Hunter.io lookups and queues outbound email; the read
+  // actions expose prospect PII → operator auth on every action.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
+  const corsHeaders = () => cors(req);
 
   const url = new URL(req.url);
   // Support action from URL params OR JSON body
@@ -76,20 +81,17 @@ export default async (req, context) => {
     }
 
     return new Response(JSON.stringify(result, null, 2), {
-      status: 200,
+      status: result && result.error ? 400 : 200,
       headers: { "Content-Type": "application/json", ...corsHeaders() }
     });
   } catch (err) {
-    console.error("[campaign-orchestrator] Error:", err.message, err.stack);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", ...corsHeaders() }
-    });
+    return serverError(req, err, "campaign-orchestrator");
   }
 };
 
 export const config = {
-  path: "/api/campaign-orchestrator"
+  path: "/api/campaign-orchestrator",
+  rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };
 
 // ─── Launch Handler ─────────────────────────────────────────────────────────
@@ -116,9 +118,13 @@ async function handleLaunch(req) {
     tenant_id: tenantId,
     name: campaign_name,
     status: "active",
-    daily_send_limit: 25,
-    sending_domain: "a-gent.co",
-    sender_name: "Mark",
+    // Sender identity + cap come from env, not hardcoded values.
+    daily_send_limit: Math.min(
+      Number(authEnv("DEFAULT_DAILY_SEND_LIMIT", "25")) || 25,
+      Number(authEnv("MAX_DAILY_SEND_LIMIT", "50")) || 50
+    ),
+    sending_domain: authEnv("SENDING_DOMAIN", "a-gent.co"),
+    sender_name: authEnv("SENDER_NAME", "A-Gent Fleet"),
     created_at: now,
     launched_at: now,
     brief: { target_persona, icp, problem_we_solve },
@@ -802,7 +808,8 @@ function extractPainPoints(problem) {
 function generateDemoProspects(campaignId, parsedICP, targetRole, count) {
   const companies = ["TechScale Inc", "GrowthForge", "DataPulse AI", "CloudVertex", "SaaSMetrics"];
   const names = ["Alex Rivera", "Jordan Patel", "Morgan Chen", "Taylor Brooks", "Casey Williams"];
-  const domains = ["techscale.io", "growthforge.com", "datapulse.ai", "cloudvertex.io", "saasmetrics.com"];
+  // RFC 2606 reserved domains — demo data must never resolve to real inboxes.
+  const domains = ["techscale.example.com", "growthforge.example.com", "datapulse.example.com", "cloudvertex.example.com", "saasmetrics.example.com"];
 
   return Array.from({ length: count }, (_, i) => ({
     id: crypto.randomUUID(),
@@ -812,6 +819,7 @@ function generateDemoProspects(campaignId, parsedICP, targetRole, count) {
     company_name: companies[i],
     title: targetRole,
     source: "campaign_orchestrator",
+    is_demo: true,
     sourced_at: new Date().toISOString(),
     icp_match: parsedICP.vertical
   }));
@@ -826,10 +834,4 @@ function defaultAgentStatus() {
   };
 }
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
-  };
-}
+// corsHeaders() is now request-scoped inside the handler (see _auth.mjs).

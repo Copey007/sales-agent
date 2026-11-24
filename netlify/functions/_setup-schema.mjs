@@ -15,9 +15,13 @@ export default async (req, context) => {
   try {
     const body = await req.json().catch(() => ({}));
     
-    // Simple auth check
-    const setupSecret = env('QUEUE_MANAGER_SECRET', 'setup');
-    if (body.secret !== setupSecret && body.secret !== 'setup') {
+    // Auth check — fail closed: no secret configured => endpoint disabled.
+    // (The old code also accepted the literal string "setup" from anyone.)
+    const setupSecret = env('QUEUE_MANAGER_SECRET');
+    if (!setupSecret) {
+      return new Response(JSON.stringify({ error: 'Setup disabled: QUEUE_MANAGER_SECRET not configured' }), { status: 503, headers: corsHeaders });
+    }
+    if (body.secret !== setupSecret) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
 

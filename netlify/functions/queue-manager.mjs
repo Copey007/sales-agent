@@ -14,6 +14,10 @@ import {
   listQueuedSends, countSentToday, isEmailSuppressed,
   getProspect, putEmailSend, logActivity, DEFAULTS
 } from "./_campaign-store.mjs";
+import { internalHeaders } from "./_auth.mjs";
+
+// Max LLM draft generations per campaign per run (drafts never send on their own).
+const DRAFTS_PER_RUN = 10;
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -28,6 +32,13 @@ const WARMUP_SCHEDULE = [
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getEffectiveDailyLimit(campaign) {
+  const maxLimit = Number(
+    (typeof Netlify !== 'undefined' && Netlify.env?.get('MAX_DAILY_SEND_LIMIT')) || process.env.MAX_DAILY_SEND_LIMIT || 50
+  ) || 50;
+  return Math.min(maxLimit, getWarmupLimit(campaign));
+}
+
+function getWarmupLimit(campaign) {
   const campaignAge = Math.floor(
     (Date.now() - new Date(campaign.created_at).getTime()) / (1000 * 60 * 60 * 24)
   );
@@ -74,23 +85,27 @@ async function processQueue() {
       const effectiveLimit = getEffectiveDailyLimit(campaign);
       const remainingBudget = effectiveLimit - sentToday;
 
-      if (remainingBudget <= 0) {
-        results.sends_over_limit++;
-        continue;
-      }
-
       // Get queued sends that are due
       const queuedSends = await listQueuedSends(campaign.id);
       const dueSends = queuedSends.filter(s => new Date(s.scheduled_at) <= now);
 
       if (dueSends.length === 0) continue;
 
+      // Approved sends deliver (count against the daily cap); unapproved ones
+      // only get a draft generated (status → pending_approval, no delivery).
+      const approvedDue = dueSends.filter(s => s.approved_at);
+      const draftDue = dueSends.filter(s => !s.approved_at).slice(0, DRAFTS_PER_RUN);
+
       // Apply suppression check and budget limit
       const eligibleSends = [];
-      for (const send of dueSends) {
-        if (eligibleSends.length >= remainingBudget) {
-          results.sends_over_limit += (dueSends.length - eligibleSends.length);
-          break;
+      let approvedTaken = 0;
+      for (const send of [...approvedDue, ...draftDue]) {
+        if (send.approved_at) {
+          if (approvedTaken >= Math.max(0, remainingBudget)) {
+            results.sends_over_limit++;
+            continue;
+          }
+          approvedTaken++;
         }
 
         // Check suppression
@@ -123,9 +138,9 @@ async function processQueue() {
         // Invoke Send Worker (fire-and-forget for background processing)
         try {
           const workerUrl = getSendWorkerUrl();
-          await fetch(workerUrl, {
+          const workerRes = await fetch(workerUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({
               campaign_id: campaign.id,
               send_ids: batchIds,
@@ -133,6 +148,9 @@ async function processQueue() {
               dispatched_at: now.toISOString()
             })
           });
+          // fetch() does not throw on 4xx/5xx — without this check a 404/403
+          // leaves the batch stuck in "dispatched" forever.
+          if (!workerRes.ok) throw new Error(`send-worker responded ${workerRes.status}`);
           results.batches_dispatched++;
           results.sends_dispatched += batch.length;
         } catch (dispatchErr) {
@@ -169,15 +187,8 @@ async function processQueue() {
 // ─── Netlify Scheduled Function Handler ─────────────────────────────────────
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  // Scheduled-only function (no public path) → no CORS needed.
+  const corsHeaders = {};
 
   try {
     // Feature flag check
@@ -233,9 +244,10 @@ export default async (req, context) => {
       timestamp: new Date().toISOString()
     });
 
+    console.error('[queue-manager]', err.message, err.stack);
     return new Response(JSON.stringify({
       success: false,
-      error: err.message
+      error: 'internal_error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -247,5 +259,6 @@ export const config = {
   // Scheduled only — Netlify does not allow `path` AND `schedule` on the
   // same function. The cron fires every 5 minutes; for manual testing,
   // wait for the cron or invoke the equivalent logic via send-worker.
-  schedule: "@every 5m"
+  // Standard cron (UTC). Keep in sync with netlify.toml [functions."queue-manager"].
+  schedule: "*/5 * * * *"
 };

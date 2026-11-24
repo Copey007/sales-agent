@@ -9,6 +9,8 @@
  * This is the primary integration point for the AI SDR frontend.
  */
 
+import { corsHeaders as cors, requireAuth } from './_auth.mjs';
+
 // ─── Signal Gathering (inline for single-function deployment) ──────────────────
 
 async function webSearch(query) {
@@ -321,15 +323,15 @@ async function generateGapEmail(prospect, signals, sender, productContext) {
 
 // ─── Netlify Function Handler ──────────────────────────────────────────────────
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
-  };
+  const corsHeaders = cors(req, { methods: 'POST, OPTIONS' });
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  // Paid LLM / SerpAPI work → operator auth required.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
   
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -419,5 +421,6 @@ export default async (req, context) => {
 };
 
 export const config = {
-  path: "/api/gap-email-pipeline"
+  path: "/api/gap-email-pipeline",
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };

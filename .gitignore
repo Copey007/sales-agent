@@ -1,2 +1,7 @@
 node_modules/
 .netlify/
+
+# Runtime memory dumps (prospect/research data) - never commit
+memory/*.json
+memory/long_term/*.json
+memory/working/*.json

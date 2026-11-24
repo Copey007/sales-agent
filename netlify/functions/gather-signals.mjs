@@ -8,6 +8,8 @@
  * can be dropped in later without rework.
  */
 
+import { corsHeaders as cors, requireAuth } from './_auth.mjs';
+
 // ─── Signal Source Interface ───────────────────────────────────────────────────
 // Each source implements: { name, gather(prospect) -> Signal[] }
 // Signal shape: { type, title, detail, source_url, source_name, gathered_at }
@@ -357,15 +359,15 @@ function extractLinkedInSignals(text, profileUrl) {
 // ─── Netlify Function Handler ──────────────────────────────────────────────────
 export default async (req, context) => {
   // CORS headers for the frontend
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
-  };
+  const corsHeaders = cors(req, { methods: 'POST, OPTIONS' });
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  // Paid LLM / SerpAPI work → operator auth required.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
   
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -412,5 +414,6 @@ export default async (req, context) => {
 };
 
 export const config = {
-  path: "/api/gather-signals"
+  path: "/api/gather-signals",
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };

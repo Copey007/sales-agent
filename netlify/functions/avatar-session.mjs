@@ -12,13 +12,11 @@
  *   → { success: true }
  */
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import { corsHeaders as cors } from './_auth.mjs';
+
 
 export default async (req, context) => {
+  const corsHeaders = cors(req, { methods: 'GET, POST, OPTIONS' });
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -53,7 +51,10 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/avatar-session" };
+export const config = {
+  path: "/api/avatar-session",
+  rateLimit: { windowLimit: 10, windowSize: 60, aggregateBy: ["ip", "domain"] }
+};
 
 async function startSession(apiKey, body, corsHeaders) {
   const avatarId = body.avatar_id || 'ebdfdc7e-7e2c-4d2c-8407-a78883e5000a'; // Anastasia in Black Suit

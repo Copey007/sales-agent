@@ -17,24 +17,26 @@ import {
   getCampaignPersona, getCampaignSignalConfig, getCampaignSequence, getCampaignTerritory,
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
-  listActivityLog, countSentToday, listQueuedSends
+  listActivityLog, countSentToday, listQueuedSends,
+  listCampaignSends, getEmailSend, putEmailSend, getProspect
 } from "./_campaign-store.mjs";
+import { corsHeaders as cors, preflight, requireAuth, internalHeaders, json, serverError, authEnv } from "./_auth.mjs";
+
+// Only these flags may be toggled over HTTP.
+const SETTABLE_FLAGS = new Set(["multi_campaign_orchestration", "queue_manager_active"]);
 
 export default async (req, context) => {
-  // CORS
-  if (req.method === "OPTIONS") {
-    return new Response("", {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"
-      }
-    });
-  }
+  const pf = preflight(req);
+  if (pf) return pf;
+
+  // Every action (seed, flags, campaign config, activity log, queue, approvals)
+  // is operator-only.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "status";
+  const MAX_DAILY = Number(authEnv("MAX_DAILY_SEND_LIMIT", "50")) || 50;
 
   try {
     let result;
@@ -73,7 +75,7 @@ export default async (req, context) => {
         if (!campaign) {
           return new Response(JSON.stringify({ error: "Campaign not found" }), {
             status: 404,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            headers: { "Content-Type": "application/json", ...cors(req) }
           });
         }
         const persona = await getCampaignPersona(campaignId);
@@ -104,7 +106,7 @@ export default async (req, context) => {
         if (req.method !== "POST") {
           return new Response(JSON.stringify({ error: "POST required" }), {
             status: 405,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            headers: { "Content-Type": "application/json", ...cors(req) }
           });
         }
         const body = await req.json();
@@ -114,7 +116,7 @@ export default async (req, context) => {
           tenant_id: DEFAULTS.TENANT_ID,
           name: body.name || "New Campaign",
           status: body.status || "draft",
-          daily_send_limit: body.daily_send_limit || 50,
+          daily_send_limit: Math.min(Math.max(1, Number(body.daily_send_limit) || 25), MAX_DAILY),
           sending_domain: body.sending_domain || null,
           created_at: new Date().toISOString()
         };
@@ -167,15 +169,15 @@ export default async (req, context) => {
         if (req.method !== "POST") {
           return new Response(JSON.stringify({ error: "POST required" }), {
             status: 405,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            headers: { "Content-Type": "application/json", ...cors(req) }
           });
         }
         const body = await req.json();
         if (!body.flag || typeof body.enabled !== "boolean") {
-          return new Response(JSON.stringify({ error: "flag and enabled required" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          });
+          return json(req, { error: "flag and enabled required" }, 400);
+        }
+        if (!SETTABLE_FLAGS.has(body.flag)) {
+          return json(req, { error: "unknown flag" }, 400);
         }
         await setFeatureFlag(body.flag, body.enabled, body.metadata || {});
         result = { flag: body.flag, enabled: body.enabled };
@@ -205,22 +207,77 @@ export default async (req, context) => {
       }
 
       case "trigger_queue": {
-        // Manual trigger for queue-manager logic (for testing)
+        // Manual trigger for queue-manager logic (for testing). POST only.
+        // send-worker drafts unapproved sends and only delivers approved ones.
+        if (req.method !== "POST") return json(req, { error: "POST required" }, 405);
         const allSends = await listQueuedSends(url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID);
         const batch = allSends.slice(0, 5);
         if (batch.length === 0) {
           result = { message: "No queued sends found" };
         } else {
-          // Call send-worker directly
+          const nowIso = new Date().toISOString();
+          for (const s of batch) { s.status = "dispatched"; s.dispatched_at = nowIso; await putEmailSend(s); }
           const sendIds = batch.map(s => s.id);
           const campaignId = batch[0].campaign_id;
-          const workerResp = await fetch(`https://aisdr.a-gent.co/api/send-worker`, {
+          const siteUrl = authEnv("URL", "https://aisdr.a-gent.co");
+          const workerResp = await fetch(`${siteUrl}/api/send-worker`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({ campaign_id: campaignId, send_ids: sendIds, batch_index: 0, dry_run: url.searchParams.get("dry_run") === "true" })
           });
-          result = { dispatched: sendIds.length, send_ids: sendIds, worker_status: workerResp.status, worker_response: await workerResp.json() };
+          result = { dispatched: sendIds.length, send_ids: sendIds, worker_status: workerResp.status, worker_response: await workerResp.json().catch(() => null) };
         }
+        break;
+      }
+
+      // ── Human-in-the-loop approval queue ─────────────────────────────────
+      case "list_pending": {
+        const campaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
+        const sends = (await listCampaignSends(campaignId)).filter(s => s.status === "pending_approval");
+        const items = [];
+        for (const s of sends.slice(0, 100)) {
+          const p = await getProspect(s.prospect_id);
+          items.push({
+            id: s.id, campaign_id: s.campaign_id, step_number: s.step_number,
+            to: p?.email || s.prospect_email || null, contact_name: p?.contact_name || p?.name || null,
+            company_name: p?.company_name || null, is_demo: !!p?.is_demo,
+            subject: s.email_subject, body: s.email_body, signals_used: s.signals_used || [],
+            drafted_at: s.drafted_at || null
+          });
+        }
+        result = { pending: items, count: items.length };
+        break;
+      }
+
+      case "approve_sends":
+      case "reject_sends": {
+        if (req.method !== "POST") return json(req, { error: "POST required" }, 405);
+        const body = await req.json().catch(() => ({}));
+        const ids = Array.isArray(body.send_ids) ? body.send_ids.slice(0, 100) : [];
+        if (!ids.length) return json(req, { error: "send_ids[] required" }, 400);
+        const edits = body.edits || {}; // optional { [send_id]: { subject, body } }
+        const approver = req.authUser?.email || "internal";
+        const nowIso = new Date().toISOString();
+        const updated = [];
+        for (const id of ids) {
+          const s = await getEmailSend(id);
+          if (!s || s.status !== "pending_approval") continue;
+          if (action === "approve_sends") {
+            if (edits[id]?.subject) s.email_subject = String(edits[id].subject).slice(0, 200);
+            if (edits[id]?.body) s.email_body = String(edits[id].body).slice(0, 5000);
+            s.status = "queued";          // queue-manager will now deliver it
+            s.approved_at = nowIso;
+            s.approved_by = approver;
+            s.scheduled_at = nowIso;
+          } else {
+            s.status = "rejected";
+            s.rejected_at = nowIso;
+            s.rejected_by = approver;
+          }
+          await putEmailSend(s);
+          updated.push(id);
+        }
+        result = { action, updated, count: updated.length };
         break;
       }
 
@@ -228,19 +285,15 @@ export default async (req, context) => {
         result = { error: `Unknown action: ${action}` };
     }
 
-    return new Response(JSON.stringify(result, null, 2), {
-      status: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-    });
+    return json(req, result, result && result.error ? 400 : 200);
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-    });
+    // Previously returned err.stack to any caller.
+    return serverError(req, err, "campaign-admin");
   }
 };
 
 export const config = {
-  path: "/api/campaign-admin"
+  path: "/api/campaign-admin",
+  rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };

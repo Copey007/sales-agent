@@ -7,6 +7,8 @@
  * Uses the project's OpenAI-compatible LLM endpoint.
  */
 
+import { corsHeaders as cors, requireAuth } from './_auth.mjs';
+
 // ─── GAP Email System Prompt ───────────────────────────────────────────────────
 const GAP_SYSTEM_PROMPT = `You are an expert cold email writer trained in the GAP Prospecting methodology by Keenan & Will Aitken. You write short, problem-centric outbound emails that trigger curiosity and secure meetings.
 
@@ -55,15 +57,15 @@ Return ONLY valid JSON:
 
 // ─── Handler ───────────────────────────────────────────────────────────────────
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
-  };
+  const corsHeaders = cors(req, { methods: 'POST, OPTIONS' });
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  // Paid LLM / SerpAPI work → operator auth required.
+  const denied = await requireAuth(req);
+  if (denied) return denied;
   
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -220,5 +222,6 @@ async function callLLM(systemPrompt, userPrompt) {
 }
 
 export const config = {
-  path: "/api/generate-gap-email"
+  path: "/api/generate-gap-email",
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ["ip", "domain"] }
 };

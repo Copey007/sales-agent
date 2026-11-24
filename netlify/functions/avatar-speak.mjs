@@ -7,13 +7,11 @@
  * Uses HeyGen v3 Video Agent API. Takes ~20-30s to generate.
  */
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import { corsHeaders as cors } from './_auth.mjs';
+
 
 export default async (req, context) => {
+  const corsHeaders = cors(req, { methods: 'GET, POST, OPTIONS' });
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -125,4 +123,7 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/avatar-speak" };
+export const config = {
+  path: "/api/avatar-speak",
+  rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ["ip", "domain"] }
+};

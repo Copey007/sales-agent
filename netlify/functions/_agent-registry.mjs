@@ -462,15 +462,14 @@ Write a GAP Prospecting email. Return JSON only.`
         company: context.company
       }, context.company?.toLowerCase().replace(/\s+/g, '_'));
 
-      // Send via Resend if requested
-      if (context.send !== false && context.toEmail) {
-        const sendResult = await this.use('resend', 'send', {
-          to: context.toEmail,
-          from: context.from || 'mark@a-gent.co',
-          subject: email.subject,
-          html: email.body.replace(/\n/g, '<br>')
-        });
-        email.sendResult = sendResult;
+      // NEVER send directly from the agent. Previously any caller of
+      // POST /api/workforce {action:"execute"|"delegate"} could make this
+      // agent email any address (context.toEmail) from any a-gent.co sender
+      // (context.from). Drafts now go to the human approval queue instead
+      // (enqueue-send → send-worker drafts → campaign-admin approve_sends).
+      if (context.toEmail) {
+        email.status = 'pending_approval';
+        email.note = 'Draft only — route through /api/enqueue-send for human approval before delivery.';
       }
 
       await this.updateStatus('idle', null, `Email generated${email.sendResult ? ' and sent' : ''}`);
