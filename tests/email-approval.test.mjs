@@ -68,7 +68,9 @@ test('approved send delivers exactly the approved text + compliance footer + Lis
   assert.ok(sent.text.startsWith('Edited body by a human.'));
   assert.match(sent.text, /1 Test Street, Testville/);
   assert.match(sent.text, /unsubscribe/i);
-  assert.equal(sent.headers['List-Unsubscribe'], '<mailto:unsubscribe@example.test?subject=unsubscribe>');
+  assert.match(sent.headers['List-Unsubscribe'], /^<mailto:unsubscribe@example\.test\?subject=unsubscribe>/);
+  assert.match(sent.headers['List-Unsubscribe'], /https:\/\/aisdr\.example\.test\/api\/unsubscribe\?token=/);
+  assert.equal(sent.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
   assert.deepEqual(sent.to, ['jane@prospect.test']);
   assert.equal(calls.filter((c) => c.url.includes('/chat/completions')).length, 0, 'no regeneration of approved text');
   assert.equal((await S.getEmailSend('s-1')).status, 'sent');

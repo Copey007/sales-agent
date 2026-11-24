@@ -245,7 +245,7 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
   // CAN-SPAM: physical postal address + working opt-out are mandatory.
-  const compliance = complianceOrBlock({ replyTo });
+  const compliance = complianceOrBlock({ replyTo, toEmail, tenantId: prospect.tenant_id || campaign?.tenant_id || DEFAULTS.TENANT_ID });
   if (!compliance.ok) {
     return { sent: false, reason: compliance.reason, simulated: false, blocked: true };
   }
