@@ -31,7 +31,7 @@
     /* Tier 2 — semantic (Operator Dark = default) */
     :root,[data-theme="dark"]{
       --surface-canvas:var(--ink-900); --surface-raised:var(--ink-850); --surface-sunken:var(--ink-800); --surface-overlay:var(--ink-750);
-      --text-primary:var(--ink-50); --text-secondary:var(--ink-250); --text-tertiary:var(--ink-300); --text-on-accent:var(--ink-900);
+      --text-primary:var(--ink-50); --text-secondary:var(--ink-250); --text-tertiary:var(--ink-300); --text-on-accent:var(--ink-900); --on-accent:var(--text-on-accent);
       --accent:var(--gold-400); --accent-strong:var(--gold-300); --accent-text:var(--gold-400);
       --accent-bg:color-mix(in srgb, var(--gold-400) 10%, transparent); --accent-border:color-mix(in srgb, var(--gold-400) 28%, transparent);
       --action-primary-bg:var(--ink-25); --action-primary-text:var(--ink-900);
@@ -46,7 +46,7 @@
     /* Tier 3 — component tokens */
     :root{
       --btn-primary-bg:var(--action-primary-bg); --btn-primary-fg:var(--action-primary-text);
-      --btn-accent-bg:var(--accent); --btn-accent-fg:var(--text-on-accent);
+      --btn-accent-bg:var(--accent); --btn-accent-fg:var(--on-accent);
       --btn-secondary-bg:transparent; --btn-secondary-fg:var(--text-primary); --btn-secondary-border:var(--border-strong);
       --tab-fg:var(--text-secondary); --tab-active-fg:var(--accent-text); --tab-active-indicator:var(--accent);
       --input-bg:var(--surface-sunken); --input-fg:var(--text-primary); --input-placeholder:var(--text-tertiary); --input-border:var(--border-strong);
@@ -81,7 +81,7 @@
     .overlay{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px;background:rgba(10,10,12,.82);backdrop-filter:blur(6px)}
     .overlay h1{font-size:clamp(1.5rem,4vw,2.4rem);font-weight:800;letter-spacing:-.02em}
     .overlay p{font-size:.95rem;color:var(--text-secondary);max-width:440px;line-height:1.6}
-    .start-btn{margin-top:6px;padding:15px 34px;border:0;border-radius:999px;background:var(--accent);color:var(--text-on-accent);font-weight:700;font-size:1rem;cursor:pointer;box-shadow:0 8px 32px color-mix(in srgb, var(--accent) 45%, transparent);transition:transform .15s}
+    .start-btn{margin-top:6px;padding:15px 34px;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:1rem;cursor:pointer;box-shadow:0 8px 32px color-mix(in srgb, var(--accent) 45%, transparent);transition:transform .15s}
     .start-btn:hover{transform:scale(1.04)}.start-btn:disabled{opacity:.6;cursor:wait;transform:none}
     .overlay .err{color:var(--status-danger);font-size:.84rem;max-width:440px;min-height:1em}
     .overlay .tiny{color:var(--text-tertiary);font-size:.72rem}
@@ -95,7 +95,7 @@
     .dock input:focus{border-color:var(--accent)}.dock input::placeholder{color:var(--text-tertiary)}
     .icon-btn{width:42px;height:42px;border:1px solid var(--border);border-radius:50%;background:var(--surface-sunken);color:var(--text-secondary);cursor:pointer;display:grid;place-items:center;font-size:1.1rem;flex-shrink:0;transition:all .15s}
     .icon-btn:hover{border-color:var(--accent);color:var(--accent-strong)}
-    .icon-btn.send{background:var(--accent);color:var(--text-on-accent);border:0;box-shadow:0 4px 18px color-mix(in srgb, var(--accent) 40%, transparent)}
+    .icon-btn.send{background:var(--accent);color:var(--on-accent);border:0;box-shadow:0 4px 18px color-mix(in srgb, var(--accent) 40%, transparent)}
     .icon-btn.mic.listening{background:var(--status-danger);border-color:var(--status-danger);color:var(--text-on-accent);animation:pulse 1.2s infinite}
     .icon-btn.speaker.off{opacity:.45}
     .icon-btn.end{border-color:rgba(255,92,122,.35);color:var(--status-danger)}.icon-btn.end:hover{background:rgba(255,92,122,.12)}
@@ -110,7 +110,7 @@
     .msg.user{align-self:flex-end;background:color-mix(in srgb, var(--accent) 14%, transparent);border:1px solid var(--border);border-bottom-right-radius:4px}
     .lead{padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px}
     .lead input{flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-sunken);color:var(--text-primary);font-size:.82rem;outline:none}
-    .lead button{padding:0 14px;border:0;border-radius:10px;background:var(--accent);color:var(--text-on-accent);font-weight:700;font-size:.8rem;cursor:pointer}
+    .lead button{padding:0 14px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:.8rem;cursor:pointer}
     @media(max-width:600px){.caption{bottom:160px}.chips{bottom:104px}.dock input{width:46vw}}
   </style>
 </head>
@@ -162,6 +162,7 @@
   </div>
 
   <script type="module">
+    import { applyTenantAccent } from '/assets/accent-contrast.mjs';
     import { LiveAvatarSession, SessionEvent, AgentEventsEnum } from 'https://esm.sh/@heygen/liveavatar-web-sdk@0.0.18';
 
     const $ = (id) => document.getElementById(id);
@@ -203,7 +204,7 @@
         if (!res.ok || !data.config) throw new Error(data.error || 'not found');
         cfg = data.config;
         const t = cfg.theme || {};
-        if (t.primary_color) { document.documentElement.style.setProperty('--accent', t.primary_color); }
+        if (t.primary_color) { applyTenantAccent(t.primary_color); }
         if (t.headline) { $('headline').textContent = t.headline; document.title = `${t.headline} — ${cfg.name}`; }
         if (t.subcopy) $('subcopy').textContent = t.subcopy;
         if (t.logo_url) $('logo').src = t.logo_url; else $('logo').style.display = 'none';
