@@ -102,16 +102,17 @@
     if (overlay) { overlay.style.display = 'grid'; setMsg(msg); return; }
     overlay = document.createElement('div');
     overlay.id = 'agent-auth-gate';
-    overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:rgba(10,10,12,.92);font-family:system-ui,-apple-system,sans-serif');
+    overlay.setAttribute('style', 'position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;background:rgba(10,10,12,.92);font-family:Inter,system-ui,-apple-system,sans-serif');
     overlay.innerHTML =
+      '<style>#agent-auth-gate :focus-visible{outline:2px solid #c8b48c;outline-offset:2px}</style>' +
       '<main aria-labelledby="agent-auth-title"><form style="background:#131316;border:1px solid #2a2a30;border-radius:14px;padding:28px;width:min(360px,90vw);color:#f0f0f2;box-shadow:0 20px 60px rgba(0,0,0,.5)">' +
       '<h1 id="agent-auth-title" style="margin:0 0 6px;font-size:20px">Sign in to A-Gent</h1>' +
       '<p style="margin:0 0 18px;color:#a1a1a6;font-size:13px">Operator access only.</p>' +
       '<label for="agent-auth-email" style="display:block;font-size:12px;color:#a1a1a6">Email</label>' +
-      '<input id="agent-auth-email" name="email" type="email" autocomplete="username" required style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:10px;border-radius:8px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2">' +
+      '<input id="agent-auth-email" name="email" type="email" autocomplete="username" required style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:10px;border-radius:8px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2;font-family:inherit">' +
       '<label for="agent-auth-password" style="display:block;font-size:12px;color:#a1a1a6">Password</label>' +
-      '<input id="agent-auth-password" name="password" type="password" autocomplete="current-password" required style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:10px;border-radius:8px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2">' +
-      '<button type="submit" style="width:100%;padding:11px;border:0;border-radius:8px;background:#c8b48c;color:#0a0a0c;font-weight:600;cursor:pointer">Sign in</button>' +
+      '<input id="agent-auth-password" name="password" type="password" autocomplete="current-password" required style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:10px;border-radius:8px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2;font-family:inherit">' +
+      '<button type="submit" style="width:100%;padding:11px;border:0;border-radius:8px;background:#c8b48c;color:#0a0a0c;font-family:inherit;font-weight:600;cursor:pointer">Sign in</button>' +
       '<p data-msg role="alert" style="min-height:18px;margin:12px 0 0;color:#d4625a;font-size:13px"></p></form></main>';
     var form = overlay.querySelector('form');
     form.addEventListener('submit', function (e) {
@@ -140,7 +141,7 @@
     if (document.getElementById('agent-auth-badge') || !session) return;
     var b = document.createElement('div');
     b.id = 'agent-auth-badge';
-    b.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483645;background:#131316;border:1px solid #2a2a30;color:#8a8a90;font:12px system-ui;padding:6px 10px;border-radius:999px');
+    b.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483645;background:#131316;border:1px solid #2a2a30;color:#8a8a90;font:12px Inter,system-ui,sans-serif;padding:6px 10px;border-radius:999px');
     b.textContent = (session.email || 'signed in') + ' · ';
     var a = document.createElement('a'); a.href = '#'; a.textContent = 'Sign out'; a.style.color = '#f0f0f2';
     a.addEventListener('click', function (e) {
