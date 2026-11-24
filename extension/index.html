@@ -11,8 +11,8 @@
     :root {
       --navy: #0f1419;
       --navy-light: #1a2332;
-      --gold: #c8b48c;
-      --gold-light: #e8d48a;
+      --accent: #c8b48c;
+      --accent-light: #e8d48a;
       --cream: #faf8f0;
       --cream-dark: #f0ede0;
       --burgundy: #722f37;
@@ -51,12 +51,12 @@
     }
     
     .logo span {
-      color: var(--gold);
+      color: var(--accent);
     }
     
     nav ul { display: flex; list-style: none; gap: 2.5rem; }
     nav a { text-decoration: none; color: var(--cream); opacity: 0.8; font-weight: 400; font-size: 0.95rem; transition: opacity 0.2s; }
-    nav a:hover { opacity: 1; color: var(--gold); }
+    nav a:hover { opacity: 1; color: var(--accent); }
     
     .btn {
       padding: 0.75rem 1.75rem;
@@ -74,21 +74,21 @@
     }
     
     .btn-primary {
-      background: var(--gold);
+      background: var(--accent);
       color: var(--navy);
     }
     .btn-primary:hover {
-      background: var(--gold-light);
+      background: var(--accent-light);
       transform: translateY(-1px);
     }
     
     .btn-outline {
       background: transparent;
-      border: 1px solid var(--gold);
-      color: var(--gold);
+      border: 1px solid var(--accent);
+      color: var(--accent);
     }
     .btn-outline:hover {
-      background: var(--gold);
+      background: var(--accent);
       color: var(--navy);
     }
     
@@ -99,7 +99,7 @@
     }
     .btn-ghost:hover {
       opacity: 1;
-      color: var(--gold);
+      color: var(--accent);
     }
     
     /* Hero */
@@ -126,10 +126,10 @@
     .hero-badge {
       display: inline-block;
       padding: 0.4rem 1rem;
-      border: 1px solid var(--gold);
+      border: 1px solid var(--accent);
       border-radius: 20px;
       font-size: 0.8rem;
-      color: var(--gold);
+      color: var(--accent);
       letter-spacing: 2px;
       text-transform: uppercase;
       margin-bottom: 2rem;
@@ -145,7 +145,7 @@
     
     .hero h1 em {
       font-style: normal;
-      color: var(--gold);
+      color: var(--accent);
     }
     
     .hero-sub {
@@ -209,7 +209,7 @@
     }
     
     .section-header p {
-      color: var(--gold);
+      color: var(--accent);
       font-size: 0.9rem;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -232,14 +232,14 @@
     }
     
     .feature-card:hover {
-      border-color: var(--gold);
+      border-color: var(--accent);
       transform: translateY(-4px);
     }
     
     .feature-icon {
       width: 48px;
       height: 48px;
-      background: var(--gold);
+      background: var(--accent);
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -290,7 +290,7 @@
     .step-num {
       width: 48px;
       height: 48px;
-      border: 2px solid var(--gold);
+      border: 2px solid var(--accent);
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -298,7 +298,7 @@
       font-family: 'Cormorant Garamond', serif;
       font-size: 1.5rem;
       font-weight: 700;
-      color: var(--gold);
+      color: var(--accent);
       margin: 0 auto 1.25rem;
     }
     
@@ -338,7 +338,7 @@
     }
     
     .pricing-card.featured {
-      border-color: var(--gold);
+      border-color: var(--accent);
     }
     
     .pricing-card.featured::before {
@@ -347,7 +347,7 @@
       top: -12px;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--gold);
+      background: var(--accent);
       color: var(--navy);
       padding: 0.25rem 1rem;
       border-radius: 12px;
@@ -365,7 +365,7 @@
     
     .pricing-card .tagline {
       font-size: 0.85rem;
-      color: var(--gold);
+      color: var(--accent);
       margin-bottom: 1.5rem;
     }
     
@@ -398,7 +398,7 @@
     
     .pricing-features li::before {
       content: '✓';
-      color: var(--gold);
+      color: var(--accent);
       margin-right: 0.75rem;
       font-weight: 600;
     }
@@ -442,7 +442,7 @@
     }
     
     footer .tagline {
-      color: var(--gold);
+      color: var(--accent);
       opacity: 0.6;
       margin-top: 0.25rem;
       font-size: 0.8rem;

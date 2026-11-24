@@ -6,7 +6,7 @@
   <title>A-Gent — Talk to Your AI Agent</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root{--black:#0a0a0c;--panel:#131316;--panel-2:#1a1a1f;--gold:#c8b48c;--gold-2:#d4c9a8;--green:#7eb88a;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(200,180,140,.15);--red:#ff5c7a}
+    :root{--black:#0a0a0c;--panel:#131316;--panel-2:#1a1a1f;--accent:#c8b48c;--accent-strong:#d4c9a8;--green:#7eb88a;--text:#f4f1df;--soft:#c8d1c5;--muted:#778374;--line:rgba(200,180,140,.15);--red:#ff5c7a}
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;background:var(--black);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
     body{display:flex;flex-direction:column}
@@ -19,7 +19,7 @@
     
     /* Left: chat panel */
     .chat-panel{width:380px;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel)}
-    .chat-header{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;font-size:.85rem;color:var(--gold-2)}
+    .chat-header{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;font-size:.85rem;color:var(--accent-strong)}
     .chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
     .chat-messages::-webkit-scrollbar{width:3px}
     .chat-messages::-webkit-scrollbar-thumb{background:var(--line)}
@@ -29,13 +29,13 @@
     
     .topics{padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--line)}
     .topic{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(200,180,140,.04);color:var(--soft);font-size:.72rem;cursor:pointer;transition:all .15s}
-    .topic:hover{border-color:var(--gold);color:var(--gold-2)}
+    .topic:hover{border-color:var(--accent);color:var(--accent-strong)}
     
     .chat-input{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
     .chat-input input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:.84rem;outline:none}
-    .chat-input input:focus{border-color:var(--gold)}
+    .chat-input input:focus{border-color:var(--accent)}
     .chat-input input::placeholder{color:var(--muted)}
-    .send-btn{width:38px;height:38px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
+    .send-btn{width:38px;height:38px;border:0;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a08020);color:var(--black);cursor:pointer;display:grid;place-items:center;font-size:1rem;flex-shrink:0}
     .send-btn:disabled{opacity:.4}
     
     /* Right: avatar stage */
@@ -48,7 +48,7 @@
     .start-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,5,8,.85)}
     .start-overlay h2{font-size:1.2rem;color:var(--text);font-weight:700}
     .start-overlay p{font-size:.82rem;color:var(--soft);max-width:280px;text-align:center;line-height:1.5}
-    .start-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--gold),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(200,180,140,.3)}
+    .start-btn{padding:14px 32px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--accent),#a08020);color:var(--black);font-weight:700;font-size:.92rem;cursor:pointer;box-shadow:0 4px 20px rgba(200,180,140,.3)}
     .start-btn:hover{transform:scale(1.04)}
     
     .video-status{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(180deg,transparent,rgba(5,5,8,.9));display:flex;align-items:center;gap:8px}
@@ -62,7 +62,7 @@
     /* Bottom control bar */
     .controls{padding:10px 20px;border-top:1px solid var(--line);background:rgba(5,5,8,.7);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;gap:16px;flex-shrink:0}
     .ctrl-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 16px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);color:var(--soft);cursor:pointer;font-size:.68rem;transition:all .15s}
-    .ctrl-btn:hover{border-color:var(--gold);color:var(--gold-2)}
+    .ctrl-btn:hover{border-color:var(--accent);color:var(--accent-strong)}
     .ctrl-btn .icon{font-size:1.2rem}
     .ctrl-btn.mic.listening{background:var(--red);border-color:var(--red);color:#fff}
     .ctrl-btn.end{border-color:rgba(255,92,122,.3);color:var(--red)}
