@@ -9,7 +9,7 @@
   <style>
     :root {
       --black:#0a0a0c; --panel:#131316; --panel-2:#1a1a1f;
-      --gold:#c8b48c; --gold-2:#d4c9a8; --gold-dim:rgba(200,180,140,.12);
+      --accent:#c8b48c; --accent-strong:#d4c9a8; --accent-bg:rgba(200,180,140,.12);
       --green:#7eb88a; --green-2:#a7ffd3; --green-dim:rgba(126,184,138,.08);
       --red:#ff5c7a; --red-dim:rgba(255,92,122,.08);
       --text:#f4f1df; --soft:#c8d1c5; --muted:#778374;
@@ -23,7 +23,7 @@
     .header-logo{max-height:30px;height:30px;width:auto}
     .header-icon{font-size:1.3rem}
     .header-title{flex:1}
-    .header-title h1{font-size:1rem;color:var(--gold-2);font-weight:700}
+    .header-title h1{font-size:1rem;color:var(--accent-strong);font-weight:700}
     .header-title p{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
     .header-title p::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
     .rec-btn{padding:8px 16px;border:1px solid var(--line);border-radius:10px;background:var(--red-dim);color:var(--red);cursor:pointer;font-weight:600;font-size:.78rem;transition:all .2s;display:flex;align-items:center;gap:6px}
@@ -35,29 +35,29 @@
     .main{display:flex;flex:1;overflow:hidden}
     
     .transcript-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
-    .transcript-header{padding:10px 20px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+    .transcript-header{padding:10px 20px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--accent-strong);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
     .transcript{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
     .transcript::-webkit-scrollbar{width:4px}
     .transcript::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
     .transcript-entry{padding:10px 14px;border-radius:12px;font-size:.85rem;line-height:1.5;animation:fadeIn .2s ease}
-    .transcript-entry.rep{background:var(--gold-dim);border:1px solid var(--line);align-self:flex-end;max-width:80%;border-bottom-right-radius:4px}
+    .transcript-entry.rep{background:var(--accent-bg);border:1px solid var(--line);align-self:flex-end;max-width:80%;border-bottom-right-radius:4px}
     .transcript-entry.prospect{background:var(--panel-2);border:1px solid var(--line);align-self:flex-start;max-width:80%;border-bottom-left-radius:4px}
-    .transcript-entry .speaker{font-size:.68rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+    .transcript-entry .speaker{font-size:.68rem;color:var(--accent-strong);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
     .transcript-entry.prospect .speaker{color:var(--green)}
     
     .coach-panel{width:340px;border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:rgba(5,5,8,.4)}
-    .coach-header{padding:10px 16px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--gold-2);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+    .coach-header{padding:10px 16px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--accent-strong);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
     .coach-feed{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
     .coach-feed::-webkit-scrollbar{width:4px}
     .coach-feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
     
     .coaching{padding:12px;border-radius:12px;border:1px solid var(--line);animation:fadeIn .3s ease;flex-shrink:0}
     .coaching.high{border-color:var(--red);background:var(--red-dim)}
-    .coaching.medium{border-color:var(--gold);background:var(--gold-dim)}
+    .coaching.medium{border-color:var(--accent);background:var(--accent-bg)}
     .coaching.low{border-color:var(--line);background:var(--panel-2)}
     .coaching .priority{font-size:.62rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:4px}
     .coaching.high .priority{color:var(--red)}
-    .coaching.medium .priority{color:var(--gold-2)}
+    .coaching.medium .priority{color:var(--accent-strong)}
     .coaching.low .priority{color:var(--muted)}
     .coaching .text{font-size:.82rem;line-height:1.5;color:var(--text)}
     .coaching .meta{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
@@ -67,14 +67,14 @@
     .metrics-bar{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:12px;font-size:.72rem}
     .metric{display:flex;flex-direction:column;gap:2px}
     .metric .label{color:var(--muted);font-size:.6rem;text-transform:uppercase;letter-spacing:.08em}
-    .metric .value{color:var(--gold-2);font-weight:600}
+    .metric .value{color:var(--accent-strong);font-weight:600}
     .metric .value.good{color:var(--green)}
     
     .controls{padding:10px 20px;border-top:1px solid var(--line);display:flex;gap:8px;background:rgba(5,5,8,.7)}
     .controls input{flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font-size:.78rem;outline:none}
-    .controls input:focus{border-color:var(--gold)}
+    .controls input:focus{border-color:var(--accent)}
     .controls button{padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--soft);cursor:pointer;font-size:.72rem;font-weight:600}
-    .controls button:hover{border-color:var(--gold);color:var(--gold-2)}
+    .controls button:hover{border-color:var(--accent);color:var(--accent-strong)}
     .controls button.primary{background:linear-gradient(135deg,var(--green),#4e7d5a);color:#021006;border:0}
     
     @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -366,7 +366,7 @@
           <div class="text"><strong>${escapeHtml(notes.summary || 'No summary')}</strong></div>
           ${notes.key_points ? `<div style="margin-top:8px;font-size:.74rem;color:var(--soft)">Key points: ${notes.key_points.map(escapeHtml).join(', ')}</div>` : ''}
           ${notes.next_steps ? `<div style="margin-top:6px;font-size:.74rem;color:var(--green)">Next steps: ${notes.next_steps.map(escapeHtml).join(', ')}</div>` : ''}
-          ${notes.fit ? `<div style="margin-top:6px;font-size:.74rem;color:var(--gold-2)">Fit: ${escapeHtml(notes.fit)}</div>` : ''}
+          ${notes.fit ? `<div style="margin-top:6px;font-size:.74rem;color:var(--accent-strong)">Fit: ${escapeHtml(notes.fit)}</div>` : ''}
         `;
         feed.appendChild(div);
         feed.scrollTop = feed.scrollHeight;

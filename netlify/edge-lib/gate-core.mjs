@@ -73,15 +73,15 @@ export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey
 <meta name="robots" content="noindex,nofollow"><title>Sign in · ${esc(title)}</title>
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,-apple-system,sans-serif;background:#0b0d12;color:#e6e8ee}
-main{width:min(380px,calc(100% - 32px));background:#12151d;border:1px solid #2a3040;border-radius:16px;padding:28px}
-h1{margin:0 0 6px;font-size:1.3rem}p{margin:0 0 18px;color:#9aa3b5;font-size:.9rem}
-label{display:block;font-size:.8rem;color:#b8c0d0;margin:0 0 4px}
-input{width:100%;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid #2a3040;background:#0b0d12;color:#e6e8ee;font:inherit}
-input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #7aa2ff;outline-offset:2px}
-button{width:100%;padding:11px;border:0;border-radius:10px;background:#4f7cff;color:#fff;font:600 .95rem inherit;cursor:pointer}
-button[disabled]{opacity:.6;cursor:wait}#msg{min-height:1.2em;margin:12px 0 0;color:#ff9a9a;font-size:.85rem}
-a{color:#7aa2ff}.alt{margin-top:14px;text-align:center;font-size:.85rem}
+body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,-apple-system,sans-serif;background:#0a0a0c;color:#f0f0f2}
+main{width:min(380px,calc(100% - 32px));background:#131316;border:1px solid #2a2a30;border-radius:16px;padding:28px}
+h1{margin:0 0 6px;font-size:1.3rem}p{margin:0 0 18px;color:#a1a1a6;font-size:.9rem}
+label{display:block;font-size:.8rem;color:#a1a1a6;margin:0 0 4px}
+input{width:100%;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2;font:inherit}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #c8b48c;outline-offset:2px}
+button{width:100%;padding:11px;border:0;border-radius:10px;background:#c8b48c;color:#0a0a0c;font:600 .95rem inherit;cursor:pointer}
+button[disabled]{opacity:.6;cursor:wait}#msg{min-height:1.2em;margin:12px 0 0;color:#d4625a;font-size:.85rem}
+a{color:#c8b48c}.alt{margin-top:14px;text-align:center;font-size:.85rem}
 </style></head>
 <body><main aria-labelledby="t"><h1 id="t">${esc(title)}</h1><p>${esc(subtitle)}</p>
 <form id="f" novalidate>
