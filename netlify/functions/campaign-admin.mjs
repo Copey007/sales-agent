@@ -9,6 +9,13 @@
  *   GET  ?action=list_campaigns — List all campaigns
  *   GET  ?action=get_flags      — Get all feature flags
  *   GET  ?action=status         — System status
+ *   GET  ?action=list_pending   — Drafts awaiting human approval (tenant-scoped)
+ *   POST ?action=approve_sends  — {send_ids, edits?:{[id]:{subject,body}}} approve drafts for delivery
+ *   POST ?action=reject_sends   — {send_ids, reason?} reject drafts (never sent)
+ *
+ * SECURITY: every action requires a verified tenant JWT (or the internal
+ * token); seed/set_flag are platform-operator only. No email is ever sent
+ * without an explicit approve_sends.
  */
 
 import {
@@ -18,11 +25,12 @@ import {
   putPersona, putSignalConfig, putSequence, putTerritory,
   getFeatureFlag, setFeatureFlag,
   listActivityLog, countSentToday, listQueuedSends,
-  listRecords, getProspect, listAllReplies
+  listRecords, getProspect, listAllReplies, getEmailSend, putEmailSend
 } from "./_campaign-store.mjs";
 import { resolveTenantContext } from "./_tenant.mjs";
+import { withCors, internalHeaders, siteUrl } from "./_auth.mjs";
 
-export default async (req, context) => {
+async function handler(req, context) {
   // CORS
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -38,18 +46,31 @@ export default async (req, context) => {
   const url = new URL(req.url);
   const action = url.searchParams.get("action") || "status";
 
-  // Tenant scope: JWT → the caller's tenant; no auth header → demo tenant
-  // (internal/legacy calls); a bad token must never fall back to demo.
+  // Tenant scope: verified JWT → the caller's tenant (operators → master);
+  // internal token → master. No token / bad token / no membership → 401/403.
   const authCtx = await resolveTenantContext(req);
   if (authCtx.invalid) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
+    return new Response(JSON.stringify({ error: authCtx.status === 403 ? "forbidden" : "unauthorized" }), {
+      status: authCtx.status || 401,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
   const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
   const ownsCampaign = (campaign) =>
     campaign && (campaign.tenant_id || DEFAULTS.TENANT_ID) === tenantId;
+  const isPrivileged = !!(authCtx.internal || authCtx.operator);
+  if ((action === "seed" || action === "set_flag") && !isPrivileged) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403, headers: { "Content-Type": "application/json" }
+    });
+  }
+  const ownedSend = async (id) => {
+    const send = await getEmailSend(id);
+    if (!send) return null;
+    if ((send.tenant_id || null) && send.tenant_id !== tenantId) return null;
+    const camp = await getCampaign(send.campaign_id);
+    return ownsCampaign(camp) ? send : null;
+  };
 
   try {
     let result;
@@ -387,6 +408,60 @@ export default async (req, context) => {
         break;
       }
 
+      case "list_pending": {
+        const campaignId = url.searchParams.get("campaign_id");
+        const ownIds = new Set((await listCampaigns(tenantId)).map(c => c.id));
+        const sends = (await listRecords("email_sends")).filter(s =>
+          s.status === "pending_approval" && ownIds.has(s.campaign_id) &&
+          (!campaignId || s.campaign_id === campaignId));
+        const pending = [];
+        for (const s of sends.slice(0, 200)) {
+          const p = await getProspect(s.prospect_id);
+          pending.push({
+            send_id: s.id, campaign_id: s.campaign_id, step_number: s.step_number,
+            drafted_at: s.drafted_at, subject: s.email_subject, body: s.email_body,
+            to: p?.email || null, contact_name: p?.contact_name || null, company: p?.company_name || p?.company || null,
+            signals_used: s.signals_used || []
+          });
+        }
+        result = { count: pending.length, pending };
+        break;
+      }
+
+      case "approve_sends":
+      case "reject_sends": {
+        if (req.method !== "POST") { result = { error: "POST required" }; break; }
+        if (!authCtx.user && !authCtx.internal) { result = { error: "user approval required" }; break; }
+        const body = await req.json().catch(() => ({}));
+        const ids = Array.isArray(body.send_ids) ? body.send_ids.slice(0, 100) : [];
+        const edits = body.edits && typeof body.edits === "object" ? body.edits : {};
+        const nowIso = new Date().toISOString();
+        const done = [], skipped = [];
+        for (const id of ids) {
+          const send = await ownedSend(String(id));
+          if (!send || send.status !== "pending_approval") { skipped.push(id); continue; }
+          if (action === "approve_sends") {
+            const e = edits[id] || {};
+            if (typeof e.subject === "string" && e.subject.trim()) send.email_subject = e.subject.trim().slice(0, 300);
+            if (typeof e.body === "string" && e.body.trim()) send.email_body = e.body.slice(0, 20000);
+            send.status = "queued";              // queue-manager delivers approved sends (budget, suppression re-checked)
+            send.approved_at = nowIso;
+            send.approved_by = authCtx.user?.email || "internal";
+            send.scheduled_at = nowIso;
+            send.dispatched_at = null;
+          } else {
+            send.status = "rejected";
+            send.rejected_at = nowIso;
+            send.rejected_by = authCtx.user?.email || "internal";
+            send.rejection_reason = String(body.reason || "").slice(0, 500) || null;
+          }
+          await putEmailSend(send);
+          done.push(id);
+        }
+        result = { action, updated: done.length, send_ids: done, skipped };
+        break;
+      }
+
       case "trigger_queue": {
         // Manual trigger for queue-manager logic (for testing)
         const triggerCampaignId = url.searchParams.get("campaign_id") || DEFAULTS.CAMPAIGN_ID;
@@ -396,15 +471,24 @@ export default async (req, context) => {
         if (batch.length === 0) {
           result = { message: "No queued sends found" };
         } else {
-          // Call send-worker directly
+          // Hand to the send worker. It only processes 'dispatched' sends:
+          // unapproved ones are drafted to pending_approval, approved ones are
+          // delivered. Authenticated with the internal service token.
+          const nowIso = new Date().toISOString();
+          for (const s of batch) { s.status = "dispatched"; s.dispatched_at = nowIso; await putEmailSend(s); }
           const sendIds = batch.map(s => s.id);
           const campaignId = batch[0].campaign_id;
-          const workerResp = await fetch(`https://aisdr.a-gent.co/.netlify/functions/send-worker-background`, {
+          const workerResp = await fetch(`${siteUrl()}/.netlify/functions/send-worker-background`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({ campaign_id: campaignId, send_ids: sendIds, batch_index: 0, dry_run: url.searchParams.get("dry_run") === "true" })
           });
-          result = { dispatched: sendIds.length, send_ids: sendIds, worker_status: workerResp.status, worker_response: await workerResp.json() };
+          if (!workerResp.ok) {
+            for (const s of batch) { s.status = "queued"; s.dispatched_at = null; await putEmailSend(s); }
+          }
+          const text = await workerResp.text();
+          let worker_response = null; try { worker_response = text ? JSON.parse(text) : null; } catch { worker_response = null; }
+          result = { dispatched: workerResp.ok ? sendIds.length : 0, send_ids: sendIds, worker_status: workerResp.status, worker_response };
         }
         break;
       }
@@ -419,7 +503,8 @@ export default async (req, context) => {
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message, stack: err.stack }), {
+    console.error("[campaign-admin]", err.message, err.stack);
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
@@ -428,4 +513,6 @@ export default async (req, context) => {
 
 export const config = {
   path: "/api/campaign-admin"
-};
+}
+
+export default withCors(handler);

@@ -12,6 +12,7 @@
  */
 
 import { env } from './_mcp-connectors.mjs';
+import { withCors, safeEqual } from './_auth.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -32,7 +33,7 @@ async function sb(url, key, path, body, prefer = 'return=representation') {
   try { return JSON.parse(text); } catch { return null; }
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const adminSecret = env('ADMIN_SECRET');
@@ -40,7 +41,7 @@ export default async (req) => {
 
   let b = {};
   try { b = await req.json(); } catch {}
-  if (b.secret !== adminSecret) return json({ error: 'unauthorized' }, 401);
+  if (!safeEqual(String(b.secret || ''), adminSecret)) return json({ error: 'unauthorized' }, 401);
 
   if (!b.slug || !b.name || !b.avatar_id || !b.voice_id) {
     return json({ error: 'slug, name, avatar_id, voice_id are required' }, 400);
@@ -84,8 +85,11 @@ export default async (req) => {
     });
   } catch (err) {
     console.error('[provision-agent]', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
-export const config = { path: '/api/provision-agent' };
+export const config = { path: '/api/provision-agent', rateLimit: { windowLimit: 10, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

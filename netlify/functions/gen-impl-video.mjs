@@ -14,6 +14,8 @@
  */
 
 import { userFromToken } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -30,7 +32,7 @@ So — ready? Let's build your agent.`;
 
 const KEY = () => process.env.HEYGEN_API_KEY || process.env.LIVEAVATAR_API_KEY;
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
@@ -135,3 +137,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/gen-impl-video' };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

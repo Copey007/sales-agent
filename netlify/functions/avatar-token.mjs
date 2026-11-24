@@ -25,6 +25,7 @@ import {
   recentSessionCountByIp,
   createSession,
 } from './_avatar-store.mjs';
+import { withCors } from './_auth.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +44,7 @@ function clientIp(req) {
   return xf.split(',')[0].trim() || null;
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const apiKey = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
@@ -126,8 +127,11 @@ export default async (req) => {
     });
   } catch (err) {
     console.error('[avatar-token]', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
-export const config = { path: '/api/avatar-token' };
+export const config = { path: '/api/avatar-token', rateLimit: { windowLimit: 10, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

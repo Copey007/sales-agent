@@ -14,12 +14,16 @@
  */
 
 import { env } from './_mcp-connectors.mjs';
+import { serviceCreds } from './_supabase-rest.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
 
-function sbCreds() { return { url: env('SUPABASE_URL'), key: env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY') }; }
+// Service role only — never the anon key (fails closed if unset; see _supabase-rest.mjs).
+function sbCreds() { return serviceCreds(); }
 async function sbRest(path, init = {}) {
   const { url, key } = sbCreds();
   return fetch(`${url}/rest/v1/${path}`, { ...init, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
@@ -37,7 +41,7 @@ async function stripe(secret, path, form) {
   return data;
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
@@ -90,3 +94,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/billing-checkout' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

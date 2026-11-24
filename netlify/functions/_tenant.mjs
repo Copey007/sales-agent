@@ -10,15 +10,13 @@
  */
 
 import { env, initConnectors } from './_mcp-connectors.mjs';
+import { serviceCreds } from './_supabase-rest.mjs';
+import { isInternalCall, json } from './_auth.mjs';
 
 let _init = false;
 function ensureInit() { if (!_init) { initConnectors(); _init = true; } }
-function creds() {
-  const url = env('SUPABASE_URL');
-  const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required');
-  return { url, key };
-}
+// Trusted server reads/writes: service role only (no anon fallback — see _supabase-rest.mjs).
+function creds() { return serviceCreds(); }
 async function rest(path, init = {}) {
   ensureInit();
   const { url, key } = creds();
@@ -90,12 +88,20 @@ export async function monthlyUsage(tenantId, module, metric) {
 export async function userFromToken(token) {
   if (!token) return null;
   ensureInit();
-  const { url, key } = creds();
-  const res = await fetch(`${url}/auth/v1/user`, {
-    headers: { apikey: key, Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
+  // GET /auth/v1/user validates the *user's* JWT (Authorization header); the
+  // apikey header only identifies the project, so the public anon/publishable
+  // key is sufficient and preferred. Falls back to the service key if only
+  // that is configured.
+  const url = env('SUPABASE_URL');
+  const apikey = env('SUPABASE_ANON_KEY') || env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !apikey) return null;
+  try {
+    const res = await fetch(`${url}/auth/v1/user`, {
+      headers: { apikey, Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
 }
 
 /**
@@ -123,38 +129,51 @@ export async function tenantFromRequest(req, { tenantSlug = null } = {}) {
 /**
  * Per-request tenant resolution for the campaign engine.
  *
- * Three outcomes, so endpoints can distinguish "no auth at all" (Mark's
- * internal/legacy calls — fall back to the demo tenant) from "auth that
- * doesn't check out" (expired token, non-member — must 401, never silently
- * write to the demo tenant):
- *   no Authorization header      → { tenantId: null, invalid: false }
- *   bad token                    → { tenantId: null, invalid: true }
- *   operator / legacy account    → { tenantId: MASTER, user, role: 'owner', invalid: false }
- *   valid membership             → { tenantId, user, role, tenant, invalid: false }
+ * SECURITY (2026-11 lockdown): there is NO unauthenticated fallback any more.
+ *   internal X-Internal-Token        → { internal: true, tenantId: null }   (caller decides scope)
+ *   no / bad Authorization header    → { invalid: true, status: 401 }
+ *   platform operator (allowlist)    → { tenantId: MASTER, role: 'owner', operator: true }
+ *   valid membership                 → { tenantId, user, role, tenant }
+ *   valid login, no membership       → { invalid: true, status: 403 }   (was: master-tenant owner)
+ *
+ * Operators are ONLY the emails in OPERATOR_EMAILS (or legacy
+ * PLATFORM_OPERATOR_EMAILS), comma-separated, with a confirmed email. The old
+ * blanket "any @a-gent.co address is an operator" rule is removed — /api/signup
+ * auto-confirms new users, so anyone could have registered x@a-gent.co.
+ * No allowlist configured → nobody is an operator (fail closed).
  */
 
-// The platform operator's accounts run the master/demo tenant where all
-// pre-tenancy data lives. Extendable via PLATFORM_OPERATOR_EMAILS env
-// (comma-separated) without a code change.
 const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-function operatorEmails() {
-  const extra = ((typeof Netlify !== 'undefined' && Netlify.env?.get('PLATFORM_OPERATOR_EMAILS')) || process.env.PLATFORM_OPERATOR_EMAILS || '')
-    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-  return new Set(['mark.cope.roarr@gmail.com', ...extra]);
+export { MASTER_TENANT_ID };
+
+export function operatorEmails() {
+  const raw = [env('OPERATOR_EMAILS') || '', env('PLATFORM_OPERATOR_EMAILS') || ''].join(',');
+  return new Set(raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean));
+}
+
+export function isOperatorUser(user) {
+  if (!user?.id) return false;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!email) return false;
+  if (!user.email_confirmed_at && !user.confirmed_at) return false;
+  return operatorEmails().has(email);
+}
+
+function bearer(req) {
+  const auth = req.headers.get('authorization') || '';
+  return auth.replace(/^Bearer\s+/i, '').trim();
 }
 
 export async function resolveTenantContext(req) {
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return { tenantId: null, user: null, invalid: false };
+  if (isInternalCall(req)) {
+    return { tenantId: null, user: null, internal: true, invalid: false };
+  }
+  const token = bearer(req);
+  if (!token) return { tenantId: null, user: null, invalid: true, status: 401, reason: 'missing_token' };
   const user = await userFromToken(token);
-  if (!user?.id) return { tenantId: null, user: null, invalid: true };
+  if (!user?.id) return { tenantId: null, user: null, invalid: true, status: 401, reason: 'invalid_token' };
 
-  // Platform operator → master tenant, regardless of membership rows.
-  // Operators: the explicit list, plus any account on the platform's own
-  // @a-gent.co domain (trial customers sign up with their own domains).
-  const email = (user.email || '').toLowerCase();
-  if (operatorEmails().has(email) || email.endsWith('@a-gent.co')) {
+  if (isOperatorUser(user)) {
     return { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true, invalid: false };
   }
 
@@ -162,9 +181,43 @@ export async function resolveTenantContext(req) {
   if (ctx?.tenant?.id) {
     return { tenantId: ctx.tenant.id, user: ctx.user, role: ctx.role, tenant: ctx.tenant, invalid: false };
   }
-
-  // Valid login but no membership row: a legacy pre-tenancy account (signup
-  // has always created memberships, so trial users never land here). Treat
-  // as master-tenant access rather than locking the account out of its data.
-  return { tenantId: MASTER_TENANT_ID, user, role: 'owner', legacy: true, invalid: false };
+  return { tenantId: null, user, invalid: true, status: 403, reason: 'no_membership' };
 }
+
+/**
+ * Guard: verified tenant member (or operator). Internal calls are allowed only
+ * when allowInternal is set. Returns { ctx } or { response }.
+ */
+export async function requireTenant(req, { allowInternal = false } = {}) {
+  const ctx = await resolveTenantContext(req);
+  if (ctx.internal) {
+    return allowInternal ? { ctx } : { response: json(req, { error: 'forbidden' }, 403) };
+  }
+  if (ctx.invalid) {
+    return { response: json(req, { error: ctx.status === 403 ? 'forbidden' : 'unauthorized', reason: ctx.reason }, ctx.status || 401) };
+  }
+  return { ctx };
+}
+
+/** Guard: platform operator JWT (allowlist) or, if allowed, the internal token. */
+export async function requireOperator(req, { allowInternal = true } = {}) {
+  if (allowInternal && isInternalCall(req)) return { ctx: { internal: true, tenantId: null } };
+  const token = bearer(req);
+  if (!token) return { response: json(req, { error: 'unauthorized' }, 401) };
+  const user = await userFromToken(token);
+  if (!user?.id) return { response: json(req, { error: 'unauthorized' }, 401) };
+  if (!operatorEmails().size) return { response: json(req, { error: 'operators_not_configured' }, 503) };
+  if (!isOperatorUser(user)) return { response: json(req, { error: 'forbidden' }, 403) };
+  return { ctx: { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true } };
+}
+
+/** True if the ctx may act on a row owned by tenantId. */
+export function canAccessTenant(ctx, tenantId) {
+  if (!ctx) return false;
+  if (ctx.internal || ctx.operator) return true;
+  return !!tenantId && ctx.tenantId === tenantId;
+}
+
+/** withCors guard factories (see _auth.mjs withCors). */
+export const tenantGuard = (opts = {}) => async (req) => (await requireTenant(req, opts)).response || null;
+export const operatorGuard = (opts = {}) => async (req) => (await requireOperator(req, opts)).response || null;

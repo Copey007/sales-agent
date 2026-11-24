@@ -11,6 +11,7 @@
  */
 
 import { endSession, heartbeat } from './_avatar-store.mjs';
+import { withCors } from './_auth.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +21,7 @@ const cors = {
 const json = (b, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json', ...cors } });
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   let body = {};
@@ -40,8 +41,11 @@ export default async (req) => {
     return json({ ok: true, event: 'end', duration_seconds: row?.duration_seconds ?? duration });
   } catch (err) {
     console.error('[avatar-session-end]', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
-export const config = { path: '/api/avatar-session-end' };
+export const config = { path: '/api/avatar-session-end', rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

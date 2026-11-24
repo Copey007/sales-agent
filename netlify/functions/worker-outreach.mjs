@@ -13,19 +13,23 @@
  */
 
 import { env } from './_mcp-connectors.mjs';
+import { serviceCreds } from './_supabase-rest.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
 import { putProspect, findProspectByEmail, DEFAULTS } from './_campaign-store.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
 
-function creds() { return { url: env('SUPABASE_URL'), key: env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY') }; }
+// Service role only — never the anon key (fails closed if unset; see _supabase-rest.mjs).
+function creds() { return serviceCreds(); }
 async function rest(path, init = {}) {
   const { url, key } = creds();
   return fetch(`${url}/rest/v1/${path}`, { ...init, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const ctx = await tenantFromRequest(req);
@@ -89,3 +93,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/worker-outreach' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

@@ -17,6 +17,8 @@
  */
 
 import { userFromToken } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -53,7 +55,7 @@ function deptFor(role = '') {
   return 'executive,sales';
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
@@ -115,3 +117,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/researcher-scan' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

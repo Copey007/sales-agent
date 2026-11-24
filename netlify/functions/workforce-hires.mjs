@@ -16,12 +16,16 @@
  */
 
 import { env } from './_mcp-connectors.mjs';
+import { serviceCreds } from './_supabase-rest.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
+import { withCors, internalHeaders, siteUrl } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
 
-function creds() { return { url: env('SUPABASE_URL'), key: env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY') }; }
+// Service role only — never the anon key (fails closed if unset; see _supabase-rest.mjs).
+function creds() { return serviceCreds(); }
 async function rest(path, init = {}) {
   const { url, key } = creds();
   return fetch(`${url}/rest/v1/${path}`, { ...init, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
@@ -32,7 +36,7 @@ function daysLeft(ends) {
   return Math.max(0, Math.ceil((new Date(ends).getTime() - Date.now()) / 86400000));
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const ctx = await tenantFromRequest(req);
@@ -67,9 +71,10 @@ export default async (req) => {
       // Run the task through the shared workforce engine (best-effort).
       let result = null;
       try {
-        const origin = new URL(req.url).origin;
-        const exec = await fetch(`${origin}/api/workforce`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Fixed site URL (never the request's Host) + internal service token:
+        // /api/workforce execute is operator/internal-only.
+        const exec = await fetch(`${siteUrl()}/api/workforce`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() },
           body: JSON.stringify({ action: 'execute', agent: hire.worker_id, objective: task, context: { tenant_id: tenantId, goal: hire.goal, company: hire.company } }),
         });
         result = await exec.json().catch(() => null);
@@ -127,3 +132,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/workforce-hires' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

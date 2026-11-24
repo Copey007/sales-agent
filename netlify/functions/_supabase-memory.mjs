@@ -26,7 +26,7 @@ function ensureInit() {
 
 function getCredentials() {
   const url = env('SUPABASE_URL');
-  const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required for memory module');
   return { url, key };
 }

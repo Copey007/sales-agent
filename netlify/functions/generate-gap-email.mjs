@@ -1,3 +1,5 @@
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 /**
  * GAP Email Generator — Netlify Serverless Function
  * 
@@ -54,7 +56,7 @@ Return ONLY valid JSON:
 }`;
 
 // ─── Handler ───────────────────────────────────────────────────────────────────
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -130,7 +132,7 @@ export default async (req, context) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -222,3 +224,6 @@ async function callLLM(systemPrompt, userPrompt) {
 export const config = {
   path: "/api/generate-gap-email"
 };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

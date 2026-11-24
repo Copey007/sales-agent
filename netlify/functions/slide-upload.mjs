@@ -11,6 +11,8 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { userFromToken } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard, resolveTenantContext, canAccessTenant } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -19,7 +21,7 @@ const BUCKET = 'slides';
 const MAX_BYTES = 6 * 1024 * 1024; // 6MB
 const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf' };
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   // must be authenticated
@@ -41,6 +43,16 @@ export default async (req) => {
   const url = env('SUPABASE_URL');
   const key = env('SUPABASE_SERVICE_ROLE_KEY');
   const sHead = { apikey: key, Authorization: `Bearer ${key}` };
+  if (!url || !key) return json({ error: 'Server not configured.' }, 503);
+
+  // Ownership: a tenant may only attach slides under its own agent's slug.
+  if (slug !== 'agent') {
+    const ctx = await resolveTenantContext(req);
+    if (ctx.invalid) return json({ error: 'forbidden' }, ctx.status || 403);
+    const r = await fetch(`${url}/rest/v1/avatar_agents?slug=eq.${encodeURIComponent(slug)}&select=tenant_id&limit=1`, { headers: sHead });
+    const rows = r.ok ? await r.json() : [];
+    if (rows.length && !canAccessTenant(ctx, rows[0].tenant_id)) return json({ error: 'forbidden' }, 403);
+  }
 
   try {
     // ensure the public bucket exists (idempotent)
@@ -55,13 +67,16 @@ export default async (req) => {
       headers: { ...sHead, 'Content-Type': ct, 'x-upsert': 'true' },
       body: bytes,
     });
-    if (!up.ok) return json({ error: `upload failed: ${up.status} ${await up.text()}` }, 502);
+    if (!up.ok) { console.error('[slide-upload] storage', up.status, await up.text()); return json({ error: 'upload failed' }, 502); }
 
     return json({ url: `${url}/storage/v1/object/public/${BUCKET}/${path}` });
   } catch (err) {
     console.error('[slide-upload]', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
 export const config = { path: '/api/slide-upload' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

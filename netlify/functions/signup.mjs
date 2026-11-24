@@ -11,6 +11,8 @@
  */
 
 import { env } from './_mcp-connectors.mjs';
+import { withCors } from './_auth.mjs';
+import { operatorEmails } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -43,7 +45,7 @@ async function slugTaken(url, key, table, slug) {
   return (await res.json()).length > 0;
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   let b = {};
@@ -66,6 +68,14 @@ export default async (req) => {
   if (password.length < 8) return json({ error: 'Password must be at least 8 characters.' }, 400);
   if (!SLUG_RE.test(slug)) return json({ error: 'Pick a handle: 3–40 chars, lowercase letters, numbers, hyphens.' }, 400);
   if (RESERVED.has(slug)) return json({ error: `"${slug}" is reserved — please choose a different handle.` }, 409);
+  // SECURITY: self-serve signup auto-confirms the email, so it must never mint
+  // an account for a platform-operator address or the platform's own domain
+  // (operator status is an explicit allowlist in _tenant.mjs, but block anyway).
+  const domain = email.split('@')[1] || '';
+  const blockedDomains = (env('SIGNUP_BLOCKED_DOMAINS') || 'a-gent.co').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+  if (operatorEmails().has(email) || blockedDomains.some((d) => domain === d || domain.endsWith('.' + d))) {
+    return json({ error: 'This email cannot be used for self-serve signup. Contact support.' }, 403);
+  }
 
   const { url, key } = creds();
   if (!url || !key) return json({ error: 'Server not configured.' }, 500);
@@ -150,4 +160,7 @@ export default async (req) => {
   }
 };
 
-export const config = { path: '/api/signup' };
+export const config = { path: '/api/signup', rateLimit: { windowLimit: 5, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

@@ -11,6 +11,8 @@
  */
 
 import { userFromToken } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -19,7 +21,7 @@ const BUFFER_API = 'https://api.bufferapp.com/1';
 const bufferToken = () =>
   (typeof Netlify !== 'undefined' && Netlify.env?.get('BUFFER_ACCESS_TOKEN')) || process.env.BUFFER_ACCESS_TOKEN || '';
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
@@ -62,3 +64,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/social-post' };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

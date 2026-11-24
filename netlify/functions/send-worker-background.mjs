@@ -19,9 +19,10 @@
 import {
   getCampaign, getCampaignPersona, getCampaignSignalConfig,
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
-  listCampaignSends, logActivity, getFeatureFlag, DEFAULTS
+  listCampaignSends, logActivity, getFeatureFlag, isEmailSuppressed, DEFAULTS
 } from "./_campaign-store.mjs";
 import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
+import { requireInternal, internalHeaders, siteUrl, env as authEnv } from "./_auth.mjs";
 
 // ─── Signal Gathering (campaign-aware) ──────────────────────────────────────
 
@@ -232,14 +233,23 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "RESEND_API_KEY not configured", simulated: true };
   }
 
-  const sendingDomain = campaign?.sending_domain || 'a-gent.co';
-  const senderName = campaign?.sender_name || 'Mark';
-  const fromEmail = `A-Gent Fleet <fleet@${sendingDomain}>`;
+  const sendingDomain = campaign?.sending_domain || authEnv('SENDING_DOMAIN', 'a-gent.co');
+  const fromName = authEnv('SENDER_FROM_NAME', 'A-Gent Fleet');
+  const fromAddress = authEnv('SENDER_FROM_EMAIL', `fleet@${sendingDomain}`);
+  const replyTo = authEnv('REPLY_TO_EMAIL', fromAddress);
+  const unsubscribeEmail = authEnv('UNSUBSCRIBE_EMAIL', replyTo);
+  const postalAddress = authEnv('COMPANY_POSTAL_ADDRESS');
+  const fromEmail = `${fromName} <${fromAddress}>`;
   const toEmail = prospect.email;
 
   if (!toEmail) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
+  // CAN-SPAM: physical postal address + working opt-out are mandatory.
+  if (!postalAddress) {
+    return { sent: false, reason: "COMPANY_POSTAL_ADDRESS not configured — refusing to send without compliance footer", simulated: false, blocked: true };
+  }
+  const footer = `\n\n--\n${postalAddress}\nTo stop receiving these emails, reply "unsubscribe" or email ${unsubscribeEmail}.`;
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -252,8 +262,9 @@ async function sendViaResend(emailData, prospect, campaign) {
         from: fromEmail,
         to: [toEmail],
         subject: emailData.subject,
-        text: emailData.body,
-        reply_to: 'fleet@a-gent.co'
+        text: `${emailData.body}${footer}`,
+        reply_to: replyTo,
+        headers: { 'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>` }
       })
     });
 
@@ -316,10 +327,17 @@ async function enqueueNextStep(send, prospect, campaign, sequence) {
 
 // ─── Process a Single Send ──────────────────────────────────────────────────
 
-async function processSend(sendId, campaign, persona, signalConfig, sequence) {
+async function processSend(sendId, campaign, persona, signalConfig, sequence, { dryRun = false } = {}) {
   const send = await getEmailSend(sendId);
-  if (!send || send.status === 'sent') {
-    return { skipped: true, reason: send ? 'already sent' : 'send not found' };
+  if (!send) return { skipped: true, reason: 'send not found' };
+  // Only sends the queue-manager (or campaign-admin trigger_queue) marked as
+  // dispatched are processed — never 'sent', 'suppressed', 'failed',
+  // 'pending_approval', 'rejected', etc. Blocks direct re-send of any record.
+  if (send.status !== 'dispatched') {
+    return { send_id: sendId, skipped: true, reason: `status is ${send.status}, expected dispatched` };
+  }
+  if (send.campaign_id && send.campaign_id !== campaign.id) {
+    return { send_id: sendId, skipped: true, reason: 'send does not belong to this campaign' };
   }
 
   const prospect = await getProspect(send.prospect_id);
@@ -331,29 +349,75 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence) {
     return { failed: true, reason: 'prospect not found' };
   }
 
-  // 1. Gather signals, then keep only ones verifiably about THIS company
-  const rawSignals = await gatherSignalsForProspect(prospect, signalConfig);
-  const signals = validateSignals(rawSignals, prospect);
+  // Last-moment suppression re-check (the list can change after queueing).
+  const tenantId = send.tenant_id || campaign.tenant_id || DEFAULTS.TENANT_ID;
+  if (prospect.email && await isEmailSuppressed(tenantId, prospect.email)) {
+    send.status = "suppressed";
+    send.suppressed_at = new Date().toISOString();
+    send.suppression_reason = "email_on_suppression_list";
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'suppressed' };
+  }
+  if (prospect.replied_at || prospect.status === 'replied') {
+    send.status = "cancelled_replied";
+    send.cancelled_at = new Date().toISOString();
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'cancelled_replied' };
+  }
 
-  // 2. Generate GAP email (step-aware: >1 produces a short follow-up)
-  const emailData = await generateEmail(prospect, signals, persona, campaign, Number(send.step_number) || 1);
-  emailData.body = ensureFleetSignature(emailData.body, campaign?.sender_name || 'Mark');
+  // ── Pass 1: no human approval yet → generate a DRAFT only. Nothing is sent. ──
+  if (!send.approved_at) {
+    const rawSignals = await gatherSignalsForProspect(prospect, signalConfig);
+    const signals = validateSignals(rawSignals, prospect);
+    const emailData = await generateEmail(prospect, signals, persona, campaign, Number(send.step_number) || 1);
+    emailData.body = ensureFleetSignature(emailData.body, campaign?.sender_name || 'Mark');
+    send.status = "pending_approval";
+    send.drafted_at = new Date().toISOString();
+    send.email_subject = emailData.subject;
+    send.email_body = emailData.body;
+    send.signals_used = emailData.signals_used || [];
+    send.signals_rejected_wrong_company = rawSignals.length - signals.length;
+    send.gap_analysis = emailData.gap_analysis || {};
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'pending_approval', subject: emailData.subject, signals_count: signals.length };
+  }
 
-  // 3. Send via Resend
+  // ── Pass 2: approved → deliver EXACTLY the approved (possibly edited) text. ──
+  if (!send.email_subject || !send.email_body) {
+    send.status = "pending_approval";
+    send.approved_at = null;
+    send.error = "approved send had no stored draft; re-review required";
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'pending_approval', reason: 'missing draft' };
+  }
+  const emailData = { subject: send.email_subject, body: send.email_body };
+
+  if (dryRun || prospect.is_demo) {
+    send.status = "simulated";
+    send.sent_at = new Date().toISOString();
+    send.resend_result = { sent: false, simulated: true, reason: dryRun ? 'dry_run' : 'demo prospect' };
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'simulated' };
+  }
+
   const sendResult = await sendViaResend(emailData, prospect, campaign);
 
-  // 4. Update send record
+  if (sendResult.blocked) {
+    // Compliance config missing: keep it approved + queued so it goes out once configured.
+    send.status = "queued";
+    send.dispatched_at = null;
+    send.error = sendResult.reason;
+    await putEmailSend(send);
+    return { send_id: sendId, status: 'blocked', reason: sendResult.reason };
+  }
+
   send.status = sendResult.sent ? "sent" : (sendResult.simulated ? "simulated" : "failed");
   send.sent_at = new Date().toISOString();
-  send.email_subject = emailData.subject;
-  send.email_body = emailData.body;
-  send.signals_used = emailData.signals_used || [];
-  send.signals_rejected_wrong_company = rawSignals.length - signals.length;
-  send.gap_analysis = emailData.gap_analysis || {};
   send.resend_result = sendResult;
   await putEmailSend(send);
 
-  // 5. Follow-up engine: schedule the next cadence step
+  // Follow-up engine: schedule the next cadence step (it will be drafted and
+  // held for approval like every other send).
   let nextStep = null;
   if (sendResult.sent) {
     try { nextStep = await enqueueNextStep(send, prospect, campaign, sequence); }
@@ -365,7 +429,6 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence) {
     prospect: prospect.contact_name,
     status: send.status,
     subject: emailData.subject,
-    signals_count: signals.length,
     next_step_queued: nextStep ? { step: nextStep.step_number, at: nextStep.scheduled_at } : null,
     send_result: sendResult
   };
@@ -374,15 +437,13 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence) {
 // ─── Netlify Function Handler ───────────────────────────────────────────────
 
 export default async (req, context) => {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
+  // Server-to-server only (no browser callers) → no CORS headers at all.
+  const corsHeaders = {};
 
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  // Background functions are reachable at /.netlify/functions/send-worker-background,
+  // so require the internal service token (queue-manager / campaign-admin send it).
+  const denied = requireInternal(req);
+  if (denied) return denied;
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST required' }), {
@@ -394,6 +455,7 @@ export default async (req, context) => {
   try {
     const body = await req.json();
     const { campaign_id, send_ids, batch_index } = body;
+    const dryRun = body.dry_run === true;
 
     if (!campaign_id || !send_ids || !Array.isArray(send_ids)) {
       return new Response(JSON.stringify({
@@ -421,7 +483,7 @@ export default async (req, context) => {
     const results = [];
     for (const sendId of send_ids.slice(0, BATCH_SIZE)) {
       try {
-        const result = await processSend(sendId, campaign, persona, signalConfig, sequence);
+        const result = await processSend(sendId, campaign, persona, signalConfig, sequence, { dryRun });
         results.push(result);
       } catch (sendErr) {
         results.push({ send_id: sendId, failed: true, error: sendErr.message });
@@ -436,6 +498,7 @@ export default async (req, context) => {
       batch_index: batch_index || 0,
       sends_processed: results.length,
       sends_sent: results.filter(r => r.status === 'sent').length,
+      sends_drafted: results.filter(r => r.status === 'pending_approval').length,
       sends_simulated: results.filter(r => r.status === 'simulated').length,
       sends_failed: results.filter(r => r.failed).length
     });
@@ -446,12 +509,9 @@ export default async (req, context) => {
       if (loopDue) {
         // Fire-and-forget loop iteration
         try {
-          const siteUrl = (typeof Netlify !== 'undefined' && Netlify.env?.get('URL'))
-            ? Netlify.env.get('URL')
-            : (process.env.URL || 'https://aisdr.a-gent.co');
-          await fetch(`${siteUrl}/api/loop-engine`, {
+          await fetch(`${siteUrl()}/api/loop-engine`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...internalHeaders() },
             body: JSON.stringify({ action: 'run', campaign_id })
           });
         } catch (e) { /* non-critical */ }
@@ -470,9 +530,10 @@ export default async (req, context) => {
     });
 
   } catch (err) {
+    console.error('[send-worker-background]', err.message, err.stack);
     return new Response(JSON.stringify({
       success: false,
-      error: err.message
+      error: 'internal_error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

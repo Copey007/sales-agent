@@ -2,3 +2,22 @@ node_modules/
 .netlify/
 
 deno.lock
+
+# ── 2026-11 security lockdown ──
+# Local env / secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+# Netlify / Supabase CLI local state (contains project links, pooler URLs)
+netlify/functions/.netlify/
+supabase/.temp/
+supabase/.branches/
+# Local agent memory / research artifacts (runtime data, may contain PII)
+memory/*.json
+memory/long_term/
+memory/working/
+# OS / editor
+.DS_Store

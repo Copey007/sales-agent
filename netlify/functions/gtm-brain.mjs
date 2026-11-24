@@ -16,6 +16,8 @@
 import { resolveTenantContext } from './_tenant.mjs';
 import { callLLM, parseLLMJson } from './_llm.mjs';
 import { DEFAULTS, logActivity } from './_campaign-store.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -229,7 +231,7 @@ Build their initial plan.`;
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const authCtx = await resolveTenantContext(req);
@@ -310,8 +312,12 @@ export default async (req) => {
 
     return json({ error: `unknown action: ${action}` }, 400);
   } catch (err) {
-    return json({ error: err.message }, 500);
+    console.error('[gtm-brain]', err.message);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
 export const config = { path: '/api/gtm-brain' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

@@ -28,6 +28,8 @@ import {
 } from "./_campaign-store.mjs";
 import { env } from './_mcp-connectors.mjs';
 import { resolveTenantContext } from './_tenant.mjs';
+import { isInternalCall } from './_auth.mjs';
+import { requireOperator } from './_tenant.mjs';
 import { callLLM, parseLLMJson } from './_llm.mjs';
 
 export { icpDiscoverCompanies } from "./_icp-agent.mjs";
@@ -92,7 +94,7 @@ async function runBulkFind({ icp, role, target, tenantId }) {
 export async function syncContactToSupabase(prospect, campaignName) {
   try {
     const url = env('SUPABASE_URL');
-    const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
+    const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
     if (!url || !key || !prospect.email) return false;
     const h = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
     const existing = await fetch(
@@ -560,7 +562,7 @@ export default async (req) => {
     const authCtx = await resolveTenantContext(req);
     if (authCtx.invalid) {
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401, headers: { 'Content-Type': 'application/json' }
+        status: authCtx.status || 401, headers: { 'Content-Type': 'application/json' }
       });
     }
     const result = await runBulkFind({
@@ -573,6 +575,15 @@ export default async (req) => {
       status: result.error ? 500 : 200,
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+
+  // SECURITY: background functions are URL-invocable
+  // (/.netlify/functions/researcher-background). Every mode other than a
+  // tenant-JWT bulk_find is internal-only (queue-manager sends X-Internal-Token)
+  // or a platform operator.
+  if (!isInternalCall(req)) {
+    const op = await requireOperator(req, { allowInternal: false });
+    if (op.response) return op.response;
   }
 
   // Top-up mode: scheduled invocations carry no campaign_id. Instead of the old

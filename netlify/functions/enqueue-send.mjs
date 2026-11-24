@@ -20,8 +20,10 @@ import {
   logActivity, DEFAULTS
 } from "./_campaign-store.mjs";
 import { resolveTenantContext } from "./_tenant.mjs";
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -201,3 +203,6 @@ export default async (req, context) => {
 export const config = {
   path: "/api/enqueue-send"
 };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

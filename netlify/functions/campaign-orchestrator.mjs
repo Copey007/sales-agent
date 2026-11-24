@@ -29,6 +29,8 @@ import { syncContactToSupabase, icpDiscoverCompanies } from "./researcher-backgr
 import { enrollPool } from "./researcher-find.mjs";
 import { sb, poolTenantFilter } from "./_supabase-rest.mjs";
 import { resolveTenantContext } from "./_tenant.mjs";
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 // Enroll every selected Researcher-pool contact into the campaign: one bulk
 // UPDATE (instant even at 1000 contacts). The queue-manager feeder then drips
@@ -59,7 +61,7 @@ async function enrollSelectedContacts(campaignId, contactIds, tenantId) {
   return { prospects_enrolled: enrolled, source: 'researcher_pool', feeder: true };
 }
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
@@ -926,3 +928,6 @@ function corsHeaders() {
     "Access-Control-Allow-Headers": "Content-Type, Authorization"
   };
 }
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

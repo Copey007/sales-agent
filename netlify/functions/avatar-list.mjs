@@ -1,3 +1,5 @@
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 /**
  * List the LiveAvatar avatars in your account.
  *
@@ -25,7 +27,7 @@ function json(body, status = 200) {
   });
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -57,8 +59,11 @@ export default async (req) => {
     return json({ count: data?.data?.count ?? avatars.length, avatars });
   } catch (err) {
     console.error('[avatar-list] Error:', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
 export const config = { path: '/api/avatar-list' };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

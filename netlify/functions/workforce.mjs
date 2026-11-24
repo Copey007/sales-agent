@@ -15,8 +15,10 @@
 import { initAgents, getAgent, listAgents, getAgentStatuses } from './_agent-registry.mjs';
 import { initConnectors, listConnectors, invoke } from './_mcp-connectors.mjs';
 import { remember, recall, getAccountMemories, getPendingTasks } from './_supabase-memory.mjs';
+import { withCors, isInternalCall } from './_auth.mjs';
+import { requireOperator } from './_tenant.mjs';
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -39,9 +41,27 @@ export default async (req, context) => {
       action = body.action || 'list';
     }
 
+    // SECURITY: only the read-only roster is public (workers.html, MC hire
+    // modal), and it is sanitized for anonymous callers. Every action that
+    // runs agents, reads/writes the global agent memory or lists tasks is
+    // platform-operator only; workforce-hires may call delegate/execute with
+    // the internal service token on behalf of an authenticated tenant.
+    let privileged = false;
+    if (action === 'list') {
+      const auth = req.headers.get('authorization');
+      if (isInternalCall(req)) privileged = true;
+      else if (auth) privileged = !(await requireOperator(req, { allowInternal: false })).response;
+    } else {
+      const internalOk = isInternalCall(req) && (action === 'delegate' || action === 'execute');
+      if (!internalOk) {
+        const g = await requireOperator(req, { allowInternal: false });
+        if (g.response) return g.response;
+      }
+    }
+
     switch (action) {
       case 'list':
-        return await handleList(corsHeaders);
+        return await handleList(corsHeaders, { full: privileged });
 
       case 'delegate':
         return await handleDelegate(body, corsHeaders);
@@ -65,18 +85,22 @@ export default async (req, context) => {
     }
   } catch (err) {
     console.error('[workforce] Error:', err.message, err.stack);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
 };
 
-export const config = { path: "/api/workforce" };
+export const config = { path: "/api/workforce", rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
 
 // ─── Handlers ──────────────────────────────────────────────────────────────────
 
-async function handleList(corsHeaders) {
-  const agents = await getAgentStatuses();
+async function handleList(corsHeaders, { full = false } = {}) {
+  let agents = await getAgentStatuses();
+  if (!full) {
+    // Anonymous roster: drop live task text (may contain tenant objectives).
+    agents = (agents || []).map(({ current_task, last_action, currentTask, lastAction, memory, ...rest }) => rest);
+  }
   const connectors = listConnectors().map(c => ({
     name: c.name,
     description: c.description,
@@ -183,3 +207,6 @@ async function handleTasks(body, corsHeaders) {
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

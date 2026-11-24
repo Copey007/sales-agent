@@ -1,15 +1,44 @@
 /**
  * Minimal Supabase PostgREST helper for Netlify functions.
- * Uses SUPABASE_SERVICE_ROLE_KEY when present, else the anon key.
+ *
+ * Server-side functions are trusted code and use the SERVICE ROLE key, which
+ * bypasses RLS. There is deliberately NO fallback to SUPABASE_ANON_KEY: once
+ * RLS is enabled (supabase/migrations/20261124_a_gent_rls_lockdown.sql) an
+ * anon-key fallback would silently return empty results / fail writes. A
+ * missing service-role key fails closed with a clear server error instead.
  */
 
 import { env } from './_mcp-connectors.mjs';
 
-export function sbCreds() {
+export class SupabaseConfigError extends Error {
+  constructor(msg) { super(msg); this.name = 'SupabaseConfigError'; this.status = 503; }
+}
+
+/** Service-role credentials. Throws SupabaseConfigError if not configured. */
+export function serviceCreds() {
   const url = env('SUPABASE_URL');
-  const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
-  if (!url || !key) throw new Error('SUPABASE_URL / key not configured');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url) throw new SupabaseConfigError('SUPABASE_URL is not configured');
+  if (!key) throw new SupabaseConfigError('SUPABASE_SERVICE_ROLE_KEY is not configured (server functions never fall back to the anon key)');
   return { url, key };
+}
+
+/** apikey + Authorization headers for a trusted service-role REST/Storage call. */
+export function serviceHeaders(extra = {}) {
+  const { key } = serviceCreds();
+  return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
+}
+
+/** Back-compat alias used by existing callers. */
+export function sbCreds() { return serviceCreds(); }
+
+/** fetch() against PostgREST with service-role headers; returns the raw Response. */
+export async function serviceRest(path, init = {}) {
+  const { url } = serviceCreds();
+  return fetch(`${url}/rest/v1/${path}`, {
+    ...init,
+    headers: serviceHeaders({ 'Content-Type': 'application/json', ...(init.headers || {}) }),
+  });
 }
 
 /**

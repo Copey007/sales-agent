@@ -1,3 +1,5 @@
+import { withCors } from './_auth.mjs';
+import { operatorGuard } from './_tenant.mjs';
 /**
  * Signal Gathering Layer — Netlify Serverless Function
  * 
@@ -355,7 +357,7 @@ function extractLinkedInSignals(text, profileUrl) {
 }
 
 // ─── Netlify Function Handler ──────────────────────────────────────────────────
-export default async (req, context) => {
+const __handler = async (req, context) => {
   // CORS headers for the frontend
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -414,3 +416,6 @@ export default async (req, context) => {
 export const config = {
   path: "/api/gather-signals"
 };
+
+// Security wrapper: allowlisted CORS + operator auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: operatorGuard() });

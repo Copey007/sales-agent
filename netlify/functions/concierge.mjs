@@ -19,6 +19,7 @@
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { remember, recall } from './_supabase-memory.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
+import { withCors } from './_auth.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -41,7 +42,7 @@ async function resolveAgent(slug) {
   return { systemPrompt: SYSTEM_PROMPT, accountId: slug || 'a-gent', name: 'A-Gent' };
 }
 
-export default async (req, context) => {
+const __handler = async (req, context) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -91,7 +92,7 @@ export default async (req, context) => {
   }
 };
 
-export const config = { path: "/api/concierge" };
+export const config = { path: "/api/concierge", rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
 
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 
@@ -348,7 +349,7 @@ async function handleQualify(body, corsHeaders) {
 
 function getSupabaseCreds() {
   const url = env('SUPABASE_URL');
-  const key = env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY') /* service role only — no anon fallback */;
   return { url, key };
 }
 
@@ -367,3 +368,6 @@ function extractName(messages) {
   }
   return null;
 }
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

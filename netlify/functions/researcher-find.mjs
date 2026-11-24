@@ -18,6 +18,8 @@ import { icpDiscoverCompanies } from './_icp-agent.mjs';
 import { isEmailSuppressed, logActivity, DEFAULTS } from './_campaign-store.mjs';
 import { sb, poolTenantReady, poolTenantFilter } from './_supabase-rest.mjs';
 import { resolveTenantContext } from './_tenant.mjs';
+import { withCors } from './_auth.mjs';
+import { tenantGuard } from './_tenant.mjs';
 
 const MAX_ORGS_PER_FIND = 15;   // sync path budget; bulk path loops in background
 const EMAILS_PER_ORG = 5;
@@ -210,7 +212,7 @@ export async function enrollPool(campaignId, tenantId) {
   return Array.isArray(updated) ? updated.length : 0;
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   const cors = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -276,3 +278,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/researcher-find' };
+
+// Security wrapper: allowlisted CORS + tenant auth guard (2026-11 lockdown).
+export default withCors(__handler, { guard: tenantGuard() });

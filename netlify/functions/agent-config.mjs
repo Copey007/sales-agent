@@ -9,6 +9,7 @@
  */
 
 import { getAgentBySlug, toPublicConfig } from './_avatar-store.mjs';
+import { withCors } from './_auth.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -18,7 +19,7 @@ const cors = {
 const json = (b, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json', ...cors } });
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
   const url = new URL(req.url);
@@ -31,8 +32,11 @@ export default async (req) => {
     return json({ config: toPublicConfig(agent) });
   } catch (err) {
     console.error('[agent-config]', err.message);
-    return json({ error: err.message }, 500);
+    return json({ error: 'internal_error' }, 500);
   }
 };
 
-export const config = { path: '/api/agent-config' };
+export const config = { path: '/api/agent-config', rateLimit: { windowLimit: 60, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+
+// Security wrapper: allowlisted CORS (2026-11 lockdown).
+export default withCors(__handler);

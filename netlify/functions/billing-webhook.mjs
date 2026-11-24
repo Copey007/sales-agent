@@ -15,21 +15,31 @@
 
 import crypto from 'node:crypto';
 import { env } from './_mcp-connectors.mjs';
+import { serviceCreds } from './_supabase-rest.mjs';
 
-function creds() { return { url: env('SUPABASE_URL'), key: env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY') }; }
+// Service role only — never the anon key (fails closed if unset; see _supabase-rest.mjs).
+function creds() { return serviceCreds(); }
 async function rest(path, init = {}) {
   const { url, key } = creds();
   return fetch(`${url}/rest/v1/${path}`, { ...init, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
 }
 
 // Verify Stripe's signature header against the raw body (no SDK).
-function verify(rawBody, sigHeader, secret) {
+// Accepts any of multiple v1 signatures (secret rotation) and rejects
+// timestamps older/newer than 5 minutes (replay protection).
+export function verify(rawBody, sigHeader, secret, { toleranceSec = 300, nowSec = Math.floor(Date.now() / 1000) } = {}) {
   if (!sigHeader || !secret) return false;
-  const parts = Object.fromEntries(sigHeader.split(',').map((kv) => kv.split('=')));
-  const t = parts.t, v1 = parts.v1;
-  if (!t || !v1) return false;
-  const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
-  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1)); } catch { return false; }
+  let t = null; const v1s = [];
+  for (const kv of String(sigHeader).split(',')) {
+    const i = kv.indexOf('=');
+    if (i < 0) continue;
+    const k = kv.slice(0, i).trim(), v = kv.slice(i + 1).trim();
+    if (k === 't') t = v; else if (k === 'v1') v1s.push(v);
+  }
+  if (!t || !v1s.length || !/^\d+$/.test(t)) return false;
+  if (Math.abs(nowSec - Number(t)) > toleranceSec) return false;
+  const expected = Buffer.from(crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex'));
+  return v1s.some((v1) => { const got = Buffer.from(v1); return got.length === expected.length && crypto.timingSafeEqual(got, expected); });
 }
 
 // Stripe subscription status → our tenants.status
@@ -65,7 +75,7 @@ async function upsertSubscription(tenantId, sub) {
   });
 }
 
-export default async (req) => {
+const __handler = async (req) => {
   if (req.method !== 'POST') return new Response('method', { status: 405 });
 
   const secret = env('STRIPE_WEBHOOK_SECRET');
@@ -113,3 +123,6 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/billing-webhook' };
+
+// 2026-11 lockdown: Stripe signature + timestamp tolerance.
+export default __handler;  // server-to-server webhook: no CORS
