@@ -504,7 +504,8 @@ export default async (req, context) => {
       sends_sent: results.filter(r => r.status === 'sent').length,
       sends_drafted: results.filter(r => r.status === 'pending_approval').length,
       sends_simulated: results.filter(r => r.status === 'simulated').length,
-      sends_failed: results.filter(r => r.failed).length
+      sends_failed: results.filter(r => r.failed).length,
+      sends_suppressed: results.filter(r => r.status === 'suppressed').length
     });
 
     // Check if Loop Engine iteration is due (after batch)
