@@ -233,11 +233,17 @@ export async function listCampaignSends(campaignId) {
 
 // SUPPRESSION LIST
 export async function isEmailSuppressed(tenantId, email) {
-  const record = await getRecord("suppression_list", `${tenantId}:${email}`);
-  return !!record;
+  const addr = String(email || '').trim().toLowerCase();
+  if (!addr) return false;
+  if (tenantId && await getRecord("suppression_list", `${tenantId}:${addr}`)) return true;
+  // Webhook events with no known tenant are stored under "*".
+  return !!(await getRecord("suppression_list", `*:${addr}`));
 }
 export async function addToSuppressionList(record) {
-  return putRecord("suppression_list", `${record.tenant_id}:${record.email}`, record);
+  const email = String(record.email || '').trim().toLowerCase();
+  const tenant = record.tenant_id || '*';
+  const stored = { ...record, email, tenant_id: tenant };
+  return putRecord("suppression_list", `${tenant}:${email}`, stored);
 }
 
 // ACTIVITY LOG

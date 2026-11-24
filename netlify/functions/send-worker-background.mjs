@@ -244,6 +244,10 @@ async function sendViaResend(emailData, prospect, campaign) {
   if (!toEmail) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
+  const sendTenantId = prospect.tenant_id || campaign?.tenant_id || DEFAULTS.TENANT_ID;
+  if (await isEmailSuppressed(sendTenantId, toEmail)) {
+    return { sent: false, reason: "email_on_suppression_list", suppressed: true };
+  }
   // CAN-SPAM: physical postal address + working opt-out are mandatory.
   const compliance = complianceOrBlock({ replyTo, toEmail, tenantId: prospect.tenant_id || campaign?.tenant_id || DEFAULTS.TENANT_ID });
   if (!compliance.ok) {

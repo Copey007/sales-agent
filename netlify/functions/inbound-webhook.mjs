@@ -58,6 +58,24 @@ const __handler = async (req, context) => {
 
     const eventType = payload.type || 'unknown';
     const data = payload.data || payload;
+    const resendId = data.email_id || data.id || '';
+
+    // Bounce / complaint / provider suppression: never treat these as replies.
+    if (eventType === 'email.bounced' || eventType === 'email.complained' || eventType === 'email.suppressed') {
+      const emails = [...new Set([...extractEmails(data.to), ...extractEmails(data.recipient)])];
+      const reason = eventType === 'email.complained' ? 'complaint'
+        : eventType === 'email.suppressed' ? 'provider_suppressed'
+        : 'bounce';
+      const suppressed = await suppressAddresses(emails, { reason, eventType, resendId });
+      return new Response(JSON.stringify({ ok: true, event: eventType, suppressed }), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    if (eventType !== 'email.received') {
+      return new Response(JSON.stringify({ ok: true, ignored: eventType }), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     // --- Extract all relevant fields from the Resend inbound payload ---
     const from        = data.from        || data.sender     || 'unknown@unknown.com';
@@ -269,7 +287,7 @@ const __handler = async (req, context) => {
         message_id: messageId,
         in_reply_to: inReplyTo,
         received_at: receivedAt,
-        sentiment: 'unclassified',
+        sentiment: isOptOutMessage(subject, textBody) ? 'unsubscribe' : 'unclassified',
         campaign_id: attributedCampaignId,
         email_send_id: attributedSendId,
         forwarded_to: 'mark.cope.roarr@gmail.com',
@@ -291,6 +309,16 @@ const __handler = async (req, context) => {
     // log them, but keep the cadence alive for when the person is back.
     const isAutoReply = /^(automatic reply|auto(matic)? response|out of office|abwesenheit|absence)/i.test(subject || '') ||
       /auto-?submitted:\s*auto/i.test(String(data.headers?.['auto-submitted'] || ''));
+    const isOptOut = !isAutoReply && isOptOutMessage(subject, textBody);
+    if (isOptOut && prospectEmail) {
+      try {
+        await suppressAddresses([String(prospectEmail).toLowerCase()], {
+          reason: 'unsubscribe', eventType: 'email.received', resendId: messageId
+        });
+      } catch (supErr) {
+        console.error('[inbound-webhook] opt-out suppression failed:', supErr.message);
+      }
+    }
     let cancelledSends = 0;
     if (isAutoReply) {
       console.log('[inbound-webhook] Auto-reply detected — cadence left running for', prospectEmail);
@@ -392,6 +420,76 @@ function stripHtml(html) {
     .trim();
 }
 
+function extractEmails(value) {
+  const list = Array.isArray(value) ? value : (value ? [value] : []);
+  const out = [];
+  for (const item of list) {
+    const raw = typeof item === 'string' ? item : (item?.email || item?.address || '');
+    const m = String(raw).match(/<([^>]+)>/);
+    const addr = (m ? m[1] : raw).trim().toLowerCase();
+    if (addr && addr.includes('@')) out.push(addr);
+  }
+  return [...new Set(out)];
+}
+
+/** First-line opt-out language (unsubscribe / stop / etc.). Quoted signatures are ignored by only scanning the first lines. */
+function isOptOutMessage(subject, text) {
+  const head = `${subject || ''}\n${text || ''}`.split('\n').slice(0, 8).join('\n');
+  return /^\s*(unsubscribe|stop\b|stop sending|opt[ -]?out|remove me|please remove|do not (email|contact)|don't (email|contact))/im.test(head);
+}
+
+async function suppressAddresses(emails, { reason, eventType, resendId } = {}) {
+  const { addToSuppressionList, listRecords, putEmailSend, DEFAULTS } = await import('./_campaign-store.mjs');
+  const addrs = [...new Set((emails || []).map((e) => String(e || '').trim().toLowerCase()).filter((e) => e.includes('@')))];
+  const tenants = new Set();
+  const prospects = (await listRecords('prospects')).filter((p) => addrs.includes(String(p.email || '').toLowerCase()));
+  const prospectIds = new Set();
+  for (const p of prospects) {
+    tenants.add(p.tenant_id || DEFAULTS.TENANT_ID);
+    if (p.id) prospectIds.add(p.id);
+  }
+  const sends = await listRecords('email_sends');
+  const nowIso = new Date().toISOString();
+  for (const send of sends) {
+    const rid = send.resend_result?.resend_id || send.resend_id;
+    if (resendId && rid === resendId) {
+      tenants.add(send.tenant_id || DEFAULTS.TENANT_ID);
+      if (send.prospect_id) prospectIds.add(send.prospect_id);
+      send.status = reason === 'complaint' ? 'complained'
+        : reason === 'unsubscribe' ? 'cancelled_unsubscribed'
+        : 'bounced';
+      send.suppressed_at = nowIso;
+      send.suppression_reason = reason;
+      await putEmailSend(send);
+    }
+  }
+  for (const send of sends) {
+    if (prospectIds.has(send.prospect_id) && ['queued', 'dispatched', 'pending_approval'].includes(send.status)) {
+      tenants.add(send.tenant_id || DEFAULTS.TENANT_ID);
+      send.status = 'cancelled_suppressed';
+      send.cancelled_at = nowIso;
+      send.cancelled_reason = reason;
+      await putEmailSend(send);
+    }
+  }
+  if (tenants.size === 0) tenants.add('*');
+  const suppressed = [];
+  for (const email of addrs) {
+    for (const tenant of tenants) {
+      await addToSuppressionList({
+        tenant_id: tenant,
+        email,
+        reason,
+        source: eventType || 'webhook',
+        resend_id: resendId || null,
+        suppressed_at: nowIso,
+      });
+      suppressed.push({ email, tenant_id: tenant });
+    }
+  }
+  return suppressed;
+}
+
 // 2026-11 lockdown: Svix signature verification (RESEND_WEBHOOK_SECRET).
-export { verifyResendSignature };
+export { verifyResendSignature, extractEmails, isOptOutMessage, suppressAddresses };
 export default __handler;  // server-to-server webhook: no CORS

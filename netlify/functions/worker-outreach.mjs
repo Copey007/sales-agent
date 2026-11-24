@@ -15,7 +15,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
-import { putProspect, findProspectByEmail, DEFAULTS } from './_campaign-store.mjs';
+import { putProspect, findProspectByEmail, isEmailSuppressed, DEFAULTS } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
 import { complianceOrBlock } from './_email-compliance.mjs';
@@ -57,6 +57,12 @@ const __handler = async (req) => {
     if (b.action === 'reject') {
       await rest(`worker_outreach?id=eq.${b.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected', reviewed_at: new Date().toISOString() }) });
       return json({ ok: true, status: 'rejected' });
+    }
+
+    const prospectEmail = String(draft.prospect_email || '').trim().toLowerCase();
+    if (prospectEmail && await isEmailSuppressed(draft.tenant_id || tenantId, prospectEmail)) {
+      await rest(`worker_outreach?id=eq.${b.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected', reviewed_at: new Date().toISOString() }) });
+      return json({ error: 'email_on_suppression_list', suppressed: true, status: 'rejected' }, 409);
     }
 
     // Approve → send via Resend. Fail closed without a postal address
