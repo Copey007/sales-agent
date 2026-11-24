@@ -18,6 +18,7 @@ import { tenantFromRequest } from './_tenant.mjs';
 import { putProspect, findProspectByEmail, DEFAULTS } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
+import { complianceOrBlock } from './_email-compliance.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -58,9 +59,15 @@ const __handler = async (req) => {
       return json({ ok: true, status: 'rejected' });
     }
 
-    // Approve → send via Resend
+    // Approve → send via Resend. Fail closed without a postal address
+    // (same gate as send-worker-background); never call Resend without
+    // the CAN-SPAM footer and List-Unsubscribe header.
     const RESEND = env('RESEND_API_KEY');
     if (!RESEND) return json({ error: 'RESEND_API_KEY not configured' }, 500);
+    const compliance = complianceOrBlock({ replyTo: draft.from_email });
+    if (!compliance.ok) {
+      return json({ error: compliance.reason, blocked: true }, 503);
+    }
     try {
       const send = await fetch('https://api.resend.com/emails', {
         method: 'POST', headers: { Authorization: `Bearer ${RESEND}`, 'Content-Type': 'application/json' },
@@ -68,8 +75,9 @@ const __handler = async (req) => {
           from: `${draft.worker_name || 'A-Gent'} <${draft.from_email}>`,
           to: [draft.prospect_email],
           subject: draft.subject,
-          text: draft.body,
+          text: `${draft.body || ''}${compliance.footer}`,
           reply_to: draft.from_email,
+          headers: { ...compliance.headers },
         }),
       });
       const result = await send.json().catch(() => ({}));

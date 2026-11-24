@@ -23,6 +23,7 @@ import {
 } from "./_campaign-store.mjs";
 import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
 import { requireInternal, internalHeaders, siteUrl, env as authEnv } from "./_auth.mjs";
+import { complianceOrBlock } from "./_email-compliance.mjs";
 
 // ─── Signal Gathering (campaign-aware) ──────────────────────────────────────
 
@@ -237,8 +238,6 @@ async function sendViaResend(emailData, prospect, campaign) {
   const fromName = authEnv('SENDER_FROM_NAME', 'A-Gent Fleet');
   const fromAddress = authEnv('SENDER_FROM_EMAIL', `fleet@${sendingDomain}`);
   const replyTo = authEnv('REPLY_TO_EMAIL', fromAddress);
-  const unsubscribeEmail = authEnv('UNSUBSCRIBE_EMAIL', replyTo);
-  const postalAddress = authEnv('COMPANY_POSTAL_ADDRESS');
   const fromEmail = `${fromName} <${fromAddress}>`;
   const toEmail = prospect.email;
 
@@ -246,10 +245,11 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
   // CAN-SPAM: physical postal address + working opt-out are mandatory.
-  if (!postalAddress) {
-    return { sent: false, reason: "COMPANY_POSTAL_ADDRESS not configured — refusing to send without compliance footer", simulated: false, blocked: true };
+  const compliance = complianceOrBlock({ replyTo });
+  if (!compliance.ok) {
+    return { sent: false, reason: compliance.reason, simulated: false, blocked: true };
   }
-  const footer = `\n\n--\n${postalAddress}\nTo stop receiving these emails, reply "unsubscribe" or email ${unsubscribeEmail}.`;
+  const footer = compliance.footer;
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -264,7 +264,7 @@ async function sendViaResend(emailData, prospect, campaign) {
         subject: emailData.subject,
         text: `${emailData.body}${footer}`,
         reply_to: replyTo,
-        headers: { 'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>` }
+        headers: { ...compliance.headers }
       })
     });
 
