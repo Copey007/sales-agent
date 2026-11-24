@@ -64,7 +64,7 @@ const __handler = async (req) => {
     // the CAN-SPAM footer and List-Unsubscribe header.
     const RESEND = env('RESEND_API_KEY');
     if (!RESEND) return json({ error: 'RESEND_API_KEY not configured' }, 500);
-    const compliance = complianceOrBlock({ replyTo: draft.from_email });
+    const compliance = complianceOrBlock({ replyTo: draft.from_email, toEmail: draft.prospect_email, tenantId: draft.tenant_id || tenantId });
     if (!compliance.ok) {
       return json({ error: compliance.reason, blocked: true }, 503);
     }

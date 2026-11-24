@@ -72,12 +72,13 @@ test('complianceOrBlock fails closed without COMPANY_POSTAL_ADDRESS', () => {
   } finally { process.env.COMPANY_POSTAL_ADDRESS = saved; }
 });
 
-test('complianceOrBlock attaches postal footer and mailto List-Unsubscribe', () => {
-  const r = complianceOrBlock({ replyTo: 'james@a-gent.co' });
+test('complianceOrBlock attaches postal footer, mailto, and RFC 8058 one-click headers', () => {
+  const r = complianceOrBlock({ replyTo: 'james@a-gent.co', toEmail: 'jane@prospect.test', tenantId: 't-acme' });
   assert.equal(r.ok, true);
   assert.match(r.footer, /1 Test Street, Testville/);
   assert.match(r.footer, /unsubscribe@example.test/);
-  assert.equal(r.headers['List-Unsubscribe'], '<mailto:unsubscribe@example.test?subject=unsubscribe>');
+  assert.match(r.headers['List-Unsubscribe'], /^<mailto:unsubscribe@example\.test\?subject=unsubscribe>, <https:\/\/aisdr\.example\.test\/api\/unsubscribe\?token=/);
+  assert.equal(r.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
 });
 
 test('worker-outreach approve without COMPANY_POSTAL_ADDRESS is blocked, draft stays pending', async () => {
@@ -107,7 +108,8 @@ test('worker-outreach approve sends approved text plus footer and List-Unsubscri
   assert.ok(sent.text.startsWith('Hi Jane,\n\nQuick note.'));
   assert.match(sent.text, /1 Test Street, Testville/);
   assert.match(sent.text, /unsubscribe/i);
-  assert.equal(sent.headers['List-Unsubscribe'], '<mailto:unsubscribe@example.test?subject=unsubscribe>');
+  assert.match(sent.headers['List-Unsubscribe'], /^<mailto:unsubscribe@example\.test\?subject=unsubscribe>, <https:\/\/aisdr\.example\.test\/api\/unsubscribe\?token=/);
+  assert.equal(sent.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
   assert.deepEqual(sent.to, ['jane@prospect.test']);
   assert.equal(draft.status, 'sent');
 });
