@@ -74,7 +74,7 @@ test('Resend inbound (Svix): correctly signed request passes verification', asyn
 const toml = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 const blocks = [...toml.matchAll(/\[\[redirects\]\]\s*\n\s*from = "([^"]+)"\s*\n\s*to = "([^"]+)"\s*\n\s*status = (\d+)\s*\n\s*force = (true|false)/g)]
   .filter((m) => m[3] === '404').map((m) => ({ from: m[1], force: m[4] === 'true' }));
-const MUST_BLOCK = ['/netlify/*', '/memory/*', '/core/*', '/capabilities/*', '/integrations/*', '/agents/*', '/node_modules/*', '/supabase/*', '/tests/*', '/scripts/*', '/.git/*', '/.netlify/*', '/package.json', '/package-lock.json', '/deno.lock', '/netlify.toml', '/.gitignore', '/README.md', '/ARCHITECTURE.md', '/cli.js', '/integrate.js', '/cron_signal_scan.js', '/dashboard/login.html', '/dashboard/netlify.toml'];
+const MUST_BLOCK = ['/netlify/*', '/memory/*', '/core/*', '/capabilities/*', '/integrations/*', '/agents/*', '/node_modules/*', '/supabase/*', '/tests/*', '/scripts/*', '/.git/*', '/package.json', '/package-lock.json', '/deno.lock', '/netlify.toml', '/.gitignore', '/README.md', '/ARCHITECTURE.md', '/cli.js', '/integrate.js', '/cron_signal_scan.js', '/dashboard/login.html', '/dashboard/netlify.toml'];
 for (const p of MUST_BLOCK) {
   test(`netlify.toml force-404s ${p}`, () => {
     const b = blocks.find((x) => x.from === p);
@@ -83,6 +83,9 @@ for (const p of MUST_BLOCK) {
 }
 test('netlify.toml no longer sets a blanket Access-Control-Allow-Origin "*"', () => {
   assert.equal(/Access-Control-Allow-Origin\s*=\s*"\*"/.test(toml), false);
+});
+test('netlify.toml has no redirect on the reserved /.netlify path (Netlify rejects it)', () => {
+  assert.equal(/from = "\/\.netlify/.test(toml), false);
 });
 test('netlify.toml keeps the public product routes', () => {
   assert.match(toml, /from = "\/a\/:slug"/); assert.match(toml, /from = "\/signup"/);

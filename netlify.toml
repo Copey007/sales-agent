@@ -110,11 +110,6 @@
   status = 404
   force = true
 
-[[redirects]]
-  from = "/.netlify/*"
-  to = "/404.html"
-  status = 404
-  force = true
 
 [[redirects]]
   from = "/package.json"
