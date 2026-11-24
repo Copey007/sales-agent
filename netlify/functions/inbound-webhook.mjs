@@ -439,7 +439,7 @@ function isOptOutMessage(subject, text) {
 }
 
 async function suppressAddresses(emails, { reason, eventType, resendId } = {}) {
-  const { addToSuppressionList, listRecords, putEmailSend, DEFAULTS } = await import('./_campaign-store.mjs');
+  const { addToSuppressionList, listRecords, putEmailSend, logActivity, DEFAULTS } = await import('./_campaign-store.mjs');
   const addrs = [...new Set((emails || []).map((e) => String(e || '').trim().toLowerCase()).filter((e) => e.includes('@')))];
   const tenants = new Set();
   const prospects = (await listRecords('prospects')).filter((p) => addrs.includes(String(p.email || '').toLowerCase()));
@@ -486,6 +486,19 @@ async function suppressAddresses(emails, { reason, eventType, resendId } = {}) {
       });
       suppressed.push({ email, tenant_id: tenant });
     }
+  }
+  try {
+    await logActivity({
+      type: 'suppression_event',
+      reason,
+      source: eventType || 'webhook',
+      resend_id: resendId || null,
+      emails: addrs,
+      tenants: [...tenants],
+      count: suppressed.length,
+    });
+  } catch (err) {
+    console.error('[inbound-webhook] activity log failed:', err.message);
   }
   return suppressed;
 }

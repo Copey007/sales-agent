@@ -13,7 +13,7 @@
  *        Confirmation page only. GET never mutates (email clients prefetch).
  */
 import { verifyUnsubToken } from './_email-compliance.mjs';
-import { addToSuppressionList, DEFAULTS } from './_campaign-store.mjs';
+import { addToSuppressionList, logActivity, DEFAULTS } from './_campaign-store.mjs';
 
 function headers(extra = {}) {
   return {
@@ -45,6 +45,16 @@ async function recordUnsub({ email, tenantId }) {
     source: 'rfc8058',
     suppressed_at: new Date().toISOString(),
   });
+  try {
+    await logActivity({
+      type: 'one_click_unsubscribe',
+      tenant_id: tid,
+      email: addr,
+      source: 'rfc8058',
+    });
+  } catch (err) {
+    console.error('[unsubscribe] activity log failed:', err.message);
+  }
   return { email: addr, tenantId: tid };
 }
 
