@@ -114,6 +114,14 @@ document.getElementById('email').focus();
 </script></body></html>`;
 }
 
+// Edge-generated responses don't receive netlify.toml [[headers]], so the login shell sets its own.
+export const SHELL_SECURITY = {
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy': "frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
 const NO_STORE = { 'Cache-Control': 'no-store, private', Vary: 'Cookie, Authorization', 'X-Robots-Tag': 'noindex, nofollow' };
 
 /**
@@ -128,7 +136,7 @@ export async function handleGate(request, deps) {
 
   const supabaseUrl = env('SUPABASE_URL') || '';
   const publicKey = env('SUPABASE_PUBLISHABLE_KEY') || env('SUPABASE_ANON_KEY') || '';
-  const shellHeaders = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE };
+  const shellHeaders = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, ...SHELL_SECURITY };
 
   if (!supabaseUrl || isPrivilegedKey(publicKey)) {
     return new Response('<!doctype html><title>Unavailable</title><main><h1>Temporarily unavailable</h1><p>Sign-in is not configured.</p></main>',
