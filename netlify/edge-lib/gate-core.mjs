@@ -80,6 +80,7 @@ main{width:min(380px,calc(100% - 32px));background:#131316;border:1px solid #2a2
 h1{margin:0 0 6px;font-size:1.3rem}p{margin:0 0 18px;color:#a1a1a6;font-size:.9rem}
 label{display:block;font-size:.8rem;color:#a1a1a6;margin:0 0 4px}
 input{width:100%;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2;font:inherit}
+input:hover{border-color:#8a8a90}
 input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #c8b48c;outline-offset:2px}
 button{width:100%;padding:11px;border:0;border-radius:10px;background:#c8b48c;color:#0a0a0c;font:600 .95rem/1.2 Inter,system-ui,-apple-system,sans-serif;cursor:pointer}
 button[disabled]{opacity:.6;cursor:wait}#msg{min-height:1.2em;margin:12px 0 0;color:#d4625a;font-size:.85rem}
