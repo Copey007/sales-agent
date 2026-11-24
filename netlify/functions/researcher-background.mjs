@@ -35,6 +35,7 @@ import { callLLM, parseLLMJson } from './_llm.mjs';
 export { icpDiscoverCompanies } from "./_icp-agent.mjs";
 import { icpDiscoverCompanies } from "./_icp-agent.mjs";
 import { findAndPoolContacts, getBulkLock, setBulkLock } from "./researcher-find.mjs";
+import { hunterResultAcceptable } from './_hunter-policy.mjs';
 
 // ─── Bulk Find ───────────────────────────────────────────────────────────────
 // Fill the contact pool toward a target count (up to 1000) inside this
@@ -302,6 +303,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
             title: e.position || targetRole,
             linkedin_url: e.linkedin || null,
             hunter_confidence: e.confidence || null,
+            hunter_verification: e.verification?.status || null,
             source: 'hunter_domain_search'
           });
           discoverStats.emails_found++;
@@ -311,10 +313,20 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
       }
     }
 
-    // Email Verification (only for low-confidence emails to preserve quota)
+    // Email Verification (only for low-confidence emails to preserve quota).
+    // High-confidence hits are accepted only when they have no verification
+    // status, or when that status passes hunterResultAcceptable (rejects
+    // catch-all / unknown / disposable by default). See docs/hunter-verification.md.
     const highConf = rawProspects.filter(p => (p.hunter_confidence || 0) >= 90);
     const lowConf = rawProspects.filter(p => (p.hunter_confidence || 0) < 90);
-    const verified = [...highConf.map(p => ({ ...p, verified: true, verification_status: 'high_confidence' }))];
+    const verified = [];
+    for (const p of highConf) {
+      if (p.hunter_verification && !hunterResultAcceptable(p.hunter_verification, p.hunter_confidence)) {
+        console.log(`[researcher-bg] Rejected high-confidence ${p.email}: ${p.hunter_verification}`);
+        continue;
+      }
+      verified.push({ ...p, verified: true, verification_status: p.hunter_verification || 'high_confidence' });
+    }
 
     for (const p of lowConf) {
       try {
@@ -325,7 +337,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
           const vData = await vRes.json();
           const status = vData?.data?.status;
           const score = vData?.data?.score || 0;
-          if (status === 'valid' || status === 'accept_all' || (status === 'webmail' && score > 50)) {
+          if (hunterResultAcceptable(status, score)) {
             verified.push({ ...p, verified: true, verification_status: status, verification_score: score });
             discoverStats.verified++;
           } else {
