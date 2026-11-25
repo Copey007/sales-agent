@@ -127,3 +127,10 @@ test('/agent.html, /a/demo and /a/a-gent still mint via public slugs', () => {
   assert.match(toml, /from = "\/a\/:slug"/);
   assert.match(toml, /to = "\/agent\.html\?slug=:slug"/);
 });
+
+test('the side-panel README no longer says both transcript sides come from SDK transcription events', () => {
+  const readme = readFileSync(join(ROOT, 'avatar-side-panel/README.md'), 'utf8');
+  assert.doesNotMatch(readme, /User and avatar turns are captured from SDK transcription events/);
+  assert.match(readme, /\/api\/avatar-chat/ );
+  assert.match(readme, /avatar\.transcription/ );
+});

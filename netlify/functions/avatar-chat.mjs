@@ -15,6 +15,7 @@ import { getAvatarCaps, sessionOverMax } from './_avatar-caps.mjs';
 import { initConnectors, invoke } from './_mcp-connectors.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages } from './_chat-input.mjs';
+import { authorizeAvatarAgent, isUuid } from './_avatar-access.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -54,6 +55,8 @@ const __handler = async (req) => {
 
   const id = sessionRowId(body.session_row ?? body.session_id);
   if (!id) return json({ error: 'unauthorized', reason: 'session_required' }, 401);
+  // A non-UUID id makes PostgREST return 400, which would otherwise surface as 503.
+  if (!isUuid(id)) return json({ error: 'session_not_found' }, 404);
 
   const cleaned = sanitizeChatMessages(body.messages);
   if (cleaned.error) return json({ error: cleaned.error }, cleaned.status);
@@ -70,6 +73,9 @@ const __handler = async (req) => {
 
   const slug = row.agent_slug;
   if (!slug) return json({ error: 'session_not_found' }, 404);
+
+  const access = await authorizeAvatarAgent(req, { slug, tenantId: row.tenant_id || null });
+  if (!access.ok) return json({ error: access.error, reason: access.reason }, access.status);
 
   let agentWrap;
   try {

@@ -68,9 +68,11 @@ test('platform env cap wins when it is lower than the agent cap; agent cap can o
 
 test('sessionOverMax uses recorded duration or elapsed wall time', () => {
   assert.equal(sessionOverMax({ durationSeconds: 180, maxSessionSeconds: 180 }), true);
-  assert.equal(sessionOverMax({ durationSeconds: 179, maxSessionSeconds: 180 }), false);
+  const recent = new Date(Date.now() - 10 * 1000).toISOString();
+  assert.equal(sessionOverMax({ startedAt: recent, durationSeconds: 179, maxSessionSeconds: 180 }), false);
   const startedAt = new Date(Date.now() - 200 * 1000).toISOString();
   assert.equal(sessionOverMax({ startedAt, durationSeconds: 0, maxSessionSeconds: 180 }), true);
+  assert.equal(sessionOverMax({ startedAt: null, durationSeconds: 0, maxSessionSeconds: 180 }), true);
 });
 
 function routeAgents() {

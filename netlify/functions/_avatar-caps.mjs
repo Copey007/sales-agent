@@ -95,10 +95,11 @@ export function sessionOverMax({ startedAt, durationSeconds, maxSessionSeconds }
   const max = maxSessionSeconds ?? DEFAULT_MAX_SESSION_SECONDS;
   const recorded = Number(durationSeconds) || 0;
   if (recorded >= max) return true;
-  if (startedAt) {
-    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-    if (Number.isFinite(elapsed) && elapsed >= max) return true;
-  }
+  // A missing or unparseable started_at cannot be billed or bounded by wall
+  // clock, so treat the session as already expired (fail closed).
+  if (!startedAt) return true;
+  const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+  if (!Number.isFinite(elapsed) || elapsed >= max) return true;
   return false;
 }
 
