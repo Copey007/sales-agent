@@ -1,7 +1,5 @@
 # Public `/api/concierge` hardening
 
-Draft only — do not merge or deploy until Mark approves.
-
 ## What changed
 
 Anonymous callers can only use public agent slugs (default `a-gent,demo`, overridable with `PUBLIC_CONCIERGE_SLUGS`). Any other slug returns 404 `agent_not_found` without loading `avatar_agents` or calling the LLM, so a private tenant prompt or knowledge base cannot leak.
@@ -16,12 +14,12 @@ Previously every chat turn called `remember()` with the visitor's last message a
 
 Those writes are removed. Conversation text is not stored server-side for anonymous concierge chats. Qualified leads are still written to the `contacts` table only.
 
-`recall()` has been removed from the anonymous chat path. A client-supplied `visitorEmail` is ignored (it is not used to search memory or to insert a contacts row from chat). Qualified leads still go to the `contacts` table via the qualify action. The existing 66 production `agent_memory` concierge rows are left untouched until Mark approves any purge or expiry.
+`recall()` has been removed from the anonymous chat path. A client-supplied `visitorEmail` is ignored (it is not used to search memory or to insert a contacts row from chat). Qualified leads still go to the `contacts` table via the qualify action. The 66 production `agent_memory` concierge rows from 25–30 June 2026 were deleted after Mark approved the purge. No other `agent_memory` rows were touched.
 
 ## Out of scope
 
-This change does not add authentication to `/api/concierge`. Tenant members talking to a private agent should use a future authenticated path (the panel uses `/api/avatar-chat` on the week-2 branch). No production deploy or database change is included.
+This change does not add authentication to `/api/concierge`. Tenant members talking to a private agent should use a future authenticated path (the panel uses `/api/avatar-chat` on the week-2 branch). No database migration is included.
 
 ## Server-side lead capture
 
-If a visitor's *user* message contains an email address, the server extracts, lowercases and length-checks it, then inserts a `contacts` row (source `signup:concierge`) after a lookup that skips duplicates. A client `visitorEmail` field is ignored. Capture failures are non-fatal to the chat. Nothing is written to `agent_memory`.
+If a visitor's *user* message contains an email address, the server extracts, lowercases and length-checks it, then inserts a `contacts` row (source `signup:concierge`). The duplicate lookup is case-insensitive at query time (`ilike`, with `%`, `_` and `*` escaped so the match stays exact); no migration is required. At most one new lead is captured per Netlify connection IP (`x-nf-client-connection-ip`, never `x-forwarded-for`) per hour, using a windowed count in the same style as the avatar-token IP throttle (Netlify Blobs, no new table). A client `visitorEmail` field is ignored. Capture failures and rate-limit skips are non-fatal to the chat. Nothing is written to `agent_memory`.

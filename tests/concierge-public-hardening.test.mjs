@@ -11,7 +11,9 @@ import { isPublicConciergeSlug, MAX_CHAT_CHARS } from '../netlify/functions/_cha
 process.env.OPENAI_API_KEY = 'test-llm-key';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const concierge = (await import('../netlify/functions/concierge.mjs')).default;
+const conciergeMod = await import('../netlify/functions/concierge.mjs');
+const concierge = conciergeMod.default;
+const { leadRate, memoryLeadRateStore } = conciergeMod;
 
 const PUBLIC_AGENT = {
   slug: 'a-gent',
@@ -36,9 +38,12 @@ const PRIVATE_AGENT = {
   knowledge: 'SECRET KNOWLEDGE T9',
 };
 
-beforeEach(() => resetFetch());
+beforeEach(() => {
+  resetFetch();
+  leadRate.store = memoryLeadRateStore();
+});
 
-function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happy to help. What brings you here?' } = {}) {
+function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happy to help. What brings you here?', existingContacts = [] } = {}) {
   const llmBodies = [];
   route(`${SB}/rest/v1/avatar_agents`, (url) => {
     const m = /slug=eq\.([^&]+)/.exec(url);
@@ -51,7 +56,7 @@ function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happ
     return { body: { choices: [{ message: { content: llm } }], model: 'claude-haiku-4-5' } };
   });
   route(`${SB}/rest/v1/agent_memory`, () => ({ body: [{ id: 'm1' }] }));
-  const contacts = [];
+  const contacts = existingContacts.map((c) => ({ ...c }));
   route(`${SB}/rest/v1/contacts`, (url, init) => {
     const method = (init.method || 'GET').toUpperCase();
     if (method === 'POST') {
@@ -59,9 +64,15 @@ function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happ
       contacts.push(row);
       return { body: [row] };
     }
-    const m = /email=eq\.([^&]+)/.exec(url);
-    const email = m ? decodeURIComponent(m[1]) : null;
-    return { body: email ? contacts.filter((c) => c.email === email) : contacts };
+    const m = /email=(eq|ilike)\.([^&]+)/.exec(url);
+    if (!m) return { body: contacts };
+    const op = m[1];
+    let needle = decodeURIComponent(m[2]);
+    if (op === 'ilike') {
+      needle = needle.replace(/\\([%_*\\])/g, '$1').toLowerCase();
+      return { body: contacts.filter((c) => String(c.email || '').toLowerCase() === needle) };
+    }
+    return { body: contacts.filter((c) => c.email === needle) };
   });
   return llmBodies;
 }
@@ -311,3 +322,68 @@ test('an oversized or malformed address in a message is not captured', async () 
   assert.equal(contactPosts().length, 0);
 });
 
+test('email dedupe lookup is case-insensitive at query time', async () => {
+  setup({ existingContacts: [{ id: 'c-seed', email: 'Pat@Example.com', source: 'signup:concierge' }] });
+  const res = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'Reach me at pat@example.com' }],
+  });
+  assert.equal(res.status, 200);
+  assert.equal(contactPosts().length, 0);
+  const lookups = calls.filter((c) => c.url.includes('/rest/v1/contacts') && (c.method || 'GET').toUpperCase() === 'GET');
+  assert.ok(lookups.length >= 1);
+  assert.match(lookups[0].url, /email=ilike\./);
+  assert.equal(/email=eq\./.test(lookups[0].url), false);
+});
+
+test('only one lead is captured per IP per hour', async () => {
+  setup();
+  const headers = { 'x-nf-client-connection-ip': '203.0.113.10' };
+  const first = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email one@example.com' }],
+  }, headers);
+  assert.equal(first.status, 200);
+  assert.equal(contactPosts().length, 1);
+  const second = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email two@example.com' }],
+  }, headers);
+  assert.equal(second.status, 200);
+  assert.equal(contactPosts().length, 1, 'same IP must not capture a second lead in the window');
+  const other = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email three@example.com' }],
+  }, { 'x-nf-client-connection-ip': '203.0.113.11' });
+  assert.equal(other.status, 200);
+  assert.equal(contactPosts().length, 2);
+});
+
+test('x-forwarded-for is ignored for the lead-capture IP limit', async () => {
+  setup();
+  const first = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email one@example.com' }],
+  }, { 'x-nf-client-connection-ip': '203.0.113.10', 'x-forwarded-for': '198.51.100.1' });
+  assert.equal(first.status, 200);
+  assert.equal(contactPosts().length, 1);
+  const second = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email two@example.com' }],
+  }, { 'x-nf-client-connection-ip': '203.0.113.10', 'x-forwarded-for': '198.51.100.2' });
+  assert.equal(second.status, 200);
+  assert.equal(contactPosts().length, 1);
+  const third = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'email three@example.com' }],
+  }, { 'x-nf-client-connection-ip': '203.0.113.11', 'x-forwarded-for': '198.51.100.1' });
+  assert.equal(third.status, 200);
+  assert.equal(contactPosts().length, 2);
+});

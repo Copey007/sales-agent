@@ -80,9 +80,9 @@ const __handler = async (req, context) => {
       case 'start':
         return await handleStart(body, corsHeaders);
       case 'chat':
-        return await handleChat(body, corsHeaders);
+        return await handleChat(body, corsHeaders, req);
       case 'qualify':
-        return await handleQualify(body, corsHeaders);
+        return await handleQualify(body, corsHeaders, req);
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -157,7 +157,7 @@ async function handleStart(body, corsHeaders) {
   });
 }
 
-async function handleChat(body, corsHeaders) {
+async function handleChat(body, corsHeaders, req) {
   const { sessionId, speak = false, slug = null } = body;
   // visitorEmail is ignored for anonymous callers: it used to trigger a
   // memory-store text search on "concierge" that leaked other visitors' notes.
@@ -201,7 +201,7 @@ async function handleChat(body, corsHeaders) {
   // Server-side lead capture from the conversation text only. A client
   // visitorEmail field is ignored. Failures here must not break the chat.
   try {
-    await captureLeadFromMessages(messages, { sessionId, slug });
+    await captureLeadFromMessages(messages, { sessionId, slug, req });
   } catch (e) {
     console.warn('[concierge] Lead capture failed:', e.message);
   }
@@ -230,7 +230,7 @@ async function handleChat(body, corsHeaders) {
   });
 }
 
-async function handleQualify(body, corsHeaders) {
+async function handleQualify(body, corsHeaders, req) {
   const { sessionId } = body;
 
   const cleaned = sanitizeChatMessages(body.messages);
@@ -279,6 +279,7 @@ async function handleQualify(body, corsHeaders) {
       slug: body.slug,
       name: result.name,
       company: result.company,
+      req,
     });
   } catch (e) {
     console.warn('[concierge] Lead capture failed:', e.message);
@@ -318,25 +319,104 @@ export function extractVisitorEmail(messages) {
   return found;
 }
 
+const LEAD_IP_WINDOW_SECONDS = 3600;
+const LEAD_IP_MAX = 1;
+
+/** Test hook: inject a Map-like store (get/setJSON). Production uses Netlify Blobs. */
+export const leadRate = {
+  windowSeconds: LEAD_IP_WINDOW_SECONDS,
+  max: LEAD_IP_MAX,
+  store: null,
+};
+
+export function memoryLeadRateStore() {
+  const data = new Map();
+  return {
+    async get(key, opts = {}) {
+      const v = data.get(key);
+      if (v == null) return null;
+      if (opts.type === 'json') return typeof v === 'string' ? JSON.parse(v) : v;
+      return v;
+    },
+    async setJSON(key, value) { data.set(key, value); },
+    async set(key, value) { data.set(key, value); },
+  };
+}
+
+function clientIp(req) {
+  // Platform-assigned connection IP only. Spoofable x-forwarded-for is ignored,
+  // matching the avatar-token rate-limit pattern.
+  if (!req?.headers?.get) return '';
+  return String(req.headers.get('x-nf-client-connection-ip') || '').trim();
+}
+
+function leadRateKey(ip) {
+  return `lead:${ip}`;
+}
+
+/** Escape ILIKE / PostgREST wildcards so the lookup is an exact, case-insensitive match. */
+export function escapeIlikeExact(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/[%_*]/g, '\\$&');
+}
+
+async function loadLeadRateStore() {
+  if (leadRate.store) return leadRate.store;
+  try {
+    const { getStore } = await import('@netlify/blobs');
+    leadRate.store = getStore('concierge_lead_ip');
+    return leadRate.store;
+  } catch (e) {
+    console.warn('[concierge] lead rate store unavailable:', e.message);
+    return null;
+  }
+}
+
+async function recentLeadCaptureCountByIp(ip, seconds = LEAD_IP_WINDOW_SECONDS) {
+  if (!ip) return 0;
+  const store = await loadLeadRateStore();
+  if (!store) throw new Error('lead rate store unavailable');
+  const rec = await store.get(leadRateKey(ip), { type: 'json' });
+  if (!rec?.at) return 0;
+  const ts = Date.parse(rec.at);
+  if (!Number.isFinite(ts)) return 0;
+  return (Date.now() - ts) < seconds * 1000 ? 1 : 0;
+}
+
+async function recordLeadCaptureIp(ip) {
+  if (!ip) return;
+  const store = await loadLeadRateStore();
+  if (!store) return;
+  const payload = { at: new Date().toISOString() };
+  if (typeof store.setJSON === 'function') await store.setJSON(leadRateKey(ip), payload);
+  else await store.set(leadRateKey(ip), JSON.stringify(payload));
+}
+
 /**
  * Insert a contacts row for an email found in the conversation.
- * Dedupes by email (and session/agent when a session id is present) so the
- * same address is not re-submitted. Never writes agent_memory.
+ * Dedupes by email (case-insensitive at query time) so the same address is
+ * not re-submitted. At most one new capture per connection IP per hour.
+ * Never writes agent_memory.
  */
-async function captureLeadFromMessages(messages, { sessionId = null, slug = null, name = null, company = null } = {}) {
+async function captureLeadFromMessages(messages, { sessionId = null, slug = null, name = null, company = null, req = null } = {}) {
   const email = extractVisitorEmail(messages);
   if (!email) return { captured: false, reason: 'no_email' };
 
   const { url, key } = getSupabaseCreds();
   if (!url || !key) return { captured: false, reason: 'store_unavailable' };
 
+  const ip = clientIp(req);
+  if (ip && await recentLeadCaptureCountByIp(ip) >= LEAD_IP_MAX) {
+    return { captured: false, reason: 'rate_limited' };
+  }
+
   const headers = {
     'apikey': key, 'Authorization': `Bearer ${key}`,
     'Content-Type': 'application/json',
   };
 
+  // Case-insensitive exact match at query time (no migration). Escape ILIKE wildcards.
   const params = new URLSearchParams();
-  params.set('email', `eq.${email}`);
+  params.set('email', `ilike.${escapeIlikeExact(email)}`);
   params.set('select', 'id,email,source');
   params.set('limit', '20');
   const existingRes = await fetch(`${url}/rest/v1/contacts?${params}`, { headers });
@@ -366,6 +446,7 @@ async function captureLeadFromMessages(messages, { sessionId = null, slug = null
   if (!insertRes.ok) {
     throw new Error(`contacts insert failed: ${insertRes.status}`);
   }
+  await recordLeadCaptureIp(ip);
   return { captured: true, email };
 }
 
