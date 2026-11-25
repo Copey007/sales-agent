@@ -34,7 +34,7 @@ function heygenCalls() {
   return calls.filter((c) => /api\.liveavatar\.com|api\.heygen\.com/i.test(c.url));
 }
 
-function setup({ row = ACTIVE_ROW, agent = DEMO_AGENT, llm = 'Happy to help with that.' } = {}) {
+function setup({ row = ACTIVE_ROW, agent = DEMO_AGENT, llm = 'Happy to help with that.', llmResponse, llmStatus = 200 } = {}) {
   const llmBodies = [];
   route(`${SB}/rest/v1/avatar_sessions`, (url) => {
     if (url.includes(`id=eq.${row?.id || 'missing'}`)) return { body: row ? [row] : [] };
@@ -43,6 +43,8 @@ function setup({ row = ACTIVE_ROW, agent = DEMO_AGENT, llm = 'Happy to help with
   route(`${SB}/rest/v1/avatar_agents`, () => ({ body: agent ? [agent] : [] }));
   route('/chat/completions', (_u, init) => {
     llmBodies.push(JSON.parse(init.body || '{}'));
+    if (llmStatus !== 200) return { status: llmStatus, body: { error: 'upstream' } };
+    if (llmResponse) return { body: llmResponse };
     return { body: { choices: [{ message: { content: llm } }], model: 'claude-haiku-4-5' } };
   });
   route(`${SB}/rest/v1/agent_memory`, () => ({ body: [{ id: 'm1' }] }));
@@ -212,4 +214,68 @@ test('POST /api/avatar-chat hides another tenant\'s session from a signed-in out
   );
   assert.equal(res.status, 404);
   assert.equal(calls.filter((c) => c.url.includes('/chat/completions')).length, 0);
+});
+
+test('POST /api/avatar-chat returns 200 with non-empty text for a normal demo turn', async () => {
+  setup({ llm: 'A-Gent finds buying signals. What team are you on?' });
+  const res = await post({
+    session_row: LIVE_ID,
+    messages: [{ role: 'user', content: 'Hi, what does A-Gent do?' }],
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(typeof body.reply, 'string');
+  assert.ok(body.reply.trim().length > 0);
+  assert.equal(body.reply, 'A-Gent finds buying signals. What team are you on?');
+});
+
+test('POST /api/avatar-chat returns 502 llm_empty_reply when the LLM content is empty, and the log has no secrets', async () => {
+  const warns = [];
+  const orig = console.warn;
+  console.warn = (...args) => {
+    warns.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  };
+  try {
+    for (const llm of ['', '   ']) {
+      setup({
+        llm,
+        llmResponse: {
+          id: 'cmpl-test',
+          choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: llm } }],
+          model: 'claude-haiku-4-5',
+          usage: { prompt_tokens: 12, completion_tokens: 0, total_tokens: 12 },
+          api_key: 'sk-test-secret-should-not-appear',
+          content: 'SECRET_SHOULD_NOT_LOG',
+        },
+      });
+      const res = await post({
+        session_row: LIVE_ID,
+        messages: [{ role: 'user', content: 'Hi, what does A-Gent do?' }],
+      });
+      assert.equal(res.status, 502, `status for ${JSON.stringify(llm)}`);
+      const body = await res.json();
+      assert.equal(body.error, 'llm_empty_reply');
+      assert.equal(body.reply, undefined);
+    }
+  } finally {
+    console.warn = orig;
+  }
+  const blob = warns.join('\n');
+  assert.match(blob, /empty_reply/);
+  assert.equal(blob.includes('sk-test-secret-should-not-appear'), false);
+  assert.equal(blob.includes('SECRET_SHOULD_NOT_LOG'), false);
+  assert.equal(/Bearer\s/i.test(blob), false);
+  assert.equal(/Authorization/i.test(blob), false);
+  assert.equal(blob.includes('test-llm-key'), false);
+  assert.equal(blob.includes('Hi, what does A-Gent do?'), false);
+});
+
+test('POST /api/avatar-chat still returns 503 llm_unavailable when the LLM request itself fails', async () => {
+  setup({ llmStatus: 500 });
+  const res = await post({
+    session_row: LIVE_ID,
+    messages: [{ role: 'user', content: 'Hi' }],
+  });
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).error, 'llm_unavailable');
 });

@@ -16,6 +16,7 @@ import { initConnectors, invoke } from './_mcp-connectors.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages } from './_chat-input.mjs';
 import { authorizeAvatarAgent, isUuid } from './_avatar-access.mjs';
+import { requireNonEmptyLlmText, isLlmEmptyReplyError } from './_llm.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -108,10 +109,10 @@ const __handler = async (req) => {
       temperature: 0.7,
       maxTokens: 300,
     });
-    const reply = String(response?.content || '').trim();
-    if (!reply) return json({ error: 'llm_unavailable' }, 503);
+    const reply = requireNonEmptyLlmText(response, 'avatar-chat');
     return json({ reply, timestamp: new Date().toISOString() });
   } catch (err) {
+    if (isLlmEmptyReplyError(err)) return json({ error: 'llm_empty_reply' }, 502);
     console.error('[avatar-chat] llm failed:', err.message);
     return json({ error: 'llm_unavailable' }, 503);
   }
