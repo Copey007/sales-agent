@@ -29,7 +29,7 @@ There is no `storage` permission (transcripts are not stored). There is no Gmail
 
 ### Microphone permission
 
-Chrome side panels often cannot show a `getUserMedia` permission prompt. On Start the panel queries the microphone permission for the extension origin and, if it is not already granted, opens `mic-permission.html` in a tab. A user gesture on that page grants the permission for the whole extension origin, including the side panel. That page does not mint a session or call LiveAvatar. See `mic-permission.js`.
+Chrome side panels often cannot show a `getUserMedia` permission prompt. On Start the panel queries the microphone permission for the extension origin and, if it is not already granted, opens `mic-permission.html` in a tab (script is in `mic-permission-page.js`, not inline). A user gesture on that page grants the permission for the whole extension origin, including the side panel. That page does not mint a session or call LiveAvatar. See `mic-permission.js`.
 
 ## What this week includes
 
@@ -73,4 +73,4 @@ Until that login exists, the unpacked panel's caps refresh returns 401 and `can_
 
 ## SDK usage
 
-Start loads `vendor/liveavatar-web-sdk.js` first, then mints a token. The session attaches to a `<video>` element, mutes and unmutes through `session.voiceChat`, and sends typed questions with `session.message` (not `repeat`). User and avatar turns are captured from SDK transcription events into the in-memory transcript only.
+Start loads `vendor/liveavatar-web-sdk.js` first, then mints a token. The session starts, then attaches to a `<video>` element on `session.stream_ready` (the stream is not ready before that). Typed questions go to `/api/concierge` (the A-Gent brain: `avatar_agents` prompt and knowledge, default model `claude-haiku-4-5`), and the avatar speaks that reply with `session.repeat()`. `session.message()` is not used, because that would be LiveAvatar’s own AI. `voiceChat` is off, matching `agent.html`. User and avatar turns are captured from SDK transcription events into the in-memory transcript only. Each Ask costs one concierge LLM completion (max 300 output tokens) on top of the LiveAvatar session minutes already being used; there is no LiveAvatar `context_id` charge because we do not set one.

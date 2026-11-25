@@ -6,8 +6,8 @@
  *
  * Session shape (from @heygen/liveavatar-web-sdk@0.0.18):
  *   session.attach(HTMLMediaElement)
- *   session.message(text)            // FULL-mode conversation (typed Ask)
- *   session.repeat(text)             // speak the text verbatim — do not use for Ask
+ *   session.repeat(text)             // speak a reply verbatim (A-Gent brain, then talk)
+ *   session.message(text)            // LiveAvatar's own AI — do not use for Ask
  *   session.voiceChat.mute() / unmute() / isMuted
  *   events: user.transcription, avatar.transcription, avatar.speak_started/ended
  */
@@ -63,6 +63,36 @@ export function isVideoElement(el) {
   return name === 'VIDEO' || (typeof HTMLVideoElement !== 'undefined' && el instanceof HTMLVideoElement);
 }
 
+/**
+ * Attach after session.start(), on session.stream_ready, the way agent.html
+ * does. Calling attach() earlier throws "Stream is not yet ready".
+ */
+export function startAndAttach(session, host, { createElement, start = (s) => s.start() } = {}) {
+  if (!session || typeof start !== 'function') throw new Error('start_unavailable');
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+    const onReady = () => {
+      try {
+        done(resolve, attachToVideo(session, host, { createElement }));
+      } catch (err) {
+        done(reject, err);
+      }
+    };
+    if (typeof session.on === 'function') {
+      session.on(SessionEvent.SESSION_STREAM_READY, onReady);
+    } else {
+      done(reject, new Error('stream_ready_unavailable'));
+      return;
+    }
+    Promise.resolve(start(session)).catch((err) => done(reject, err));
+  });
+}
+
 /** Attach the remote stream to a <video> element inside host. */
 export function attachToVideo(session, host, { createElement } = {}) {
   if (!session || typeof session.attach !== 'function') throw new Error('attach_unavailable');
@@ -95,12 +125,51 @@ export async function setMuted(session, muted) {
   return !!vc.isMuted;
 }
 
-/** Send a typed question through the FULL-mode conversation call, not repeat(). */
-export function askSession(session, text) {
+/** Speak an A-Gent reply verbatim. Do not use session.message() — that is LiveAvatar's own AI. */
+export function speakReply(session, text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
-  if (typeof session?.message !== 'function') throw new Error('message_unavailable');
-  return session.message(trimmed);
+  if (typeof session?.repeat !== 'function') throw new Error('repeat_unavailable');
+  return session.repeat(trimmed);
+}
+
+/**
+ * Ask A-Gent's concierge (avatar_agents system_prompt + knowledge, default
+ * claude-haiku-4-5) then have the avatar speak the reply with repeat().
+ */
+export async function askAGent({ text, history = [], slug, askConcierge, session } = {}) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return null;
+  if (typeof askConcierge !== 'function') throw new Error('concierge_required');
+  const messages = [...history, { role: 'user', content: trimmed }];
+  const reply = String(await askConcierge({
+    action: 'chat',
+    slug,
+    messages,
+    speak: false,
+  }) || '').trim();
+  if (session && reply) speakReply(session, reply);
+  return reply;
+}
+
+/**
+ * Single-flight session teardown: stop() throws are swallowed, and AVATAR_END
+ * is sent at most once for a given ender until reset().
+ */
+export function createSessionEnder() {
+  let inflight = null;
+  return {
+    reset() { inflight = null; },
+    async end({ session, row, stop, sendEnd } = {}) {
+      if (inflight) return inflight;
+      inflight = (async () => {
+        const stopFn = stop || ((s) => s?.stop?.());
+        try { await Promise.resolve(stopFn(session)); } catch { /* SDK stop throw */ }
+        if (row && typeof sendEnd === 'function') await sendEnd(row);
+      })();
+      return inflight;
+    },
+  };
 }
 
 function eventText(ev) {

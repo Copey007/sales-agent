@@ -9,7 +9,7 @@
 import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
 import { stateCopy, formatDuration, tbd } from './copy.js';
-import { loadSdkThenMint, createLiveSession, attachToVideo, setMuted, askSession, bindTranscriptEvents } from './live-session.js';
+import { loadSdkThenMint, createLiveSession, startAndAttach, setMuted, askAGent, bindTranscriptEvents, createSessionEnder } from './live-session.js';
 import { ensureMicAccess } from './mic-permission.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,6 +36,8 @@ const state = {
   transcriptOpen: false,
   canBuyCredits: PREVIEW_ADMIN_CREDITS,
   signedIn: false,
+  history: [],
+  sessionEnder: createSessionEnder(),
   askText: '',
 };
 
@@ -158,13 +160,17 @@ function remainingSeconds() {
 
 async function endRemote() {
   const row = state.sessionRow;
-  try { await state.liveSession?.stop?.(); } catch { /* already stopping */ }
-  state.liveSession = null;
-  if (row) {
-    try { await send('AVATAR_END', { session_row: row }); } catch { /* reaper retries */ }
-  }
+  const session = state.liveSession;
   state.sessionRow = null;
+  state.liveSession = null;
   state.sessionToken = null;
+  await state.sessionEnder.end({
+    session,
+    row,
+    sendEnd: async (sessionRow) => {
+      await send('AVATAR_END', { session_row: sessionRow });
+    },
+  });
 }
 
 async function startSession() {
@@ -175,6 +181,8 @@ async function startSession() {
   }
   state.name = 'connecting';
   state.buyCreditsOpen = false;
+  state.history = [];
+  state.sessionEnder.reset();
   render();
 
   const mic = await ensureMicAccess({
@@ -225,8 +233,9 @@ async function startSession() {
     state.durationSeconds = 0;
     state.announced30 = false;
     state.muted = false;
+    // voiceChat is off, matching agent.html: A-Gent's concierge answers, not LiveAvatar's AI.
     const session = createLiveSession(started.sdk, res.data.session_token, {
-      voiceChat: true,
+      voiceChat: false,
       apiUrl: LIVEAVATAR_API_URL,
     });
     state.liveSession = session;
@@ -240,12 +249,11 @@ async function startSession() {
           state.name = 'live';
           render();
         } else if (kind === 'disconnected') {
-          onTimeout();
+          if (['live', 'speaking', 'thinking'].includes(state.name)) onTimeout();
         }
       },
     });
-    attachToVideo(session, $('stage-slot'));
-    await session.start?.();
+    await startAndAttach(session, $('stage-slot'));
     state.name = 'live';
     startKeepalive();
     render();
@@ -306,8 +314,24 @@ async function onAsk() {
   render();
   pushCaption('You', text);
   try {
-    askSession(state.liveSession, text);
-    state.name = 'thinking';
+    const reply = await askAGent({
+      text,
+      history: state.history,
+      slug: DEFAULT_SLUG,
+      session: state.liveSession,
+      askConcierge: async (body) => {
+        const res = await send('AVATAR_CONCIERGE', body);
+        if (!res.ok) throw new Error(res.data?.error || 'concierge_failed');
+        return res.data?.reply;
+      },
+    });
+    if (reply) {
+      state.history.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
+      pushCaption('A-Gent', reply);
+      state.name = 'speaking';
+    } else {
+      state.name = 'live';
+    }
     render();
   } catch {
     state.name = 'live';
@@ -584,9 +608,8 @@ function updateTimer() {
 }
 
 function onPageHide() {
-  if (state.sessionRow) {
-    send('AVATAR_END', { session_row: state.sessionRow });
-    try { state.liveSession?.stop?.(); } catch { /* closing */ }
+  if (state.sessionRow || state.liveSession) {
+    endRemote();
   }
 }
 

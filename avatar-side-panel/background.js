@@ -82,6 +82,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: { session_row: msg.session_row, event: 'end' },
           keepalive: true,
         });
+      case 'AVATAR_CONCIERGE':
+        return api('/api/concierge', {
+          method: 'POST',
+          body: {
+            action: 'chat',
+            slug: msg.slug || DEFAULT_SLUG,
+            messages: msg.messages || [],
+            speak: false,
+          },
+        });
       case 'OPEN_MIC_PERMISSION': {
         const url = chrome.runtime.getURL('mic-permission.html');
         await chrome.tabs.create({ url, active: true });

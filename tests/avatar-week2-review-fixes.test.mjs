@@ -18,11 +18,15 @@ import {
   loadSdkThenMint,
   resetSdkLoader,
   attachToVideo,
+  startAndAttach,
   setMuted,
-  askSession,
+  speakReply,
+  askAGent,
   bindTranscriptEvents,
+  createSessionEnder,
   isVideoElement,
   AgentEvents,
+  SessionEvent,
   SDK_MODULE_PATH,
   SDK_VERSION,
 } from '../avatar-side-panel/live-session.js';
@@ -103,6 +107,10 @@ test('SDK is vendored at 0.0.18 and the extension has no remote script imports',
   }
   walk(join(ROOT, 'avatar-side-panel'));
   assert.deepEqual(hits, []);
+  const micHtml = readFileSync(join(ROOT, 'avatar-side-panel/mic-permission.html'), 'utf8');
+  assert.doesNotMatch(micHtml, /<script(?![^>]*src=)[^>]*>\s*\S/i);
+  assert.match(micHtml, /src="mic-permission-page.js"/);
+  assert.equal(existsSync(join(ROOT, 'avatar-side-panel/mic-permission-page.js')), true);
 });
 
 test('a failed SDK load never calls mint', async () => {
@@ -132,6 +140,7 @@ test('stop-alert migration file exists and isUndefinedColumnError detects 42703'
   assert.match(sql, /stop_alerted_at/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS/i);
   assert.match(sql, /Mark's go/);
+  assert.match(sql, /SET lock_timeout/);
   assert.equal(isUndefinedColumnError(400, '{"code":"42703","message":"column avatar_sessions.stop_fail_count does not exist"}'), true);
   assert.equal(isUndefinedColumnError(400, 'schema cache'), true);
   assert.equal(isUndefinedColumnError(500, '42703'), false);
@@ -225,8 +234,12 @@ function fakeSession() {
       if (!isVideoElement(el) && String(el?.tagName || '').toUpperCase() !== 'VIDEO') {
         throw new Error('attach expects HTMLMediaElement');
       }
+      if (!this.started) throw new Error('Stream is not yet ready');
       calls.push(['attach', el.tagName]);
     },
+    started: false,
+    async start() { this.started = true; calls.push('start'); this.emit(SessionEvent.SESSION_STREAM_READY); },
+    async stop() { calls.push('stop'); },
     message(text) { calls.push(['message', text]); return 'evt-1'; },
     repeat(text) { calls.push(['repeat', text]); return 'evt-2'; },
     on(ev, fn) { handlers[ev] = fn; },
@@ -234,25 +247,68 @@ function fakeSession() {
   };
 }
 
-test('attach requires a video element, mute uses voiceChat, and Ask uses message not repeat', async () => {
+test('attach before start throws; startAndAttach waits for stream_ready, then attaches a video', async () => {
   const session = fakeSession();
-  const created = [];
   const host = {
     innerHTML: 'poster',
     querySelector: () => null,
-    appendChild(el) { created.push(el); this.child = el; },
+    appendChild(el) { this.child = el; },
   };
-  const video = attachToVideo(session, host, { createElement: (tag) => ({ tagName: tag.toUpperCase(), setAttribute() {}, autoplay: false, playsInline: false }) });
+  const make = (tag) => ({ tagName: tag.toUpperCase(), setAttribute() {}, autoplay: false, playsInline: false });
+  assert.throws(() => attachToVideo(session, host, { createElement: make }), /Stream is not yet ready/);
+  assert.equal(session.calls.some((c) => Array.isArray(c) && c[0] === 'attach'), false);
+  const videoP = startAndAttach(session, host, { createElement: make });
+  const video = await videoP;
   assert.equal(video.tagName, 'VIDEO');
-  assert.deepEqual(session.calls[0], ['attach', 'VIDEO']);
+  assert.ok(session.calls.includes('start'));
+  const startAt = session.calls.indexOf('start');
+  const attachAt = session.calls.findIndex((c) => Array.isArray(c) && c[0] === 'attach');
+  assert.ok(startAt >= 0 && attachAt > startAt, JSON.stringify(session.calls));
+});
+
+test('mute uses voiceChat, and Ask uses concierge then repeat, not message', async () => {
+  const session = fakeSession();
   assert.equal(await setMuted(session, true), true);
   assert.ok(session.calls.includes('mute'));
   assert.equal(session.voiceChat.isMuted, true);
   assert.equal(await setMuted(session, false), false);
   assert.ok(session.calls.includes('unmute'));
-  askSession(session, 'What is the timeline?');
-  assert.ok(session.calls.some((c) => Array.isArray(c) && c[0] === 'message' && c[1] === 'What is the timeline?'));
-  assert.ok(!session.calls.some((c) => Array.isArray(c) && c[0] === 'repeat'));
+  let conciergeBody = null;
+  const reply = await askAGent({
+    text: 'What is the timeline?',
+    history: [],
+    slug: 'a-gent',
+    session,
+    askConcierge: async (body) => {
+      conciergeBody = body;
+      return 'We can start next week.';
+    },
+  });
+  assert.equal(reply, 'We can start next week.');
+  assert.equal(conciergeBody.action, 'chat');
+  assert.equal(conciergeBody.speak, false);
+  assert.equal(conciergeBody.slug, 'a-gent');
+  assert.deepEqual(conciergeBody.messages, [{ role: 'user', content: 'What is the timeline?' }]);
+  assert.ok(session.calls.some((c) => Array.isArray(c) && c[0] === 'repeat' && c[1] === 'We can start next week.'));
+  assert.ok(!session.calls.some((c) => Array.isArray(c) && c[0] === 'message'));
+  speakReply(session, 'Thanks.');
+  assert.ok(session.calls.some((c) => Array.isArray(c) && c[0] === 'repeat' && c[1] === 'Thanks.'));
+});
+
+test('session ender sends AVATAR_END once and swallows a throwing stop()', async () => {
+  const ender = createSessionEnder();
+  let stops = 0;
+  let ends = 0;
+  const stop = async () => { stops += 1; throw new Error('already stopped'); };
+  const sendEnd = async () => { ends += 1; };
+  await Promise.all([
+    ender.end({ session: {}, row: { id: 'r1' }, stop, sendEnd }),
+    ender.end({ session: {}, row: { id: 'r1' }, stop, sendEnd }),
+  ]);
+  assert.equal(stops, 1);
+  assert.equal(ends, 1);
+  await ender.end({ session: {}, row: { id: 'r1' }, stop, sendEnd });
+  assert.equal(ends, 1);
 });
 
 test('SDK transcription events are captured into the in-memory transcript', () => {
@@ -431,7 +487,10 @@ test('docs cover External Client App, consent, no-BAA, and the pending retention
   assert.match(proposal, /LiveAvatar \/ HeyGen/);
   assert.match(proposal, /no BAA/i);
   assert.match(proposal, /health information/i);
-  assert.match(proposal, /length-capped/);
+  assert.match(proposal, /length-capped|length cap/i);
+  assert.match(proposal, /full transcript/i);
+  assert.match(proposal, /summary is optional/i);
+  assert.match(proposal, /ContentNote/);
   assert.match(proposal, /delete path/i);
   assert.match(proposal, /Retention is pending Mark/i);
   assert.match(proposal, /External Client App/);

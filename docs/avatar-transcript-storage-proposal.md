@@ -42,15 +42,15 @@ An audit record is stored when a save happens (and only then): user id, time (`c
 
 Disclose LiveAvatar / HeyGen (and LiveKit as the media path). There is **no BAA** with HeyGen or LiveAvatar, so health information must stay out.
 
-> We can save a summary of this conversation to {Contact name} in {A-Gent CRM / HubSpot / Salesforce} so you and your workspace can reread it there. A-Gent does not keep a copy in this side panel. Voice and text go through LiveAvatar / HeyGen (and LiveKit) during the live session; their retention and data-processing terms apply, and A-Gent does not have a Business Associate Agreement (BAA) with them. Do not discuss health information. We only save a length-capped summary by default (full transcript is opt-in). Third-party emails and phone numbers that came from the email page are stripped. The note follows that CRM’s access rules. Retention is pending Mark’s decision.
+> We can save this conversation to {Contact name} in {A-Gent CRM / HubSpot / Salesforce} so you and your workspace can reread it there. A-Gent does not keep a copy in this side panel. Voice and text go through LiveAvatar / HeyGen (and LiveKit) during the live session; their retention and data-processing terms apply, and A-Gent does not have a Business Associate Agreement (BAA) with them. Do not discuss health information. By default we save the full transcript, with a length cap. A shorter summary is optional. Third-party emails and phone numbers that came from the email page are stripped. The note follows that CRM’s access rules. Retention is pending Mark’s decision.
 
 Short receipt after a successful save (week 4+): `Transcript saved to {Name} in {CRM} · just now`.
 
 ## What is saved (minimisation)
 
-- Default: a length-capped **summary** and key points, not the full transcript. Full text is opt-in.
+- Default: the **full transcript**, with a length cap. A shorter summary is optional (opt-in), not the default.
 - Confirm the contact match before writing.
-- Cap the stored length (and split or attach only if the person opted into the full transcript and it exceeds the CRM field limit).
+- Cap the stored length. If the full transcript exceeds the CRM field limit, keep the Salesforce **completed Task** and put the overflow in a **ContentNote** (or split a HubSpot note / A-Gent CRM note). The same overflow path applies to a chosen summary if it is too long.
 - Strip third-party emails and phone numbers that came from Gmail content.
 - Never log transcript bodies in Netlify function logs.
 - Never pass the transcript (or summary) to LiveAvatar `context_id`.

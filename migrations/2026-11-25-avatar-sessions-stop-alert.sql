@@ -7,6 +7,8 @@
 -- If the columns are missing, the reaper falls back to the previous select
 -- so abandoned sessions still get stopped; only the alert is disabled.
 
+SET lock_timeout = '5s';
+
 ALTER TABLE public.avatar_sessions
   ADD COLUMN IF NOT EXISTS stop_fail_count INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS stop_alerted_at TIMESTAMPTZ;
