@@ -14,12 +14,17 @@
  *   POST /api/concierge  { action: "start", visitorInfo }
  *   POST /api/concierge  { action: "qualify", sessionId }
  *   GET  /api/concierge  — health check
+ *
+ * Anonymous callers may only use public slugs (default: a-gent, demo).
+ * Chat input is capped and limited to user/assistant roles. Conversation
+ * text is not written to agent_memory.
  */
 
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
-import { remember, recall } from './_supabase-memory.mjs';
+import { recall } from './_supabase-memory.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
+import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -133,7 +138,7 @@ async function handleStart(body, corsHeaders) {
   const greetingResult = await invoke('llm', 'chat', {
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `A new visitor has arrived. ${visitorInfo.referrer ? 'They came from ' + visitorInfo.referrer + '.' : ''} ${visitorInfo.page ? 'They are on the ' + visitorInfo.page + ' page.' : ''} Greet them naturally and ask what brings them to A-Gent today.` }
+      { role: 'user', content: `A new visitor has arrived. ${visitorInfo.referrer ? 'They came from ' + String(visitorInfo.referrer).slice(0, 200) + '.' : ''} ${visitorInfo.page ? 'They are on the ' + String(visitorInfo.page).slice(0, 200) + ' page.' : ''} Greet them naturally and ask what brings them to A-Gent today.` }
     ],
     temperature: 0.7,
     maxTokens: 200
@@ -141,18 +146,7 @@ async function handleStart(body, corsHeaders) {
 
   const greeting = greetingResult.content;
 
-  // Store session start as a memory
-  try {
-    await remember({
-      agentId: 'concierge',
-      memoryType: 'note',
-      content: `New concierge session ${sessionId} started. Visitor: ${JSON.stringify(visitorInfo)}`,
-      metadata: { sessionId, visitorInfo },
-      embed: false
-    });
-  } catch (e) {
-    console.warn('[concierge] Memory store failed:', e.message);
-  }
+  // Do not persist visitorInfo or a session transcript to agent_memory.
 
   return new Response(JSON.stringify({
     sessionId,
@@ -165,16 +159,25 @@ async function handleStart(body, corsHeaders) {
 }
 
 async function handleChat(body, corsHeaders) {
-  const { messages = [], sessionId, speak = false, visitorEmail, slug = null } = body;
+  const { sessionId, speak = false, visitorEmail, slug = null } = body;
 
-  if (!messages.length) {
-    return new Response(JSON.stringify({ error: 'messages array is required' }), {
-      status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+  // Anonymous website visitors may only talk to public agents.
+  if (slug && !isPublicConciergeSlug(slug)) {
+    return new Response(JSON.stringify({ error: 'agent_not_found' }), {
+      status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
 
-  // Per-tenant persona + knowledge (falls back to the built-in A-Gent prompt)
-  const { systemPrompt, accountId } = await resolveAgent(slug);
+  const cleaned = sanitizeChatMessages(body.messages);
+  if (cleaned.error) {
+    return new Response(JSON.stringify({ error: cleaned.error }), {
+      status: cleaned.status, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  const messages = cleaned.messages;
+
+  // Public slug or built-in A-Gent prompt only — never a private tenant prompt.
+  const { systemPrompt, accountId } = await resolveAgent(slug && isPublicConciergeSlug(slug) ? slug : null);
 
   // Recall any previous context about this visitor
   let contextMemories = [];
@@ -241,19 +244,8 @@ async function handleChat(body, corsHeaders) {
     }
   }
 
-  // Store conversation as memory
-  try {
-    await remember({
-      agentId: 'concierge',
-      accountId,
-      memoryType: 'note',
-      content: `Concierge chat ${sessionId || 'unknown'}: Visitor said "${messages[messages.length - 1]?.content || ''}" → Agent replied "${reply.slice(0, 200)}"`,
-      metadata: { sessionId, visitorEmail, slug },
-      embed: false
-    });
-  } catch (e) {
-    // Non-fatal
-  }
+  // Do not write conversation text to agent_memory. Transcripts are not
+  // stored server-side for anonymous concierge chats.
 
   // Generate TTS if requested
   let audio = null;
@@ -277,7 +269,15 @@ async function handleChat(body, corsHeaders) {
 }
 
 async function handleQualify(body, corsHeaders) {
-  const { messages = [], sessionId } = body;
+  const { sessionId } = body;
+
+  const cleaned = sanitizeChatMessages(body.messages);
+  if (cleaned.error) {
+    return new Response(JSON.stringify({ error: cleaned.error }), {
+      status: cleaned.status, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  const messages = cleaned.messages;
 
   // Use LLM to extract qualification data from conversation
   const qualification = await invoke('llm', 'chat', {
@@ -327,13 +327,7 @@ async function handleQualify(body, corsHeaders) {
         })
       });
 
-      await remember({
-        agentId: 'concierge',
-        memoryType: 'contact',
-        content: `Qualified lead: ${result.name || 'Unknown'} at ${result.company || 'Unknown'} (${result.email}). Role: ${result.role || 'unknown'}. Pain: ${result.pain_point || 'unknown'}. Fit: ${result.fit}.`,
-        metadata: result,
-        embed: false
-      });
+      // Lead capture stays on the contacts table only — no agent_memory copy of PII.
     } catch (e) {
       console.warn('[concierge] Lead capture failed:', e.message);
     }

@@ -1,7 +1,12 @@
 /**
- * Shared input guards for avatar-chat and (later) the public concierge.
+ * Shared input guards for the public concierge (and avatar-chat when present).
  * Caps history and allows only user/assistant roles.
+ *
+ * Public slugs default to a-gent,demo via PUBLIC_CONCIERGE_SLUGS. Tenant
+ * /a/<slug> widgets are not served to anonymous callers unless that slug is
+ * added to the allowlist (or a future is_public flag is added).
  */
+
 
 export const MAX_CHAT_MESSAGES = 12;
 export const MAX_CHAT_CHARS = 2000;
