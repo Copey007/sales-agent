@@ -21,7 +21,6 @@
  */
 
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
-import { recall } from './_supabase-memory.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
@@ -159,7 +158,9 @@ async function handleStart(body, corsHeaders) {
 }
 
 async function handleChat(body, corsHeaders) {
-  const { sessionId, speak = false, visitorEmail, slug = null } = body;
+  const { sessionId, speak = false, slug = null } = body;
+  // visitorEmail is ignored for anonymous callers: it used to trigger a
+  // memory-store text search on "concierge" that leaked other visitors' notes.
 
   // Anonymous website visitors may only talk to public agents.
   if (slug && !isPublicConciergeSlug(slug)) {
@@ -179,21 +180,7 @@ async function handleChat(body, corsHeaders) {
   // Public slug or built-in A-Gent prompt only — never a private tenant prompt.
   const { systemPrompt, accountId } = await resolveAgent(slug && isPublicConciergeSlug(slug) ? slug : null);
 
-  // Recall any previous context about this visitor
-  let contextMemories = [];
-  if (visitorEmail) {
-    try {
-      contextMemories = await recall({
-        query: `concierge conversation with ${visitorEmail}`,
-        matchCount: 3,
-        agentId: 'concierge'
-      });
-    } catch (e) {
-      // Non-fatal
-    }
-  }
-
-  // Build the conversation
+  // Build the conversation. Do not read agent_memory for anonymous callers.
   const llmMessages = [
     { role: 'system', content: systemPrompt },
     ...messages.map(m => ({
@@ -201,15 +188,6 @@ async function handleChat(body, corsHeaders) {
       content: m.content
     }))
   ];
-
-  // Add context from memory if available
-  if (contextMemories.length > 0) {
-    const contextText = contextMemories.map(m => m.content).join('\n');
-    llmMessages.splice(1, 0, {
-      role: 'system',
-      content: `Previous context from earlier conversations: ${contextText}`
-    });
-  }
 
   // Generate response
   const response = await invoke('llm', 'chat', {
@@ -220,29 +198,8 @@ async function handleChat(body, corsHeaders) {
 
   const reply = response.content;
 
-  // Check if the reply contains an email capture (simple regex)
-  const emailMatch = reply.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  if (emailMatch && visitorEmail) {
-    // Store the qualified lead
-    try {
-      const { url, key } = getSupabaseCreds();
-      await fetch(`${url}/rest/v1/contacts`, {
-        method: 'POST',
-        headers: {
-          'apikey': key, 'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json', 'Prefer': 'return=representation'
-        },
-        body: JSON.stringify({
-          email: visitorEmail,
-          source: 'signup:concierge',
-          company_name: extractCompany(messages),
-          name: extractName(messages)
-        })
-      });
-    } catch (e) {
-      console.warn('[concierge] CRM capture failed:', e.message);
-    }
-  }
+  // Anonymous chat ignores client-supplied visitorEmail. Lead capture stays
+  // on the qualify action, which writes only to the contacts table.
 
   // Do not write conversation text to agent_memory. Transcripts are not
   // stored server-side for anonymous concierge chats.

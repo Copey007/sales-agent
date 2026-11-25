@@ -16,7 +16,7 @@ Previously every chat turn called `remember()` with the visitor's last message a
 
 Those writes are removed. Conversation text is not stored server-side for anonymous concierge chats. Qualified leads are still written to the `contacts` table only.
 
-`recall()` still runs when the client sends `visitorEmail`, and may surface older pre-hardening notes. New notes are no longer written.
+`recall()` has been removed from the anonymous chat path. A client-supplied `visitorEmail` is ignored (it is not used to search memory or to insert a contacts row from chat). Qualified leads still go to the `contacts` table via the qualify action. The existing 66 production `agent_memory` concierge rows are left untouched until Mark approves any purge or expiry.
 
 ## Out of scope
 
