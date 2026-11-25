@@ -1,15 +1,19 @@
 /**
  * Scheduled stale-session reaper.
  *
- * Closes 'active' avatar sessions that exceeded the hard cap (30 min) or went
- * silent (no heartbeat for 3 min) — an abandoned browser tab otherwise holds a
- * concurrency seat and can keep accruing cost. Stops each session on the
- * LiveAvatar API first (POST /v1/sessions/stop), then closes the local row.
+ * Closes 'active' avatar sessions that exceeded the per-session max (default
+ * 3 min, AVATAR_MAX_SESSION_SECONDS) or went silent (no heartbeat for
+ * AVATAR_HEARTBEAT_TIMEOUT_SECONDS, default 60s). An abandoned browser tab
+ * otherwise holds a concurrency seat and can keep accruing cost. Stops each
+ * session on the LiveAvatar API first (POST /v1/sessions/stop), then closes
+ * the local row.
  *
- * Scheduled every 5 minutes (see netlify.toml).
+ * Scheduled every minute (see netlify.toml) so the server-side sweep can
+ * enforce the short per-session max.
  */
 
 import { listStaleSessions, endSession } from './_avatar-store.mjs';
+import { getAvatarCaps } from './_avatar-caps.mjs';
 
 const API_URL = 'https://api.liveavatar.com';
 
@@ -32,7 +36,11 @@ export async function stopLiveAvatarSession(apiKey, sessionId) {
 }
 
 export async function reap() {
-  const stale = await listStaleSessions({ maxSessionMinutes: 30, heartbeatTimeoutMinutes: 3 });
+  const caps = getAvatarCaps();
+  const stale = await listStaleSessions({
+    maxSessionSeconds: caps.maxSessionSeconds,
+    heartbeatTimeoutSeconds: caps.heartbeatTimeoutSeconds,
+  });
   const apiKey = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
   let reaped = 0;
   let stopped = 0;
@@ -74,4 +82,4 @@ export default async () => {
   }
 };
 
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '* * * * *' };

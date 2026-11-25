@@ -13,7 +13,8 @@
  *
  * Guardrails (this is what makes it safe to sell):
  *   - per-agent max_concurrent cap            (no oversubscription)
- *   - per-agent monthly_minute_cap            (usage billing ceiling)
+ *   - platform + per-agent monthly minute cap (usage billing ceiling)
+ *   - caps fail closed: a usage-store error returns 503 and does not mint
  *   - per-IP rate limit                       (bots can't burn paid minutes)
  *   - one session row per start               (concurrency + metering source)
  *   - NO "stop all sessions" (that was a self-DoS at scale)
@@ -28,6 +29,8 @@ import {
   recentSessionCountByIp,
   createSession,
 } from './_avatar-store.mjs';
+import { getAvatarCaps } from './_avatar-caps.mjs';
+import { stopLiveAvatarSession } from './avatar-reaper.mjs';
 import { withCors } from './_auth.mjs';
 
 const cors = {
@@ -82,16 +85,15 @@ const __handler = async (req) => {
     if (active >= (agent.max_concurrent ?? 3)) {
       return json({ error: 'at_capacity', message: 'All live slots are busy. Please try again shortly.' }, 503);
     }
-    if (agent.monthly_minute_cap != null) {
-      const usedMin = (await monthlyUsageSeconds(slug)) / 60;
-      if (usedMin >= agent.monthly_minute_cap) {
-        return json({ error: 'quota_exceeded', message: 'This agent has reached its monthly limit.' }, 402);
-      }
+    const caps = getAvatarCaps(agent);
+    const usedMin = (await monthlyUsageSeconds(slug)) / 60;
+    if (usedMin >= caps.monthlyMinuteCap) {
+      return json({ error: 'quota_exceeded', message: 'This agent has reached its monthly limit.' }, 402);
     }
   } catch (err) {
-    // Guardrail checks must not hard-fail the product if the table is briefly
-    // unavailable — log and continue (fail-open on metering, not on auth).
-    console.warn('[avatar-token] guardrail check degraded:', err.message);
+    // Fail closed: never mint when the usage store can't be reached.
+    console.error('[avatar-token] guardrail check failed:', err.message);
+    return json({ error: 'usage_store_unavailable' }, 503);
   }
 
   // ── Mint the LiveAvatar session token ──────────────────────────────────────
@@ -120,19 +122,28 @@ const __handler = async (req) => {
     const sessionToken = data.data.session_token;
     const sessionId = data.data.session_id;
 
-    // Log the session (concurrency seat + metering anchor)
+    // Log the session (concurrency seat + metering anchor). If the row
+    // can't be written, stop the just-minted LiveAvatar session so it
+    // doesn't keep billing untracked.
     const row = await createSession({
       slug,
       tenantId: agent.tenant_id || null,
       liveavatarSessionId: sessionId,
       ip,
     });
+    if (!row?.id) {
+      try { await stopLiveAvatarSession(apiKey, sessionId); } catch (stopErr) {
+        console.error('[avatar-token] minted session untracked; stop failed:', stopErr.message);
+      }
+      return json({ error: 'usage_store_unavailable' }, 503);
+    }
 
     return json({
       session_token: sessionToken,
       session_id: sessionId,
-      session_row: row?.id || null,
+      session_row: row.id,
       mode: agent.mode || 'FULL',
+      max_session_seconds: getAvatarCaps(agent).maxSessionSeconds,
     });
   } catch (err) {
     console.error('[avatar-token]', err.message);

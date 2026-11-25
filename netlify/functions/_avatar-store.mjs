@@ -69,7 +69,7 @@ export async function countActiveSessions(slug) {
   const res = await rest(
     `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=eq.active&select=id&limit=1000`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`countActiveSessions failed: ${res.status} ${await res.text()}`);
   return (await res.json()).length;
 }
 
@@ -80,7 +80,7 @@ export async function monthlyUsageSeconds(slug) {
   const res = await rest(
     `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&started_at=gte.${monthStart}&select=duration_seconds&limit=100000`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`monthlyUsageSeconds failed: ${res.status} ${await res.text()}`);
   const rows = await res.json();
   return rows.reduce((s, r) => s + (r.duration_seconds || 0), 0);
 }
@@ -92,7 +92,7 @@ export async function recentSessionCountByIp(ip, seconds = 60) {
   const res = await rest(
     `avatar_sessions?ip=eq.${encodeURIComponent(ip)}&created_at=gte.${since}&select=id&limit=100`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`recentSessionCountByIp failed: ${res.status} ${await res.text()}`);
   return (await res.json()).length;
 }
 
@@ -115,6 +115,16 @@ export async function createSession({ slug, tenantId = null, liveavatarSessionId
     return null;
   }
   return (await res.json())[0];
+}
+
+export async function getSession(id) {
+  if (!id) return null;
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&select=id,status,started_at,duration_seconds,liveavatar_session_id,last_heartbeat&limit=1`
+  );
+  if (!res.ok) throw new Error(`getSession failed: ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  return rows[0] || null;
 }
 
 export async function endSession({ id, durationSeconds = 0, status = 'ended' }) {
@@ -148,15 +158,23 @@ export async function heartbeat({ id, durationSeconds = null }) {
  * Active sessions that exceeded the hard cap or went silent (no heartbeat).
  * Includes liveavatar_session_id so the reaper can stop the remote session.
  */
-export async function listStaleSessions({ maxSessionMinutes = 30, heartbeatTimeoutMinutes = 3 } = {}) {
-  const hardCutoff = new Date(Date.now() - maxSessionMinutes * 60000).toISOString();
-  const idleCutoff = new Date(Date.now() - heartbeatTimeoutMinutes * 60000).toISOString();
+export async function listStaleSessions({
+  maxSessionSeconds = 180,
+  heartbeatTimeoutSeconds = 60,
+  // backwards-compatible aliases
+  maxSessionMinutes,
+  heartbeatTimeoutMinutes,
+} = {}) {
+  const hardSecs = maxSessionMinutes != null ? maxSessionMinutes * 60 : maxSessionSeconds;
+  const idleSecs = heartbeatTimeoutMinutes != null ? heartbeatTimeoutMinutes * 60 : heartbeatTimeoutSeconds;
+  const hardCutoff = new Date(Date.now() - hardSecs * 1000).toISOString();
+  const idleCutoff = new Date(Date.now() - idleSecs * 1000).toISOString();
   // active AND (started before hardCutoff OR last_heartbeat before idleCutoff)
   const filter =
     `status=eq.active&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
     `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id`;
   const res = await rest(`avatar_sessions?${filter}&limit=500`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`listStaleSessions failed: ${res.status} ${await res.text()}`);
   return await res.json();
 }
 
