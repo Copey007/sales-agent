@@ -131,6 +131,7 @@ const INTERNAL_NOTIFICATION = new Set([
   'netlify/functions/inbound-webhook.mjs',      // forwards a reply to the operator
   'netlify/functions/worker-daily-report.mjs',  // daily report to the workspace owner
   'netlify/functions/worker-runtime.mjs',       // manager health alert
+  'netlify/functions/_avatar-stop-alert.mjs',   // operator alert when a LiveAvatar stop fails permanently
 ]);
 const DISABLED_BEFORE_SEND = new Set([
   'netlify/functions/_mcp-connectors.mjs',      // throw is before the fetch

@@ -29,12 +29,13 @@ import {
   getAgentBySlug,
   monthlyUsageSeconds,
   recentSessionCountByIp,
+  cooldownRemainingSeconds,
   createSession,
   attachLiveAvatarSession,
   cancelReservation,
   listSeatHolders,
 } from './_avatar-store.mjs';
-import { getAvatarCaps } from './_avatar-caps.mjs';
+import { getAvatarCaps, billingWindow } from './_avatar-caps.mjs';
 import { stopLiveAvatarSession } from './avatar-reaper.mjs';
 import { withCors } from './_auth.mjs';
 import { isPublicAvatarSlug, requireAvatarLogin } from './_avatar-access.mjs';
@@ -123,9 +124,25 @@ const __handler = async (req) => {
     if (await recentSessionCountByIp(ip, IP_RATE_WINDOW_SECONDS) >= IP_RATE_MAX) {
       return json({ error: 'rate_limited', retry_after: IP_RATE_WINDOW_SECONDS }, 429);
     }
+    const coolLeft = await cooldownRemainingSeconds({ ip, slug, cooldownSeconds: caps.cooldownSeconds });
+    if (coolLeft > 0) {
+      return json({
+        error: 'cooldown',
+        retry_after: coolLeft,
+        cooldown_seconds: caps.cooldownSeconds,
+        message: 'Please wait before starting another session.',
+      }, 429);
+    }
     const usedMin = (await monthlyUsageSeconds(slug)) / 60;
+    const window = billingWindow(new Date(), caps.billingResetDay);
     if (usedMin >= caps.monthlyMinuteCap) {
-      return json({ error: 'quota_exceeded', message: 'This agent has reached its monthly limit.' }, 402);
+      return json({
+        error: 'quota_exceeded',
+        message: 'This agent has reached its monthly limit.',
+        monthly_minute_cap: caps.monthlyMinuteCap,
+        used_minutes: usedMin,
+        reset_at: window.resetAt.toISOString(),
+      }, 402);
     }
 
     // Reserve a seat before minting so concurrent requests cannot all
@@ -160,7 +177,13 @@ const __handler = async (req) => {
     max_session_duration: caps.maxSessionSeconds,
   };
   if (mode === 'FULL') {
-    if (!agent.voice_id) return json({ error: 'agent_misconfigured', detail: 'FULL mode requires voice_id' }, 500);
+    if (!agent.voice_id) {
+      if (reserved?.id) {
+        try { await cancelReservation(reserved.id); } catch { /* best effort */ }
+        reserved = null;
+      }
+      return json({ error: 'agent_misconfigured', detail: 'FULL mode requires voice_id' }, 500);
+    }
     tokenBody.avatar_persona = { voice_id: agent.voice_id, language: 'en' };
   } else {
     tokenBody.video_settings = { quality: 'high', encoding: 'H264' };
@@ -199,12 +222,16 @@ const __handler = async (req) => {
       return json({ error: 'usage_store_unavailable' }, 503);
     }
 
+    const window = billingWindow(new Date(), caps.billingResetDay);
     return json({
       session_token: sessionToken,
       session_id: mintedSessionId,
       session_row: row.id,
       mode: agent.mode || 'FULL',
       max_session_seconds: caps.maxSessionSeconds,
+      monthly_minute_cap: caps.monthlyMinuteCap,
+      reset_at: window.resetAt.toISOString(),
+      cooldown_seconds: caps.cooldownSeconds,
     });
   } catch (err) {
     console.error('[avatar-token]', err.message);

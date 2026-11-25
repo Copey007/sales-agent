@@ -7,6 +7,7 @@
  */
 
 import { env, initConnectors } from './_mcp-connectors.mjs';
+import { billingWindowStartIso, getAvatarCaps } from './_avatar-caps.mjs';
 
 let _init = false;
 function ensureInit() { if (!_init) { initConnectors(); _init = true; } }
@@ -83,10 +84,10 @@ export async function listSeatHolders(slug) {
   return await res.json();
 }
 
-/** Total session-seconds this calendar month for the agent (billing/cap basis). */
-export async function monthlyUsageSeconds(slug) {
-  const start = new Date();
-  const monthStart = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}-01T00:00:00Z`;
+/** Total session-seconds in the current billing window (resets on the 26th UTC by default). */
+export async function monthlyUsageSeconds(slug, now = new Date()) {
+  const resetDay = getAvatarCaps().billingResetDay;
+  const monthStart = billingWindowStartIso(now, resetDay);
   const res = await rest(
     `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&started_at=gte.${monthStart}&select=duration_seconds&limit=100000`
   );
@@ -96,6 +97,33 @@ export async function monthlyUsageSeconds(slug) {
 }
 
 /** Sessions started by an IP within the last `seconds` (abuse throttle). */
+/**
+ * Seconds remaining on the per-session cool-down for this IP (or, if no IP is
+ * available, for the agent slug — fail closed). Only ended/reaped rows count;
+ * cancelled reservations do not start the cool-down.
+ */
+export async function cooldownRemainingSeconds({ ip, slug, cooldownSeconds, now = new Date() } = {}) {
+  const window = Number(cooldownSeconds) || 0;
+  if (window <= 0) return 0;
+  const since = new Date(now.getTime() - window * 1000).toISOString();
+  let path;
+  if (ip) {
+    path = `avatar_sessions?ip=eq.${encodeURIComponent(ip)}&status=in.(ended,reaped)&ended_at=gte.${since}&select=ended_at&order=ended_at.desc&limit=1`;
+  } else if (slug) {
+    path = `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=in.(ended,reaped)&ended_at=gte.${since}&select=ended_at&order=ended_at.desc&limit=1`;
+  } else {
+    return 0;
+  }
+  const res = await rest(path);
+  if (!res.ok) throw new Error(`cooldownRemainingSeconds failed: ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  if (!rows?.length || !rows[0].ended_at) return 0;
+  const ended = new Date(rows[0].ended_at).getTime();
+  if (!Number.isFinite(ended)) return 0;
+  const remaining = window - Math.floor((now.getTime() - ended) / 1000);
+  return remaining > 0 ? remaining : 0;
+}
+
 export async function recentSessionCountByIp(ip, seconds = 60) {
   if (!ip) return 0;
   const since = new Date(Date.now() - seconds * 1000).toISOString();
@@ -223,8 +251,27 @@ export async function listStaleSessions({
   // active AND (started before hardCutoff OR last_heartbeat before idleCutoff)
   const filter =
     `status=in.(active,pending)&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
-    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id,status`;
+    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id,status,stop_fail_count,stop_alerted_at`;
   const res = await rest(`avatar_sessions?${filter}&limit=500`);
   if (!res.ok) throw new Error(`listStaleSessions failed: ${res.status} ${await res.text()}`);
   return await res.json();
 }
+
+/** Increment a failed LiveAvatar stop, and optionally mark that operators were alerted. */
+export async function recordStopFailure(id, { failCount, alerted = false } = {}) {
+  if (!id) return null;
+  const patch = { stop_fail_count: Math.max(0, Math.floor(Number(failCount) || 0)) };
+  if (alerted) patch.stop_alerted_at = new Date().toISOString();
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(patch),
+    },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json().catch(() => []);
+  return rows[0] || null;
+}
+

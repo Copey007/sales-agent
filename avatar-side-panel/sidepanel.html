@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A-Gent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="ap" id="panel" role="region" aria-label="A-Gent side panel">
+    <header class="ap-hd">
+      <img class="logo" src="assets/a-gent-logo.svg" width="24" height="24" alt="" aria-hidden="true">
+      <div class="nm">
+        <b>A-Gent</b>
+        <span>AI sales assistant</span>
+      </div>
+      <div class="pill off" id="pill" role="status" aria-live="polite">
+        <i aria-hidden="true"></i>
+        <span id="pill-text">Not started</span>
+      </div>
+    </header>
+
+    <div class="ap-bd" id="body">
+      <div id="stage-wrap">
+        <div class="stage dim" id="stage" role="img" aria-label="A-Gent avatar, not started">
+          <img id="poster" src="assets/katya-poster-4x3.png" alt="">
+          <div class="tag"><em>AI</em> avatar</div>
+          <div id="stage-slot"></div>
+        </div>
+      </div>
+      <div class="cap" id="captions" role="log" aria-live="polite"></div>
+      <div id="context"></div>
+    </div>
+
+    <footer class="ap-ft" id="footer"></footer>
+  </div>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

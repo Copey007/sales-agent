@@ -51,8 +51,13 @@ CREATE TABLE IF NOT EXISTS avatar_sessions (
   ended_at             TIMESTAMPTZ,
   duration_seconds     INTEGER NOT NULL DEFAULT 0,
   last_heartbeat       TIMESTAMPTZ DEFAULT now(),
+  stop_fail_count      INTEGER NOT NULL DEFAULT 0,
+  stop_alerted_at      TIMESTAMPTZ,
   created_at           TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE avatar_sessions ADD COLUMN IF NOT EXISTS stop_fail_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE avatar_sessions ADD COLUMN IF NOT EXISTS stop_alerted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_avatar_sessions_slug    ON avatar_sessions(agent_slug);
 CREATE INDEX IF NOT EXISTS idx_avatar_sessions_status  ON avatar_sessions(status);
