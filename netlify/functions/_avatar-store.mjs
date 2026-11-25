@@ -145,20 +145,29 @@ export async function heartbeat({ id, durationSeconds = null }) {
 }
 
 /**
- * Close sessions that are still 'active' but exceeded the hard cap or went
- * silent (no heartbeat). Prevents abandoned tabs from holding a concurrency
- * seat or silently accruing cost. Returns the number reaped.
+ * Active sessions that exceeded the hard cap or went silent (no heartbeat).
+ * Includes liveavatar_session_id so the reaper can stop the remote session.
  */
-export async function reapStaleSessions({ maxSessionMinutes = 30, heartbeatTimeoutMinutes = 3 } = {}) {
+export async function listStaleSessions({ maxSessionMinutes = 30, heartbeatTimeoutMinutes = 3 } = {}) {
   const hardCutoff = new Date(Date.now() - maxSessionMinutes * 60000).toISOString();
   const idleCutoff = new Date(Date.now() - heartbeatTimeoutMinutes * 60000).toISOString();
   // active AND (started before hardCutoff OR last_heartbeat before idleCutoff)
   const filter =
     `status=eq.active&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
-    `&select=id,started_at,last_heartbeat,duration_seconds`;
+    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id`;
   const res = await rest(`avatar_sessions?${filter}&limit=500`);
-  if (!res.ok) return 0;
-  const stale = await res.json();
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+/**
+ * Close sessions that are still 'active' but exceeded the hard cap or went
+ * silent (no heartbeat). Prevents abandoned tabs from holding a concurrency
+ * seat or silently accruing cost. Returns the number reaped.
+ * Local rows only — the reaper stops LiveAvatar sessions first.
+ */
+export async function reapStaleSessions(opts = {}) {
+  const stale = await listStaleSessions(opts);
   let reaped = 0;
   for (const s of stale) {
     // best-effort duration: prefer recorded duration, else elapsed wall time

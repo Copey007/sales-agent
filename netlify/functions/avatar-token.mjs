@@ -8,6 +8,9 @@
  * POST /api/avatar-token  { slug }
  *   → { session_token, session_id, session_row, mode }
  *
+ * POST-only: GET (and any non-POST method other than an OPTIONS preflight)
+ * returns 405 with Allow: POST and never calls HeyGen / LiveAvatar.
+ *
  * Guardrails (this is what makes it safe to sell):
  *   - per-agent max_concurrent cap            (no oversubscription)
  *   - per-agent monthly_minute_cap            (usage billing ceiling)
@@ -46,6 +49,12 @@ function clientIp(req) {
 
 const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...cors, Allow: 'POST' },
+    });
+  }
 
   const apiKey = process.env.LIVEAVATAR_API_KEY || process.env.HEYGEN_API_KEY;
   if (!apiKey) return json({ error: 'LIVEAVATAR_API_KEY not set' }, 500);
