@@ -34,7 +34,7 @@ export const ALLOWED_SITES = [
     id: 'salesforce',
     kind: 'crm',
     label: 'Salesforce',
-    hosts: ['*.lightning.force.com', '*.my.salesforce.com', '*.lightning.crmforce.mil'],
+    hosts: ['*.lightning.force.com', '*.my.salesforce.com'],
     openUrl: 'https://login.salesforce.com/',
   },
 ];

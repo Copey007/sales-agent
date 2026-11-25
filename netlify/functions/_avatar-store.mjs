@@ -96,24 +96,33 @@ export async function monthlyUsageSeconds(slug, now = new Date()) {
   return rows.reduce((s, r) => s + (r.duration_seconds || 0), 0);
 }
 
-/** Sessions started by an IP within the last `seconds` (abuse throttle). */
 /**
- * Seconds remaining on the per-session cool-down for this IP (or, if no IP is
- * available, for the agent slug — fail closed). Only ended/reaped rows count;
- * cancelled reservations do not start the cool-down.
+ * PostgREST / Postgres "undefined column" (42703). Used so the reaper can
+ * fall back when stop_fail_count / stop_alerted_at have not been migrated yet.
  */
-export async function cooldownRemainingSeconds({ ip, slug, cooldownSeconds, now = new Date() } = {}) {
+export function isUndefinedColumnError(status, text) {
+  if (Number(status) !== 400) return false;
+  return /42703|column .* does not exist|schema cache/i.test(String(text || ''));
+}
+
+/**
+ * Seconds remaining on the per-session cool-down, keyed by tenant (when
+ * known) or by agent slug — never by IP alone. Coworkers behind one NAT
+ * therefore do not block each other unless they share the same tenant or
+ * agent. Only ended/reaped rows count; cancelled reservations do not start
+ * the cool-down.
+ */
+export async function cooldownRemainingSeconds({ ip, slug, tenantId, cooldownSeconds, now = new Date() } = {}) {
   const window = Number(cooldownSeconds) || 0;
   if (window <= 0) return 0;
+  // `ip` is accepted for call-site compatibility but is not the cool-down key.
+  void ip;
+  if (!tenantId && !slug) return 0;
   const since = new Date(now.getTime() - window * 1000).toISOString();
-  let path;
-  if (ip) {
-    path = `avatar_sessions?ip=eq.${encodeURIComponent(ip)}&status=in.(ended,reaped)&ended_at=gte.${since}&select=ended_at&order=ended_at.desc&limit=1`;
-  } else if (slug) {
-    path = `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=in.(ended,reaped)&ended_at=gte.${since}&select=ended_at&order=ended_at.desc&limit=1`;
-  } else {
-    return 0;
-  }
+  const key = tenantId
+    ? `tenant_id=eq.${encodeURIComponent(tenantId)}`
+    : `agent_slug=eq.${encodeURIComponent(slug)}`;
+  const path = `avatar_sessions?${key}&status=in.(ended,reaped)&ended_at=gte.${since}&select=ended_at&order=ended_at.desc&limit=1`;
   const res = await rest(path);
   if (!res.ok) throw new Error(`cooldownRemainingSeconds failed: ${res.status} ${await res.text()}`);
   const rows = await res.json();
@@ -249,18 +258,37 @@ export async function listStaleSessions({
   const hardCutoff = new Date(Date.now() - hardSecs * 1000).toISOString();
   const idleCutoff = new Date(Date.now() - idleSecs * 1000).toISOString();
   // active AND (started before hardCutoff OR last_heartbeat before idleCutoff)
-  const filter =
-    `status=in.(active,pending)&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
-    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id,status,stop_fail_count,stop_alerted_at`;
-  const res = await rest(`avatar_sessions?${filter}&limit=500`);
-  if (!res.ok) throw new Error(`listStaleSessions failed: ${res.status} ${await res.text()}`);
-  return await res.json();
+  const where =
+    `status=in.(active,pending)&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})`;
+  const colsBase = 'id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id,status';
+  const colsFull = `${colsBase},stop_fail_count,stop_alerted_at`;
+  let res = await rest(`avatar_sessions?${where}&select=${colsFull}&limit=500`);
+  let columnsMissing = false;
+  if (!res.ok) {
+    const errText = await res.text();
+    if (isUndefinedColumnError(res.status, errText)) {
+      columnsMissing = true;
+      res = await rest(`avatar_sessions?${where}&select=${colsBase}&limit=500`);
+      if (!res.ok) throw new Error(`listStaleSessions failed: ${res.status} ${await res.text()}`);
+    } else {
+      throw new Error(`listStaleSessions failed: ${res.status} ${errText}`);
+    }
+  }
+  const rows = await res.json();
+  return (rows || []).map((r) => ({
+    ...r,
+    stop_fail_count: Number(r.stop_fail_count) || 0,
+    stop_alerted_at: r.stop_alerted_at || null,
+    _stopAlertColumnsMissing: columnsMissing,
+  }));
 }
 
 /** Increment a failed LiveAvatar stop, and optionally mark that operators were alerted. */
 export async function recordStopFailure(id, { failCount, alerted = false } = {}) {
   if (!id) return null;
   const patch = { stop_fail_count: Math.max(0, Math.floor(Number(failCount) || 0)) };
+  // Only set stop_alerted_at on the first alert, so later failures do not
+  // overwrite the original time. Callers must pass alerted:true only then.
   if (alerted) patch.stop_alerted_at = new Date().toISOString();
   const res = await rest(
     `avatar_sessions?id=eq.${encodeURIComponent(id)}`,
@@ -270,7 +298,11 @@ export async function recordStopFailure(id, { failCount, alerted = false } = {})
       body: JSON.stringify(patch),
     },
   );
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    if (isUndefinedColumnError(res.status, errText)) return null;
+    return null;
+  }
   const rows = await res.json().catch(() => []);
   return rows[0] || null;
 }

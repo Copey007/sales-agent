@@ -147,7 +147,7 @@ export function stateCopy(state, {
         pill: 'Buy credits', pillKind: 'busy',
         title: 'Choose credits',
         message: 'Credits add live avatar minutes for your workspace. Checkout opens on A-Gent billing in a new tab. This panel never asks for card details.',
-        action: 'Continue to checkout (opens new tab)',
+        action: 'Continue to checkout (preview)',
         secondaryAction: 'Cancel',
         packs: [
           { id: 'pack-1', name: 'Pack 1' },
@@ -161,7 +161,7 @@ export function stateCopy(state, {
         pill: 'Waiting for checkout', pillKind: 'busy',
         title: 'Waiting for checkout',
         message: 'Checkout is not available in this pilot. This panel never asks for card details, and your credits have not changed.',
-        action: 'Open checkout again (opens new tab)',
+        action: 'Open checkout again (preview)',
         secondaryAction: 'Cancel purchase',
         announce: 'status',
       };
@@ -182,6 +182,15 @@ export function stateCopy(state, {
         action: 'Try again',
         secondaryAction: 'Contact your A-Gent admin',
         contactAdmin: true, announce: 'alert',
+      };
+    case 'mic-needed':
+      return {
+        pill: 'Microphone', pillKind: 'off',
+        title: 'Allow the microphone',
+        message: 'Chrome may not show a microphone prompt in the side panel. A tab just opened so you can allow it for this extension. After you allow it, come back here and start again. This does not start a paid session.',
+        action: 'Allow microphone',
+        secondaryAction: 'Cancel',
+        announce: 'status',
       };
     case 'contact-admin':
       return {

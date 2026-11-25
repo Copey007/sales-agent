@@ -27,23 +27,47 @@ Save only when a contact is identified. If no contact is found, keep the turns i
 - **Object / field:** `Task` with `WhoId` = Contact or Lead, `Status = Completed`, `Subject = 'A-Gent avatar session'`, `Description` = the transcript, `TaskSubtype` or a “Log a Call” style completed activity so it appears on the **Activity Timeline**.
 - **Why a Task, not a Note:** Salesforce’s “Log a Call” action “creates a completed task or activity record” and is how communications are documented on a contact; in Lightning those records show under past activity on the [Activity Timeline](https://help.salesforce.com/s/articleView?id=sales.activity_timeline_parent.htm&language=en_US&type=5). [Log a Call](https://help.salesforce.com/s/articleView?id=000387963&language=en_US&type=1) (Help, 22 Sep 2026) is explicitly a Task. ContentNote (enhanced Notes / Files) is a document linked with `ContentDocumentLink`; it is not an activity and does not show in the Activity Timeline the same way. Tasks are also the type used in standard [Activity Reports](https://help.salesforce.com/s/articleView?id=analytics.reports_activity.htm&language=en_US&type=5).
 - **Limits / fallback:** Task `Description` is a long text field (commonly 32,000 characters; confirm on the org). If a transcript would overflow, add a **ContentNote** (or a File) for the full text and keep a short completed Task that points at it. Do not use the legacy `Note` sObject (superseded by ContentNote).
+- **App type:** build an **External Client App**, not a Connected App (new Connected Apps cannot be created as of Spring '26; Salesforce Help 005228017, 7 Oct 2026). Drop `openid`. Limit the `api` scope with admin-approved users, a permission set limited to Contact/Lead read and Task create, and refresh-token expiry / rotation.
 - **Alternative considered:** ContentNote only. Better for long rich text, worse for timeline and activity reports. Not recommended as the only record.
+## Consent (must be approved before building)
+
+Replace bundled “By starting, you agree” with two separate choices:
+
+1. **Workspace-admin toggle** that enables CRM saving at all. Default off until an admin turns it on. If this is off, the panel never offers to save and never writes to a CRM.
+2. **Per-session save choice**, asked at End (or shown as a toggle defaulting off before End): “Save this conversation to {Contact name} in {CRM}?” The matched contact’s name is shown first, and the person must confirm that match before anything is written. If they decline, or no contact is confirmed, keep the turns in the panel memory only.
+
+An audit record is stored when a save happens (and only then): user id, time (`consent_at` / `saved_at`), CRM, record ID of the note or task, notice version, and no transcript body. “Nothing is stored in the panel” still holds.
+
+## Privacy notice (proposed text)
+
+Disclose LiveAvatar / HeyGen (and LiveKit as the media path). There is **no BAA** with HeyGen or LiveAvatar, so health information must stay out.
+
+> We can save a summary of this conversation to {Contact name} in {A-Gent CRM / HubSpot / Salesforce} so you and your workspace can reread it there. A-Gent does not keep a copy in this side panel. Voice and text go through LiveAvatar / HeyGen (and LiveKit) during the live session; their retention and data-processing terms apply, and A-Gent does not have a Business Associate Agreement (BAA) with them. Do not discuss health information. We only save a length-capped summary by default (full transcript is opt-in). Third-party emails and phone numbers that came from the email page are stripped. The note follows that CRM’s access rules. Retention is pending Mark’s decision.
+
+Short receipt after a successful save (week 4+): `Transcript saved to {Name} in {CRM} · just now`.
+
+## What is saved (minimisation)
+
+- Default: a length-capped **summary** and key points, not the full transcript. Full text is opt-in.
+- Confirm the contact match before writing.
+- Cap the stored length (and split or attach only if the person opted into the full transcript and it exceeds the CRM field limit).
+- Strip third-party emails and phone numbers that came from Gmail content.
+- Never log transcript bodies in Netlify function logs.
+- Never pass the transcript (or summary) to LiveAvatar `context_id`.
+- Never store the transcript in the panel, `chrome.storage`, or a new A-Gent table, unless a later approval says otherwise.
 
 ## Retention and deletion
 
-- **HubSpot and Salesforce:** the transcript lives under the **customer’s CRM retention and deletion policy**. Public docs do not give a single default retention period we can promise; it depends on the hub / org (and any GDPR / HIPAA add-ons). Unknown: whether Mark wants an A-Gent-side expiry that deletes the CRM note after N days. Proposed default: **do not auto-delete in the CRM**; let the workspace’s CRM policy govern, and support a manual “delete this note” later.
-- **A-Gent CRM:** proposed default **30 days** from session end, env-overridable, plus hard-delete on request or when the contact is deleted (cascade). Confirm with Mark.
-- **The panel:** no retention, because nothing is stored there.
+**Retention is pending Mark.** Do not ship auto-delete or an indefinite keep until he picks one policy. Options to present:
 
-## Privacy and consent notice (proposed text)
+- Let each CRM’s own retention govern (no A-Gent auto-delete).
+- A single A-Gent-side expiry (for example 30 days) that deletes the CRM note or task everywhere.
+- A hybrid: A-Gent CRM expires, HubSpot / Salesforce follow the workspace policy.
 
-Show this once before the first session that can be saved, after a contact is in context (or as a general start notice when a CRM tab is allowed). Record `consent_at` only after they Start. If they decline, run the session with in-memory captions only.
-
-> We can save this conversation to the contact in {A-Gent CRM / HubSpot / Salesforce} so you and your workspace can reread it there. A-Gent does not keep a copy in this side panel. The note follows that CRM’s access and retention rules. We only save finished sentences, not a raw email dump. By starting, you agree to save this session to the open contact when one is found.
-
-Short receipt after a successful save (week 4+): `Transcript saved to {Name} in {CRM} · just now`.
+Until that decision, the proposal records the created HubSpot note ID, Salesforce Task (and ContentNote) IDs, and the A-Gent CRM note ID so a **delete path** can remove them on request or when the contact is deleted. The A-Gent CRM table is still unknown in this repo; confirm against the CRM codebase before building.
 
 ## What this PR does instead
 
 - No CRM write, no `avatar_transcripts` table, no `chrome.storage`.
 - After End, the transcript can stay visible in the panel (Copy included) until the panel document is closed.
+- The in-memory transcript now includes typed lines plus spoken user turns and avatar replies from LiveAvatar SDK events (`user.transcription`, `avatar.transcription`).

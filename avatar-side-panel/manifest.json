@@ -31,7 +31,6 @@
   ],
   "host_permissions": [
     "https://aisdr.a-gent.co/*",
-    "https://esm.sh/*",
     "https://api.liveavatar.com/*"
   ]
 }

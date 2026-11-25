@@ -2,15 +2,17 @@
  * Read-only avatar cap / cool-down status. Does not mint or stop a session.
  *
  * GET /api/avatar-caps?slug=demo
- *   → usage, reset_at, cooldown, and whether a new session may be started
+ *   → usage, reset_at, cooldown, can_buy, and whether a new session may be started
  *
- * GET-only (plus OPTIONS). POST and other methods return 405 and never
- * call LiveAvatar.
+ * Requires a signed-in tenant member (or operator). Results are scoped to
+ * the caller's tenant. GET-only (plus OPTIONS). POST and other methods
+ * return 405 and never call LiveAvatar. Never returns admin email addresses.
  */
 
 import { getAgentBySlug, monthlyUsageSeconds, cooldownRemainingSeconds } from './_avatar-store.mjs';
 import { getAvatarCaps, billingWindow } from './_avatar-caps.mjs';
 import { withCors } from './_auth.mjs';
+import { resolveTenantContext, canAccessTenant } from './_tenant.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -19,11 +21,6 @@ const cors = {
 };
 const json = (b, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json', ...cors } });
-
-function clientIp(req) {
-  const raw = req.headers.get('x-nf-client-connection-ip') || '';
-  return raw.split(',')[0].trim() || null;
-}
 
 const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -34,9 +31,16 @@ const __handler = async (req) => {
     });
   }
 
+  const ctx = await resolveTenantContext(req);
+  if (ctx.invalid) {
+    return json({ error: ctx.status === 403 ? 'forbidden' : 'unauthorized', reason: ctx.reason }, ctx.status || 401);
+  }
+  if (ctx.internal) {
+    return json({ error: 'forbidden' }, 403);
+  }
+
   const url = new URL(req.url);
   const slug = url.searchParams.get('slug') || 'demo';
-  const ip = clientIp(req);
 
   let agent;
   try {
@@ -44,13 +48,21 @@ const __handler = async (req) => {
   } catch (err) {
     return json({ error: 'usage_store_unavailable' }, 503);
   }
-  if (!agent) return json({ error: 'agent_not_found', slug }, 404);
+  if (!agent) return json({ error: 'agent_not_found' }, 404);
+  if (!canAccessTenant(ctx, agent.tenant_id)) {
+    return json({ error: 'agent_not_found' }, 404);
+  }
   if (agent.status !== 'active') return json({ error: 'agent_unavailable', status: agent.status }, 403);
 
   const caps = getAvatarCaps(agent);
+  const canBuy = !!(ctx.operator || ctx.role === 'owner' || ctx.role === 'admin');
   try {
     const usedMin = (await monthlyUsageSeconds(slug)) / 60;
-    const coolLeft = await cooldownRemainingSeconds({ ip, slug, cooldownSeconds: caps.cooldownSeconds });
+    const coolLeft = await cooldownRemainingSeconds({
+      slug,
+      tenantId: agent.tenant_id || null,
+      cooldownSeconds: caps.cooldownSeconds,
+    });
     const window = billingWindow(new Date(), caps.billingResetDay);
     const remaining = Math.max(0, caps.monthlyMinuteCap - usedMin);
     const capReached = usedMin >= caps.monthlyMinuteCap;
@@ -64,6 +76,7 @@ const __handler = async (req) => {
       cooldown_seconds: caps.cooldownSeconds,
       cooldown_remaining_seconds: coolLeft,
       available: !capReached && coolLeft <= 0,
+      can_buy: canBuy,
     });
   } catch (err) {
     console.error('[avatar-caps] usage lookup failed:', err.message);

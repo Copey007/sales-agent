@@ -86,9 +86,14 @@ export async function reap() {
       } catch (err) {
         console.error('[avatar-reaper] stop failed; leaving session', s.id, 'retryable:', err.message);
         skipped++;
+        if (s._stopAlertColumnsMissing) {
+          console.error('[avatar-reaper] stop_fail_count columns missing; alerts disabled until the migration is applied. Stop retries continue.');
+          continue;
+        }
         const failCount = (Number(s.stop_fail_count) || 0) + 1;
         const already = !!s.stop_alerted_at;
-        if (failCount >= STOP_FAIL_ALERT_AFTER && !already) {
+        const shouldAlert = failCount >= STOP_FAIL_ALERT_AFTER && !already;
+        if (shouldAlert) {
           const alerted = await alertPermanentStopFailure({ session: s, error: err.message, failCount });
           const saved = await recordStopFailure(s.id, { failCount, alerted: true });
           if (!saved) {
@@ -98,7 +103,8 @@ export async function reap() {
             /* log-only is intentional when OPERATOR_EMAILS / transport is unset */
           }
         } else {
-          await recordStopFailure(s.id, { failCount, alerted: already });
+          // Do not pass alerted:true here — that would overwrite stop_alerted_at.
+          await recordStopFailure(s.id, { failCount, alerted: false });
         }
         continue;
       }

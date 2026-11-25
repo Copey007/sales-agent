@@ -124,7 +124,7 @@ const __handler = async (req) => {
     if (await recentSessionCountByIp(ip, IP_RATE_WINDOW_SECONDS) >= IP_RATE_MAX) {
       return json({ error: 'rate_limited', retry_after: IP_RATE_WINDOW_SECONDS }, 429);
     }
-    const coolLeft = await cooldownRemainingSeconds({ ip, slug, cooldownSeconds: caps.cooldownSeconds });
+    const coolLeft = await cooldownRemainingSeconds({ slug, tenantId: agent.tenant_id || null, cooldownSeconds: caps.cooldownSeconds });
     if (coolLeft > 0) {
       return json({
         error: 'cooldown',
@@ -143,6 +143,14 @@ const __handler = async (req) => {
         used_minutes: usedMin,
         reset_at: window.resetAt.toISOString(),
       }, 402);
+    }
+
+    // FULL mode needs a voice_id. Check before reserving so a misconfigured
+    // agent never holds a seat. A later defensive check still cancels if
+    // a reservation was already created.
+    const modeCheck = (agent.mode || 'FULL').toUpperCase();
+    if (modeCheck === 'FULL' && !agent.voice_id) {
+      return json({ error: 'agent_misconfigured', detail: 'FULL mode requires voice_id' }, 500);
     }
 
     // Reserve a seat before minting so concurrent requests cannot all
@@ -166,9 +174,9 @@ const __handler = async (req) => {
     return json({ error: 'usage_store_unavailable' }, 503);
   }
 
-  // FULL mode requires an avatar_persona (voice). We drive our own concierge
-  // brain via repeat(text), so we set the voice but omit LiveAvatar's context_id.
-  // LITE mode needs only the avatar_id (caller supplies audio via repeatAudio).
+  // FULL mode requires an avatar_persona (voice). The Chrome panel talks
+  // through session.message(text) (FULL conversation). We set the voice but
+  // omit LiveAvatar's context_id. LITE mode needs only the avatar_id.
   const mode = (agent.mode || 'FULL').toUpperCase();
   const tokenBody = {
     mode,

@@ -82,6 +82,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: { session_row: msg.session_row, event: 'end' },
           keepalive: true,
         });
+      case 'OPEN_MIC_PERMISSION': {
+        const url = chrome.runtime.getURL('mic-permission.html');
+        await chrome.tabs.create({ url, active: true });
+        return { ok: true };
+      }
       default:
         return { error: 'unknown_message' };
     }

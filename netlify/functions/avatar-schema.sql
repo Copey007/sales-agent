@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS avatar_sessions (
   created_at           TIMESTAMPTZ DEFAULT now()
 );
 
+-- Production apply path: migrations/2026-11-25-avatar-sessions-stop-alert.sql
+-- Needs Mark's go. Do not apply from this draft PR. Apply BEFORE deploying
+-- code that selects these columns; the reaper falls back if they are missing.
 ALTER TABLE avatar_sessions ADD COLUMN IF NOT EXISTS stop_fail_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE avatar_sessions ADD COLUMN IF NOT EXISTS stop_alerted_at TIMESTAMPTZ;
 

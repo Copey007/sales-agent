@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resetFetch, route, req, calls, SB } from './helpers/env.mjs';
+import { resetFetch, route, req, calls, SB, mockAuth } from './helpers/env.mjs';
 import {
   getAvatarCaps,
   billingWindow,
@@ -46,6 +46,15 @@ const DEMO_AGENT = {
 function heygenCalls() {
   return calls.filter((c) => /api\.liveavatar\.com|api\.heygen\.com/i.test(c.url));
 }
+
+const confirmed = '2026-01-01T00:00:00Z';
+function authMember({ role = 'member', tenant = 't-1', token = 'mem' } = {}) {
+  mockAuth(
+    { [token]: { id: 'u-mem', email: 'cust@acme.test', email_confirmed_at: confirmed } },
+    { 'u-mem': [{ role, tenant_id: tenant, tenants: { id: tenant, slug: 'acme', name: 'Acme' } }] },
+  );
+}
+const MEM = { Authorization: 'Bearer mem' };
 
 const savedEnv = {};
 function setEnv(name, value) {
@@ -166,7 +175,7 @@ test('token mints after the cool-down has elapsed', async () => {
 
 // ── seat release ───────────────────────────────────────────────────────────
 
-test('FULL without voice_id cancels the reserved seat and does not mint', async () => {
+test('FULL without voice_id does not reserve a seat and does not mint', async () => {
   const agent = { ...DEMO_AGENT, voice_id: null };
   routeAgent(agent);
   const patches = routeSessions();
@@ -175,8 +184,8 @@ test('FULL without voice_id cancels the reserved seat and does not mint', async 
   const body = await res.json();
   assert.equal(body.error, 'agent_misconfigured');
   assert.equal(heygenCalls().length, 0);
-  const cancel = patches.find((p) => p.body.status === 'cancelled');
-  assert.ok(cancel, `expected a cancelled reservation, got ${JSON.stringify(patches)}`);
+  assert.equal(calls.filter((c) => c.method === 'POST' && c.url.includes('avatar_sessions')).length, 0);
+  assert.equal(patches.length, 0);
 });
 
 // ── permanent stop alert ───────────────────────────────────────────────────
@@ -237,9 +246,10 @@ test('reaper leaves a row open after a failed stop, increments fail count, and a
 // ── caps status (no mint) ──────────────────────────────────────────────────
 
 test('GET /api/avatar-caps returns usage and reset_at and never calls LiveAvatar', async () => {
+  authMember({ role: 'member' });
   routeAgent();
   routeSessions({ usage: [{ duration_seconds: 120 }] });
-  const res = await capsStatus(req('https://aisdr.example.test/api/avatar-caps?slug=demo', { method: 'GET' }));
+  const res = await capsStatus(req('https://aisdr.example.test/api/avatar-caps?slug=demo', { method: 'GET', headers: MEM }));
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.monthly_minute_cap, Math.min(60, 500));
@@ -250,8 +260,9 @@ test('GET /api/avatar-caps returns usage and reset_at and never calls LiveAvatar
 });
 
 test('GET /api/avatar-caps is fail-closed when the store is down; POST is 405 with no LiveAvatar call', async () => {
+  authMember({ role: 'member' });
   route(`${SB}/rest/v1/avatar_agents`, () => ({ status: 500, body: { error: 'down' } }));
-  const res = await capsStatus(req('https://aisdr.example.test/api/avatar-caps?slug=demo', { method: 'GET' }));
+  const res = await capsStatus(req('https://aisdr.example.test/api/avatar-caps?slug=demo', { method: 'GET', headers: MEM }));
   assert.equal(res.status, 503);
   assert.equal((await res.json()).error, 'usage_store_unavailable');
   resetFetch();
@@ -273,6 +284,7 @@ test('panel is allowed on Gmail, A-Gent CRM, HubSpot, and Salesforce, and blocke
   assert.equal(siteForUrl('https://www.hubspot.com/').allowed, false);
   assert.equal(siteForUrl('https://help.salesforce.com/').allowed, false);
   assert.equal(siteForUrl('https://a-gent.co/').allowed, false);
+  assert.equal(siteForUrl('https://acme.lightning.crmforce.mil/lightning/r/Contact/001/view').allowed, false);
   assert.ok(hostMatches('foo.lightning.force.com', '*.lightning.force.com'));
   assert.equal(hostMatches('lightning.force.com', '*.lightning.force.com'), false);
   const crms = allowedCrmLabels();
@@ -286,6 +298,7 @@ test('Buy more credits is admin-only, uses TBD chips, and has no prices or billi
   const buy = stateCopy('choose-credits', { isAdmin: true });
   assert.equal(buy.title, 'Choose credits');
   assert.doesNotMatch(JSON.stringify(buy), /\$/);
+  assert.match(buy.action, /preview/i);
   assert.doesNotMatch(JSON.stringify(buy), /https?:\/\//);
   assert.ok(buy.packs.every((p) => /Pack /.test(p.name)));
   const capAdmin = stateCopy('monthly-cap', { isAdmin: true });
@@ -306,6 +319,7 @@ test('Buy more credits is admin-only, uses TBD chips, and has no prices or billi
   const timeoutAdmin = stateCopy('session-timeout', { isAdmin: true });
   assert.equal(timeoutAdmin.buyMore, true);
   assert.equal(timeoutAdmin.secondaryAction, 'Buy more credits');
+  assert.match(stateCopy('checkout-wait').action, /preview/i);
   const contact = stateCopy('contact-admin');
   assert.doesNotMatch(contact.message, /@/);
   assert.doesNotMatch(contact.message, /mailto:/);
@@ -318,8 +332,8 @@ test('extension manifest permissions are minimal and justified, and week-3 flags
   assert.deepEqual(manifest.host_permissions.sort(), [
     'https://aisdr.a-gent.co/*',
     'https://api.liveavatar.com/*',
-    'https://esm.sh/*',
   ].sort());
+  assert.ok(!manifest.host_permissions.some((h) => /esm\.sh/i.test(h)));
   assert.ok(manifest.side_panel.default_path);
   assert.equal(GMAIL_DRAFT_INSERT_ENABLED, false);
   assert.equal(CRM_HOOK_ENABLED, false);

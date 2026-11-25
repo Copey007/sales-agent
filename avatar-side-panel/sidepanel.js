@@ -6,9 +6,11 @@
  * only; they are never written to storage, disk, or the server.
  */
 
-import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_SDK_URL, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS } from './config.js';
+import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
 import { stateCopy, formatDuration, tbd } from './copy.js';
+import { loadSdkThenMint, createLiveSession, attachToVideo, setMuted, askSession, bindTranscriptEvents } from './live-session.js';
+import { ensureMicAccess } from './mic-permission.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +35,7 @@ const state = {
   contactAdminOpen: false,
   transcriptOpen: false,
   canBuyCredits: PREVIEW_ADMIN_CREDITS,
+  signedIn: false,
   askText: '',
 };
 
@@ -115,9 +118,18 @@ async function refreshCaps() {
   if (res.status === 503 || res.data?.error === 'usage_store_unavailable') {
     return { failClosed: true, res };
   }
+  if (res.status === 401 || res.status === 403 || res.data?.error === 'unauthorized' || res.data?.error === 'forbidden') {
+    state.signedIn = false;
+    if (!PREVIEW_ADMIN_CREDITS) state.canBuyCredits = false;
+    return { failClosed: false, unauthorized: true, res };
+  }
   if (res.ok && res.data) {
+    state.signedIn = true;
     state.caps = res.data;
     if (res.data.max_session_seconds) state.maxSessionSeconds = res.data.max_session_seconds;
+    if (typeof res.data.can_buy === 'boolean') {
+      state.canBuyCredits = !!(res.data.can_buy || PREVIEW_ADMIN_CREDITS);
+    }
     return { failClosed: false, res };
   }
   return { failClosed: false, res };
@@ -164,59 +176,81 @@ async function startSession() {
   state.name = 'connecting';
   state.buyCreditsOpen = false;
   render();
-  const res = await send('AVATAR_START', { slug: DEFAULT_SLUG });
-  const err = res.data?.error || (!res.ok ? 'couldnt-start' : null);
-  if (err === 'quota_exceeded') {
-    if (res.data) Object.assign(state.caps, res.data);
-    state.name = 'monthly-cap';
+
+  const mic = await ensureMicAccess({
+    openPermissionPage: () => send('OPEN_MIC_PERMISSION'),
+  });
+  if (!mic.ok) {
+    state.name = 'mic-needed';
     render();
     return;
   }
-  if (err === 'usage_store_unavailable') {
-    state.name = 'fail-closed';
-    render();
-    return;
-  }
-  if (err === 'cooldown' || err === 'rate_limited' || err === 'at_capacity') {
-    state.retryAfter = Number(res.data?.retry_after) || 0;
-    state.name = err === 'cooldown' ? 'cooldown' : 'too-many-starts';
-    render();
-    return;
-  }
-  if (!res.ok || !res.data?.session_token) {
-    state.name = 'couldnt-start';
-    render();
-    return;
-  }
-  state.sessionToken = res.data.session_token;
-  state.sessionRow = res.data.session_row;
-  state.maxSessionSeconds = res.data.max_session_seconds || state.maxSessionSeconds;
-  if (res.data.reset_at) state.caps.reset_at = res.data.reset_at;
-  if (res.data.monthly_minute_cap != null) state.caps.monthly_minute_cap = res.data.monthly_minute_cap;
-  state.startedAt = Date.now();
-  state.durationSeconds = 0;
-  state.announced30 = false;
-  state.muted = false;
+
+  let minted;
   try {
-    const mod = await import(/* webpackIgnore: true */ LIVEAVATAR_SDK_URL);
-    const Session = mod.LiveAvatarSession;
-    const session = new Session(res.data.session_token, { voiceChat: true, apiUrl: LIVEAVATAR_API_URL });
-    state.liveSession = session;
-    const videoHost = $('stage-slot');
-    if (videoHost) videoHost.innerHTML = '';
-    if (session.attach) {
-      const el = document.createElement('div');
-      el.id = 'live-video';
-      el.style.cssText = 'position:absolute;inset:0';
-      videoHost.appendChild(el);
-      await session.attach(el);
+    const started = await loadSdkThenMint({
+      mint: () => send('AVATAR_START', { slug: DEFAULT_SLUG }),
+    });
+    minted = started.minted;
+    const res = minted;
+    const err = res.data?.error || (!res.ok ? 'couldnt-start' : null);
+    if (err === 'quota_exceeded') {
+      if (res.data) Object.assign(state.caps, res.data);
+      state.name = 'monthly-cap';
+      render();
+      return;
     }
+    if (err === 'usage_store_unavailable') {
+      state.name = 'fail-closed';
+      render();
+      return;
+    }
+    if (err === 'cooldown' || err === 'rate_limited' || err === 'at_capacity') {
+      state.retryAfter = Number(res.data?.retry_after) || 0;
+      state.name = err === 'cooldown' ? 'cooldown' : 'too-many-starts';
+      render();
+      return;
+    }
+    if (!res.ok || !res.data?.session_token) {
+      state.name = 'couldnt-start';
+      render();
+      return;
+    }
+    state.sessionToken = res.data.session_token;
+    state.sessionRow = res.data.session_row;
+    state.maxSessionSeconds = res.data.max_session_seconds || state.maxSessionSeconds;
+    if (res.data.reset_at) state.caps.reset_at = res.data.reset_at;
+    if (res.data.monthly_minute_cap != null) state.caps.monthly_minute_cap = res.data.monthly_minute_cap;
+    state.startedAt = Date.now();
+    state.durationSeconds = 0;
+    state.announced30 = false;
+    state.muted = false;
+    const session = createLiveSession(started.sdk, res.data.session_token, {
+      voiceChat: true,
+      apiUrl: LIVEAVATAR_API_URL,
+    });
+    state.liveSession = session;
+    bindTranscriptEvents(session, {
+      onCaption: (who, text) => pushCaption(who, text),
+      onSpeak: (kind) => {
+        if (kind === 'avatar-start') {
+          state.name = 'speaking';
+          render();
+        } else if (kind === 'avatar-end' && state.name === 'speaking') {
+          state.name = 'live';
+          render();
+        } else if (kind === 'disconnected') {
+          onTimeout();
+        }
+      },
+    });
+    attachToVideo(session, $('stage-slot'));
     await session.start?.();
     state.name = 'live';
     startKeepalive();
     render();
   } catch (e) {
-    await endRemote();
+    if (state.sessionRow) await endRemote();
     state.name = 'couldnt-start';
     render();
   }
@@ -272,17 +306,9 @@ async function onAsk() {
   render();
   pushCaption('You', text);
   try {
-    if (state.liveSession.repeat) await state.liveSession.repeat(text);
-    else if (state.liveSession.speak) await state.liveSession.speak(text);
-    state.name = 'speaking';
-    pushCaption('A-Gent', ''); // filled by SDK events when available
+    askSession(state.liveSession, text);
+    state.name = 'thinking';
     render();
-    setTimeout(() => {
-      if (state.name === 'speaking') {
-        state.name = 'live';
-        render();
-      }
-    }, 1500);
   } catch {
     state.name = 'live';
     render();
@@ -316,6 +342,10 @@ async function onPrimary() {
       return;
     }
     return startSession();
+  }
+  if (s === 'mic-needed') {
+    await send('OPEN_MIC_PERMISSION');
+    return;
   }
   if (['idle', 'ended', 'couldnt-start', 'cooldown', 'too-many-starts', 'session-timeout'].includes(s)) {
     return startSession();
@@ -477,12 +507,10 @@ function bind() {
     onPrimary();
   });
   $('end-btn')?.addEventListener('click', () => endSession('ended'));
-  $('mute-btn')?.addEventListener('click', () => {
-    state.muted = !state.muted;
+  $('mute-btn')?.addEventListener('click', async () => {
     try {
-      if (state.muted) state.liveSession?.mute?.();
-      else state.liveSession?.unmute?.();
-    } catch { /* local toggle still updates */ }
+      state.muted = await setMuted(state.liveSession, !state.muted);
+    } catch { /* leave the previous mute state if voiceChat is missing */ }
     render();
   });
   $('ask-btn')?.addEventListener('click', onAsk);
@@ -516,6 +544,11 @@ function bind() {
     render();
   });
   $('cancel-btn')?.addEventListener('click', () => {
+    if (state.name === 'mic-needed') {
+      state.name = 'idle';
+      render();
+      return;
+    }
     state.name = state.durationSeconds > 0 ? 'session-timeout' : 'monthly-cap';
     render();
   });
