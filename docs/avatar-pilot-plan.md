@@ -44,7 +44,7 @@ Mark's later answers that change the week-2+ plan:
 - Launch CRMs: **A-Gent CRM, HubSpot, and Salesforce**. The panel allowlist is one extensible list (`avatar-side-panel/allowed-sites.js`).
 - On monthly cap or session timeout, the panel offers **"Buy more credits"** as a placeholder only: no billing link, no purchases, no hard-coded prices or caps in that CTA. Cap numbers shown in the limit notices come from the server.
 - Gmail drafts use **the person's own Gmail signature** (the earlier "no signature" answer is withdrawn). Planned in week 3; not built in week 2.
-- Transcripts will be saved to the **CRM record** (A-Gent CRM, HubSpot, Salesforce), not in the panel. **Storage is not built** until Eng Lead / Mark approve `docs/avatar-transcript-storage-proposal.md`. Until then, captions may stay in the panel's memory only and are discarded when the panel closes.
+- Transcripts will be saved to the **CRM record** (A-Gent CRM, HubSpot, Salesforce), not in the panel. Mark approved the proposal on 25 Nov 2026, 4:43 PM ET: **90-day retention** across those three CRMs, an explicit delete path, and CRM-record save as designed. **Storage is still not built in this PR** (docs and plan only). Until week 4 ships it, captions may stay in the panel's memory only and are discarded when the panel closes. See `docs/avatar-transcript-storage-proposal.md`.
 - Only **admins** can buy credits. Non-admins get Contact your A-Gent admin. The purchase flow stays design-only (TBD chips, no prices, no real billing page).
 
 ---
@@ -63,7 +63,7 @@ Mark's later answers that change the week-2+ plan:
 - A test account run shows: draft appears with the person's signature still present, no message is sent until a person clicks Send, and a sent-mail search does not contain a bot-sent copy from that run.
 - Gmail DOM selectors are covered by a test fixture so a UI change fails the suite instead of silently sending nothing (or, worse, sending).
 - Still no background `gmail.send` or similar scope that would trigger Google's security audit. Tab-only access. Week 3 may add a `mail.google.com` content script / host permission; justify it then. Do not add it in week 2.
-- Transcript save-to-CRM is still not built unless the proposal has been approved. The panel may show in-memory captions after End; it must not store them locally. Week 4 should write the transcript to the CRM contact when one is found.
+- Transcript save-to-CRM is approved and is week-4 work (not built in week 3). The panel may show in-memory captions after End; it must not store them locally. Week 4 writes the transcript to the CRM contact when one is found, keeps it for 90 days, and provides a delete path.
 
 ---
 
@@ -81,6 +81,14 @@ The allowlist and hook should stay easy to extend: one `allowed-sites.js` entry 
 - No email is sent from this hook. CRM writes are notes and tasks only.
 - Private test: Mark can use it for a week on the stock face/voice, within the configured caps (still below the Starter allowance). Sign-off is his go / no-go for any later store listing or persona work.
 - Custom Holly-style face/voice stays out of this window unless Mark later approves a likeness and a plan that allows it.
+
+**Transcripts (approved; build in week 4)**
+
+- Save the full transcript (default, with a length cap) to the **CRM record** as designed in `docs/avatar-transcript-storage-proposal.md`: A-Gent CRM note/activity, HubSpot Note, Salesforce completed Task (ContentNote only for overflow). Save only when a contact is identified and the person confirms. Nothing is stored in the panel.
+- **Retention is 90 days** on all three CRMs. There is an **explicit delete path** (person or admin request, and when the contact is deleted).
+- HubSpot and Salesforce retention is **not** left to the workspace policy. A scheduled cleanup job deletes **only** the notes, Tasks, and ContentNotes we created, tracked by stored external IDs in the save ledger (no transcript body in the ledger). A-Gent CRM uses the same 90-day job / deleter.
+- Job design, scopes, failure handling, and tests are specified in the proposal (daily batch, idempotent 404 = success, retry and leave the ledger row open on failure, narrow HubSpot notes and Salesforce Task/ContentNote delete scopes, mocked tests, no live CRM deletes in CI, no LiveAvatar minting).
+- "Log note" / "log next step" in the shared hook stays separate from the transcript-save path, but both must only create records we can later identify and delete.
 
 **A-Gent CRM**
 

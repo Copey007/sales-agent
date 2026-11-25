@@ -478,7 +478,7 @@ test('mic permission opens the extension page when the side panel cannot grant i
   await tryGetUserMedia(async () => ({ getTracks: () => [{ stop() {} }] }));
 });
 
-test('docs cover External Client App, consent, no-BAA, and the pending retention / delete path', () => {
+test('docs cover External Client App, consent, no-BAA, 90-day retention, and the delete path', () => {
   const proposal = readFileSync(join(ROOT, 'docs/avatar-transcript-storage-proposal.md'), 'utf8');
   const plan = readFileSync(join(ROOT, 'docs/avatar-pilot-plan.md'), 'utf8');
   assert.match(proposal, /workspace-admin toggle/i);
@@ -493,7 +493,12 @@ test('docs cover External Client App, consent, no-BAA, and the pending retention
   assert.match(proposal, /summary is optional/i);
   assert.match(proposal, /ContentNote/);
   assert.match(proposal, /delete path/i);
-  assert.match(proposal, /Retention is pending Mark/i);
+  assert.match(proposal, /Retention is 90 days/i);
+  assert.match(proposal, /scheduled cleanup job/i);
+  assert.match(proposal, /stored external IDs/i);
+  assert.match(proposal, /only the notes, Tasks, and ContentNotes we created/i);
+  assert.match(plan, /90-day retention/i);
+  assert.match(plan, /scheduled cleanup job/i);
   assert.match(proposal, /External Client App/);
   assert.match(plan, /External Client App/);
   assert.doesNotMatch(plan.split('AppExchange')[0], /needs a \*\*Connected App\*\*/);
