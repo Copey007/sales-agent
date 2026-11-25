@@ -193,10 +193,8 @@ export function bindTranscriptEvents(session, { onCaption, onSpeak } = {}) {
     const text = eventText(ev);
     if (text) onCaption?.('You', text);
   });
-  on(AgentEvents.AVATAR_TRANSCRIPTION, (ev) => {
-    const text = eventText(ev);
-    if (text) onCaption?.('A-Gent', text);
-  });
+  // Do not listen for avatar.transcription: the concierge/avatar-chat reply
+  // is already added to the in-memory transcript, and repeat() would duplicate it.
   on(AgentEvents.AVATAR_SPEAK_STARTED, () => onSpeak?.('avatar-start'));
   on(AgentEvents.AVATAR_SPEAK_ENDED, () => onSpeak?.('avatar-end'));
   on(AgentEvents.USER_SPEAK_STARTED, () => onSpeak?.('user-start'));

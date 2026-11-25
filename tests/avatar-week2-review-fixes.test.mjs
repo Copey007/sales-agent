@@ -32,6 +32,7 @@ import {
 } from '../avatar-side-panel/live-session.js';
 import { ensureMicAccess, queryMicPermission, tryGetUserMedia } from '../avatar-side-panel/mic-permission.js';
 import { siteForUrl } from '../avatar-side-panel/allowed-sites.js';
+import { VOICE_CHAT_ENABLED } from '../avatar-side-panel/config.js';
 
 process.env.LIVEAVATAR_API_KEY = 'test-liveavatar-key';
 
@@ -311,7 +312,7 @@ test('session ender sends AVATAR_END once and swallows a throwing stop()', async
   assert.equal(ends, 1);
 });
 
-test('SDK transcription events are captured into the in-memory transcript', () => {
+test('SDK transcription events capture user turns but not avatar replies (those come from avatar-chat)', () => {
   const session = fakeSession();
   const captions = [];
   const speaks = [];
@@ -321,12 +322,10 @@ test('SDK transcription events are captured into the in-memory transcript', () =
   });
   session.emit(AgentEvents.USER_TRANSCRIPTION, { text: 'Hello there' });
   session.emit(AgentEvents.AVATAR_TRANSCRIPTION, { text: 'Hi, how can I help?' });
-  session.emit(AgentEvents.AVATAR_TRANSCRIPTION, { text: '' });
   session.emit(AgentEvents.AVATAR_SPEAK_STARTED, {});
   session.emit(AgentEvents.AVATAR_SPEAK_ENDED, {});
   assert.deepEqual(captions, [
     ['You', 'Hello there'],
-    ['A-Gent', 'Hi, how can I help?'],
   ]);
   assert.deepEqual(speaks, ['avatar-start', 'avatar-end']);
 });
@@ -485,6 +484,8 @@ test('docs cover External Client App, consent, no-BAA, and the pending retention
   assert.match(proposal, /workspace-admin toggle/i);
   assert.match(proposal, /Save this conversation to \{Contact name\}/);
   assert.match(proposal, /LiveAvatar \/ HeyGen/);
+  assert.match(proposal, /Manus LLM proxy/);
+  assert.match(proposal, /Claude Haiku/);
   assert.match(proposal, /no BAA/i);
   assert.match(proposal, /health information/i);
   assert.match(proposal, /length-capped|length cap/i);
@@ -501,4 +502,18 @@ test('docs cover External Client App, consent, no-BAA, and the pending retention
   const migration = readFileSync(join(ROOT, 'migrations/README.md'), 'utf8');
   assert.match(migration, /Apply the migration/);
   assert.match(migration, /Mark's approval/);
+});
+
+
+test('VOICE_CHAT_ENABLED is off: Mute is hidden, mic is not required, and the panel does not call /api/concierge', () => {
+  assert.equal(VOICE_CHAT_ENABLED, false);
+  const panel = readFileSync(join(ROOT, 'avatar-side-panel/sidepanel.js'), 'utf8');
+  const bg = readFileSync(join(ROOT, 'avatar-side-panel/background.js'), 'utf8');
+  assert.ok(panel.includes('VOICE_CHAT_ENABLED ?'));
+  assert.ok(panel.includes('if (VOICE_CHAT_ENABLED)'));
+  assert.doesNotMatch(bg, /\/api\/concierge/);
+  assert.match(bg, /\/api\/avatar-chat/);
+  assert.doesNotMatch(panel, /AVATAR_CONCIERGE/);
+  const live = readFileSync(join(ROOT, 'avatar-side-panel/live-session.js'), 'utf8');
+  assert.doesNotMatch(live, /on\(AgentEvents\.AVATAR_TRANSCRIPTION/);
 });

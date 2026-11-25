@@ -6,7 +6,7 @@
  * only; they are never written to storage, disk, or the server.
  */
 
-import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS } from './config.js';
+import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS, VOICE_CHAT_ENABLED } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
 import { stateCopy, formatDuration, tbd } from './copy.js';
 import { loadSdkThenMint, createLiveSession, startAndAttach, setMuted, askAGent, bindTranscriptEvents, createSessionEnder } from './live-session.js';
@@ -185,13 +185,15 @@ async function startSession() {
   state.sessionEnder.reset();
   render();
 
-  const mic = await ensureMicAccess({
-    openPermissionPage: () => send('OPEN_MIC_PERMISSION'),
-  });
-  if (!mic.ok) {
-    state.name = 'mic-needed';
-    render();
-    return;
+  if (VOICE_CHAT_ENABLED) {
+    const mic = await ensureMicAccess({
+      openPermissionPage: () => send('OPEN_MIC_PERMISSION'),
+    });
+    if (!mic.ok) {
+      state.name = 'mic-needed';
+      render();
+      return;
+    }
   }
 
   let minted;
@@ -235,7 +237,7 @@ async function startSession() {
     state.muted = false;
     // voiceChat is off, matching agent.html: A-Gent's concierge answers, not LiveAvatar's AI.
     const session = createLiveSession(started.sdk, res.data.session_token, {
-      voiceChat: false,
+      voiceChat: VOICE_CHAT_ENABLED,
       apiUrl: LIVEAVATAR_API_URL,
     });
     state.liveSession = session;
@@ -320,8 +322,11 @@ async function onAsk() {
       slug: DEFAULT_SLUG,
       session: state.liveSession,
       askConcierge: async (body) => {
-        const res = await send('AVATAR_CONCIERGE', body);
-        if (!res.ok) throw new Error(res.data?.error || 'concierge_failed');
+        const res = await send('AVATAR_CHAT', {
+          session_row: state.sessionRow,
+          messages: body.messages,
+        });
+        if (!res.ok) throw new Error(res.data?.error || 'avatar_chat_failed');
         return res.data?.reply;
       },
     });
@@ -392,7 +397,7 @@ function footerHtml(copy) {
         <button class="btn sm ghost" id="ask-btn" type="button" aria-label="Ask">${icon('ask', { hidden: true })}</button>
       </div>
       <div class="ctrls">
-        <button class="btn sec" id="mute-btn" type="button" aria-pressed="${state.muted ? 'true' : 'false'}">${icon(muteIcon)}${esc(muteLabel)}</button>
+        ${VOICE_CHAT_ENABLED ? `<button class="btn sec" id="mute-btn" type="button" aria-pressed="${state.muted ? 'true' : 'false'}">${icon(muteIcon)}${esc(muteLabel)}</button>` : ''}
         <div class="timer grow" id="timer" role="timer" aria-label="Time left">${icon('clock', { hidden: true })}${formatDuration(left)}</div>
         <span class="sr-only" id="timer-announce" role="status" aria-live="polite"></span>
         <button class="btn danger" id="end-btn" type="button">${icon('end')}End</button>

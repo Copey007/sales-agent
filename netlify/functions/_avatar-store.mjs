@@ -202,7 +202,7 @@ export async function cancelReservation(id) {
 export async function getSession(id) {
   if (!id) return null;
   const res = await rest(
-    `avatar_sessions?id=eq.${encodeURIComponent(id)}&select=id,status,started_at,duration_seconds,liveavatar_session_id,last_heartbeat&limit=1`
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&select=id,status,started_at,duration_seconds,liveavatar_session_id,last_heartbeat,agent_slug,tenant_id&limit=1`
   );
   if (!res.ok) throw new Error(`getSession failed: ${res.status} ${await res.text()}`);
   const rows = await res.json();

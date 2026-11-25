@@ -20,3 +20,6 @@ export const LIVEAVATAR_API_URL = 'https://api.liveavatar.com';
  * Checkout is design-only and never opens a real billing page or asks for a card.
  */
 export const PREVIEW_ADMIN_CREDITS = false;
+
+/** LiveAvatar voiceChat is off: the panel is type-only and uses /api/avatar-chat. */
+export const VOICE_CHAT_ENABLED = false;

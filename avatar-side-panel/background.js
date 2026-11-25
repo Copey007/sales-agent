@@ -82,14 +82,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: { session_row: msg.session_row, event: 'end' },
           keepalive: true,
         });
-      case 'AVATAR_CONCIERGE':
-        return api('/api/concierge', {
+      case 'AVATAR_CHAT':
+        return api('/api/avatar-chat', {
           method: 'POST',
           body: {
-            action: 'chat',
-            slug: msg.slug || DEFAULT_SLUG,
+            session_row: msg.session_row,
             messages: msg.messages || [],
-            speak: false,
           },
         });
       case 'OPEN_MIC_PERMISSION': {
