@@ -193,7 +193,7 @@
     let presenting = false, presentIdx = 0, deckStarted = false, lastNarrate = false;
     let curStep = -1;   // active Content Journey step index (-1 = none)
     let pendingVideo = false;   // a clip waiting to play until the avatar's intro finishes
-    let sessionRow = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
+    let sessionRow = null, liveavatarSessionId = null, startedAt = 0, keepAliveTimer = null, heartbeatTimer = null, readyTimeout = null;
     let messages = [];
 
     // ─── Load per-tenant config + theme the page ─────────────────────────
@@ -236,6 +236,7 @@
           throw new Error(msg);
         }
         sessionRow = data.session_row;
+        liveavatarSessionId = data.session_id || null;
         session = new LiveAvatarSession(data.session_token, { voiceChat: false, apiUrl: 'https://api.liveavatar.com' });
 
         // The video/audio tracks only exist after the stream-ready event —
@@ -295,11 +296,10 @@
       const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Conversation';
     }
 
-    window.endSession = async function () {
-      await meter('end');
-      try { await session?.stop(); } catch {}
+    function finishUi() {
+      try { session?.stop(); } catch {}
       clearInterval(keepAliveTimer); clearInterval(heartbeatTimer);
-      started = false; session = null; sessionRow = null; messages = [];
+      started = false; session = null; sessionRow = null; liveavatarSessionId = null; messages = [];
       $('stage').classList.remove('live'); $('status').style.display = 'none';
       $('dock').style.display = 'none'; $('caption').style.display = 'none';
       $('chips').innerHTML = ''; $('messages').innerHTML = ''; toggleDrawer(false); hideSlide();
@@ -307,19 +307,38 @@
       o.querySelector('h1').textContent = 'Thanks for chatting!';
       o.querySelector('p').textContent = 'You can start a new conversation anytime.';
       const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Again';
+    }
+
+    window.endSession = async function () {
+      await meter('end');
+      finishUi();
     };
 
-    // report running/final duration for metering + freeing the seat
+    // report running/final duration for metering + freeing the seat.
+    // The server ignores any client session id and computes duration itself.
     function meter(event) {
       if (!sessionRow) return;
       const duration_seconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
-      const payload = JSON.stringify({ session_row: sessionRow, duration_seconds, event });
+      const payload = JSON.stringify({
+        session_row: sessionRow,
+        duration_seconds,
+        event,
+      });
       if (event === 'end' && navigator.sendBeacon) {
         navigator.sendBeacon('/api/avatar-session-end', new Blob([payload], { type: 'application/json' }));
         return Promise.resolve();
       }
-      return fetch('/api/avatar-session-end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload }).catch(() => {});
+      return fetch('/api/avatar-session-end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
+        .then((r) => r.json().catch(() => ({})))
+        .then((body) => {
+          if (body && (body.event === 'stopped' || body.event === 'max_duration') && started) {
+            finishUi();
+          }
+          return body;
+        })
+        .catch(() => {});
     }
+    window.addEventListener('pagehide', () => { if (started) meter('end'); });
     window.addEventListener('beforeunload', () => { if (started) meter('end'); });
 
     // ─── Speaking (FULL mode: avatar speaks text in its own voice) ───────

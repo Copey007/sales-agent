@@ -19,7 +19,7 @@
   schedule = "*/30 * * * *"
 
 [functions."avatar-reaper"]
-  schedule = "*/5 * * * *"
+  schedule = "* * * * *"
 
 # Hosted per-tenant avatar pages: /a/<slug> -> agent.html?slug=<slug>
 [[redirects]]

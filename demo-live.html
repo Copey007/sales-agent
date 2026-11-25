@@ -140,7 +140,11 @@
     let speaking = false;
     let speakerOn = true;
     let keepAliveTimer = null;
+    let heartbeatTimer = null;
     let messages = [];
+    let sessionRow = null;
+    let liveavatarSessionId = null;
+    let startedAt = 0;
 
     // ─── Session lifecycle ──────────────────────────────────────────────
     window.startSession = async function () {
@@ -158,12 +162,15 @@
         const data = await res.json();
         if (!res.ok || !data.session_token) throw new Error(data.error || 'Could not start session');
 
+        sessionRow = data.session_row || null;
+        liveavatarSessionId = data.session_id || null;
         session = new LiveAvatarSession(data.session_token, {});
         await session.start();
         try { session.attach(video); } catch (e) { console.warn('attach failed', e); }
         video.muted = !speakerOn;
 
         started = true;
+        startedAt = Date.now();
         $('overlay').style.display = 'none';
         $('stage').classList.add('live');
         $('status').style.display = 'flex';
@@ -171,6 +178,7 @@
         $('input').focus();
 
         keepAliveTimer = setInterval(() => { try { session.keepAlive(); } catch {} }, 30000);
+        heartbeatTimer = setInterval(() => meter('heartbeat'), 20000);
 
         addMsg('bot', GREETING);
         await speak(GREETING);
@@ -182,10 +190,10 @@
       }
     };
 
-    window.endSession = async function () {
-      try { await session?.stop(); } catch {}
-      clearInterval(keepAliveTimer);
-      started = false; session = null; messages = [];
+    function finishUi() {
+      try { session?.stop(); } catch {}
+      clearInterval(keepAliveTimer); clearInterval(heartbeatTimer);
+      started = false; session = null; sessionRow = null; liveavatarSessionId = null; messages = [];
       $('stage').classList.remove('live');
       $('status').style.display = 'none';
       $('dock').style.display = 'none';
@@ -198,6 +206,36 @@
       o.querySelector('h1').textContent = 'Thanks for chatting!';
       o.querySelector('p').textContent = 'You can start a new conversation anytime.';
       const b = $('startBtn'); b.disabled = false; b.textContent = '▶ Start Again';
+    }
+
+    function meter(event) {
+      if (!sessionRow) return;
+      const duration_seconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+      const payload = JSON.stringify({
+        session_row: sessionRow,
+        duration_seconds,
+        event,
+      });
+      if (event === 'end' && navigator.sendBeacon) {
+        navigator.sendBeacon('/api/avatar-session-end', new Blob([payload], { type: 'application/json' }));
+        return Promise.resolve();
+      }
+      return fetch('/api/avatar-session-end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
+        .then((r) => r.json().catch(() => ({})))
+        .then((body) => {
+          if (body && (body.event === 'stopped' || body.event === 'max_duration') && started) {
+            finishUi();
+          }
+          return body;
+        })
+        .catch(() => {});
+    }
+    window.addEventListener('pagehide', () => { if (started) meter('end'); });
+    window.addEventListener('beforeunload', () => { if (started) meter('end'); });
+
+    window.endSession = async function () {
+      await meter('end');
+      finishUi();
     };
 
     // ─── Speaking (FULL mode: avatar speaks text in its own voice) ───────

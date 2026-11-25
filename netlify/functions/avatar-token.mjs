@@ -6,28 +6,34 @@
  * server-side.
  *
  * POST /api/avatar-token  { slug }
- *   → { session_token, session_id, session_row, mode }
+ *   → { session_token, session_id, session_row, mode, max_session_seconds }
  *
  * POST-only: GET (and any non-POST method other than an OPTIONS preflight)
  * returns 405 with Allow: POST and never calls HeyGen / LiveAvatar.
  *
- * Guardrails (this is what makes it safe to sell):
- *   - per-agent max_concurrent cap            (no oversubscription)
- *   - per-agent monthly_minute_cap            (usage billing ceiling)
- *   - per-IP rate limit                       (bots can't burn paid minutes)
- *   - one session row per start               (concurrency + metering source)
- *   - NO "stop all sessions" (that was a self-DoS at scale)
+ * Guardrails:
+ *   - reserve a pending seat before minting so concurrent requests cannot
+ *     race past max_concurrent
+ *   - platform + per-agent monthly minute cap (usage billing ceiling)
+ *   - caps fail closed: a usage-store error returns 503 and does not mint
+ *   - per-IP rate limit, using only the Netlify connection IP
+ *   - token request includes max_session_duration so LiveAvatar enforces the cap
+ *   - if the row write fails after mint, stop the session and return 503
  *
  * Env: LIVEAVATAR_API_KEY (shared platform key; per-tenant keys come later)
  */
 
 import {
   getAgentBySlug,
-  countActiveSessions,
   monthlyUsageSeconds,
   recentSessionCountByIp,
   createSession,
+  attachLiveAvatarSession,
+  cancelReservation,
+  listSeatHolders,
 } from './_avatar-store.mjs';
+import { getAvatarCaps } from './_avatar-caps.mjs';
+import { stopLiveAvatarSession } from './avatar-reaper.mjs';
 import { withCors } from './_auth.mjs';
 
 const cors = {
@@ -41,10 +47,26 @@ const json = (b, s = 200) =>
 const API_URL = 'https://api.liveavatar.com';
 const IP_RATE_WINDOW_SECONDS = 60;
 const IP_RATE_MAX = 5; // ≤5 new sessions per IP per minute
+const DEFAULT_MAX_CONCURRENT = 3;
 
 function clientIp(req) {
-  const xf = req.headers.get('x-forwarded-for') || req.headers.get('x-nf-client-connection-ip') || '';
-  return xf.split(',')[0].trim() || null;
+  // x-forwarded-for is spoofable on this unauthenticated path. Use only the
+  // connection IP Netlify sets itself.
+  const raw = req.headers.get('x-nf-client-connection-ip') || '';
+  return raw.split(',')[0].trim() || null;
+}
+
+async function cleanup(apiKey, reserved, mintedSessionId, reason = 'ZOMBIE_SESSION_REAP') {
+  if (mintedSessionId && apiKey) {
+    try {
+      await stopLiveAvatarSession(apiKey, mintedSessionId, { reason });
+    } catch (err) {
+      console.error('[avatar-token] minted session cleanup stop failed:', err.message);
+    }
+  }
+  if (reserved?.id) {
+    try { await cancelReservation(reserved.id); } catch { /* best effort */ }
+  }
 }
 
 const __handler = async (req) => {
@@ -73,39 +95,61 @@ const __handler = async (req) => {
   if (!agent) return json({ error: 'agent_not_found', slug }, 404);
   if (agent.status !== 'active') return json({ error: 'agent_unavailable', status: agent.status }, 403);
 
-  // ── Guardrails ────────────────────────────────────────────────────────────
+  const caps = getAvatarCaps(agent);
+  const maxConcurrent = Number.isFinite(Number(agent.max_concurrent)) && Number(agent.max_concurrent) > 0
+    ? Math.floor(Number(agent.max_concurrent))
+    : DEFAULT_MAX_CONCURRENT;
+
+  let reserved = null;
+  let mintedSessionId = null;
+
   try {
     if (await recentSessionCountByIp(ip, IP_RATE_WINDOW_SECONDS) >= IP_RATE_MAX) {
       return json({ error: 'rate_limited', retry_after: IP_RATE_WINDOW_SECONDS }, 429);
     }
-    const active = await countActiveSessions(slug);
-    if (active >= (agent.max_concurrent ?? 3)) {
-      return json({ error: 'at_capacity', message: 'All live slots are busy. Please try again shortly.' }, 503);
+    const usedMin = (await monthlyUsageSeconds(slug)) / 60;
+    if (usedMin >= caps.monthlyMinuteCap) {
+      return json({ error: 'quota_exceeded', message: 'This agent has reached its monthly limit.' }, 402);
     }
-    if (agent.monthly_minute_cap != null) {
-      const usedMin = (await monthlyUsageSeconds(slug)) / 60;
-      if (usedMin >= agent.monthly_minute_cap) {
-        return json({ error: 'quota_exceeded', message: 'This agent has reached its monthly limit.' }, 402);
-      }
+
+    // Reserve a seat before minting so concurrent requests cannot all
+    // pass a check-then-insert race and start more than max_concurrent sessions.
+    reserved = await createSession({ slug, tenantId: agent.tenant_id || null, ip, status: 'pending' });
+    if (!reserved?.id) {
+      return json({ error: 'usage_store_unavailable' }, 503);
+    }
+    const seats = await listSeatHolders(slug);
+    const rank = seats.findIndex((s) => s.id === reserved.id);
+    if (rank === -1 || rank >= maxConcurrent) {
+      await cancelReservation(reserved.id);
+      reserved = null;
+      return json({ error: 'at_capacity', message: 'All live slots are busy. Please try again shortly.', max_concurrent: maxConcurrent }, 503);
     }
   } catch (err) {
-    // Guardrail checks must not hard-fail the product if the table is briefly
-    // unavailable — log and continue (fail-open on metering, not on auth).
-    console.warn('[avatar-token] guardrail check degraded:', err.message);
+    console.error('[avatar-token] guardrail or reservation failed:', err.message);
+    if (reserved?.id) {
+      try { await cancelReservation(reserved.id); } catch { /* best effort */ }
+    }
+    return json({ error: 'usage_store_unavailable' }, 503);
   }
 
-  // ── Mint the LiveAvatar session token ──────────────────────────────────────
   // FULL mode requires an avatar_persona (voice). We drive our own concierge
   // brain via repeat(text), so we set the voice but omit LiveAvatar's context_id.
   // LITE mode needs only the avatar_id (caller supplies audio via repeatAudio).
   const mode = (agent.mode || 'FULL').toUpperCase();
-  const tokenBody = { mode, avatar_id: agent.avatar_id, is_sandbox: false };
+  const tokenBody = {
+    mode,
+    avatar_id: agent.avatar_id,
+    is_sandbox: false,
+    max_session_duration: caps.maxSessionSeconds,
+  };
   if (mode === 'FULL') {
     if (!agent.voice_id) return json({ error: 'agent_misconfigured', detail: 'FULL mode requires voice_id' }, 500);
     tokenBody.avatar_persona = { voice_id: agent.voice_id, language: 'en' };
   } else {
     tokenBody.video_settings = { quality: 'high', encoding: 'H264' };
   }
+
   try {
     const res = await fetch(`${API_URL}/v1/sessions/token`, {
       method: 'POST',
@@ -114,28 +158,42 @@ const __handler = async (req) => {
     });
     if (!res.ok) {
       const err = await res.text();
+      await cleanup(apiKey, reserved, null);
+      reserved = null;
       return json({ error: `token_creation_failed: ${res.status} ${err}` }, 502);
     }
     const data = await res.json();
     const sessionToken = data.data.session_token;
-    const sessionId = data.data.session_id;
+    mintedSessionId = data.data.session_id;
 
-    // Log the session (concurrency seat + metering anchor)
-    const row = await createSession({
-      slug,
-      tenantId: agent.tenant_id || null,
-      liveavatarSessionId: sessionId,
-      ip,
-    });
+    let row;
+    try {
+      row = await attachLiveAvatarSession(reserved.id, mintedSessionId);
+    } catch (err) {
+      console.error('[avatar-token] attach failed after mint:', err.message);
+      await cleanup(apiKey, reserved, mintedSessionId);
+      reserved = null;
+      mintedSessionId = null;
+      return json({ error: 'usage_store_unavailable' }, 503);
+    }
+    if (!row?.id) {
+      await cleanup(apiKey, reserved, mintedSessionId);
+      reserved = null;
+      mintedSessionId = null;
+      return json({ error: 'usage_store_unavailable' }, 503);
+    }
 
     return json({
       session_token: sessionToken,
-      session_id: sessionId,
-      session_row: row?.id || null,
+      session_id: mintedSessionId,
+      session_row: row.id,
       mode: agent.mode || 'FULL',
+      max_session_seconds: caps.maxSessionSeconds,
     });
   } catch (err) {
     console.error('[avatar-token]', err.message);
+    await cleanup(apiKey, reserved, mintedSessionId);
+    if (mintedSessionId) return json({ error: 'usage_store_unavailable' }, 503);
     return json({ error: 'internal_error' }, 500);
   }
 };

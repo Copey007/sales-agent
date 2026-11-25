@@ -67,10 +67,20 @@ export function toPublicConfig(agent) {
 
 export async function countActiveSessions(slug) {
   const res = await rest(
-    `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=eq.active&select=id&limit=1000`
+    `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=in.(active,pending)&select=id&limit=1000`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`countActiveSessions failed: ${res.status} ${await res.text()}`);
   return (await res.json()).length;
+}
+
+/** Active + pending seats for a slug, oldest reservation first. */
+export async function listSeatHolders(slug) {
+  const res = await rest(
+    `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&status=in.(active,pending)` +
+    `&select=id,status,created_at,started_at&order=created_at.asc,id.asc&limit=1000`
+  );
+  if (!res.ok) throw new Error(`listSeatHolders failed: ${res.status} ${await res.text()}`);
+  return await res.json();
 }
 
 /** Total session-seconds this calendar month for the agent (billing/cap basis). */
@@ -80,7 +90,7 @@ export async function monthlyUsageSeconds(slug) {
   const res = await rest(
     `avatar_sessions?agent_slug=eq.${encodeURIComponent(slug)}&started_at=gte.${monthStart}&select=duration_seconds&limit=100000`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`monthlyUsageSeconds failed: ${res.status} ${await res.text()}`);
   const rows = await res.json();
   return rows.reduce((s, r) => s + (r.duration_seconds || 0), 0);
 }
@@ -92,13 +102,13 @@ export async function recentSessionCountByIp(ip, seconds = 60) {
   const res = await rest(
     `avatar_sessions?ip=eq.${encodeURIComponent(ip)}&created_at=gte.${since}&select=id&limit=100`
   );
-  if (!res.ok) return 0;
+  if (!res.ok) throw new Error(`recentSessionCountByIp failed: ${res.status} ${await res.text()}`);
   return (await res.json()).length;
 }
 
 // ─── Session lifecycle ──────────────────────────────────────────────────────
 
-export async function createSession({ slug, tenantId = null, liveavatarSessionId = null, ip = null }) {
+export async function createSession({ slug, tenantId = null, liveavatarSessionId = null, ip = null, status = 'pending' }) {
   const res = await rest('avatar_sessions', {
     method: 'POST',
     headers: { Prefer: 'return=representation' },
@@ -107,28 +117,76 @@ export async function createSession({ slug, tenantId = null, liveavatarSessionId
       tenant_id: tenantId,
       liveavatar_session_id: liveavatarSessionId,
       ip,
-      status: 'active',
+      status,
     }),
   });
-  if (!res.ok) {
-    console.warn('[avatar-store] createSession failed:', res.status, await res.text());
-    return null;
-  }
+  if (!res.ok) throw new Error(`createSession failed: ${res.status} ${await res.text()}`);
   return (await res.json())[0];
+}
+
+export async function attachLiveAvatarSession(id, liveavatarSessionId) {
+  if (!id) throw new Error('attachLiveAvatarSession: id required');
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&status=in.(pending,active)`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        liveavatar_session_id: liveavatarSessionId,
+        status: 'active',
+        last_heartbeat: new Date().toISOString(),
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`attachLiveAvatarSession failed: ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  return rows[0] || null;
+}
+
+export async function cancelReservation(id) {
+  if (!id) return null;
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&status=eq.pending`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        status: 'cancelled',
+        duration_seconds: 0,
+        ended_at: new Date().toISOString(),
+      }),
+    },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows[0] || null;
+}
+
+export async function getSession(id) {
+  if (!id) return null;
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&select=id,status,started_at,duration_seconds,liveavatar_session_id,last_heartbeat&limit=1`
+  );
+  if (!res.ok) throw new Error(`getSession failed: ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  return rows[0] || null;
 }
 
 export async function endSession({ id, durationSeconds = 0, status = 'ended' }) {
   if (!id) return null;
-  const res = await rest(`avatar_sessions?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({
-      status,
-      duration_seconds: Math.max(0, Math.round(durationSeconds)),
-      ended_at: new Date().toISOString(),
-      last_heartbeat: new Date().toISOString(),
-    }),
-  });
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&status=in.(active,pending)`,
+    {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        status,
+        duration_seconds: Math.max(0, Math.round(durationSeconds)),
+        ended_at: new Date().toISOString(),
+        last_heartbeat: new Date().toISOString(),
+      }),
+    },
+  );
   if (!res.ok) return null;
   return (await res.json())[0];
 }
@@ -137,10 +195,13 @@ export async function heartbeat({ id, durationSeconds = null }) {
   if (!id) return null;
   const patch = { last_heartbeat: new Date().toISOString() };
   if (durationSeconds != null) patch.duration_seconds = Math.max(0, Math.round(durationSeconds));
-  const res = await rest(`avatar_sessions?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(patch),
-  });
+  const res = await rest(
+    `avatar_sessions?id=eq.${encodeURIComponent(id)}&status=eq.active`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    },
+  );
   return res.ok;
 }
 
@@ -148,33 +209,22 @@ export async function heartbeat({ id, durationSeconds = null }) {
  * Active sessions that exceeded the hard cap or went silent (no heartbeat).
  * Includes liveavatar_session_id so the reaper can stop the remote session.
  */
-export async function listStaleSessions({ maxSessionMinutes = 30, heartbeatTimeoutMinutes = 3 } = {}) {
-  const hardCutoff = new Date(Date.now() - maxSessionMinutes * 60000).toISOString();
-  const idleCutoff = new Date(Date.now() - heartbeatTimeoutMinutes * 60000).toISOString();
+export async function listStaleSessions({
+  maxSessionSeconds = 180,
+  heartbeatTimeoutSeconds = 60,
+  // backwards-compatible aliases
+  maxSessionMinutes,
+  heartbeatTimeoutMinutes,
+} = {}) {
+  const hardSecs = maxSessionMinutes != null ? maxSessionMinutes * 60 : maxSessionSeconds;
+  const idleSecs = heartbeatTimeoutMinutes != null ? heartbeatTimeoutMinutes * 60 : heartbeatTimeoutSeconds;
+  const hardCutoff = new Date(Date.now() - hardSecs * 1000).toISOString();
+  const idleCutoff = new Date(Date.now() - idleSecs * 1000).toISOString();
   // active AND (started before hardCutoff OR last_heartbeat before idleCutoff)
   const filter =
-    `status=eq.active&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
-    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id`;
+    `status=in.(active,pending)&or=(started_at.lt.${hardCutoff},last_heartbeat.lt.${idleCutoff})` +
+    `&select=id,started_at,last_heartbeat,duration_seconds,liveavatar_session_id,status`;
   const res = await rest(`avatar_sessions?${filter}&limit=500`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`listStaleSessions failed: ${res.status} ${await res.text()}`);
   return await res.json();
-}
-
-/**
- * Close sessions that are still 'active' but exceeded the hard cap or went
- * silent (no heartbeat). Prevents abandoned tabs from holding a concurrency
- * seat or silently accruing cost. Returns the number reaped.
- * Local rows only — the reaper stops LiveAvatar sessions first.
- */
-export async function reapStaleSessions(opts = {}) {
-  const stale = await listStaleSessions(opts);
-  let reaped = 0;
-  for (const s of stale) {
-    // best-effort duration: prefer recorded duration, else elapsed wall time
-    const elapsed = (Date.now() - new Date(s.started_at).getTime()) / 1000;
-    const dur = Math.max(s.duration_seconds || 0, 0) || elapsed;
-    const ok = await endSession({ id: s.id, durationSeconds: dur, status: 'reaped' });
-    if (ok) reaped++;
-  }
-  return reaped;
 }
