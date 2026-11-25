@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resetFetch, route, req, calls, SB } from './helpers/env.mjs';
 import { isPublicConciergeSlug, MAX_CHAT_CHARS } from '../netlify/functions/_chat-input.mjs';
+import { normalizeLlmApiBase, llmResponseShape, requireNonEmptyLlmText, isLlmEmptyReplyError } from '../netlify/functions/_llm.mjs';
 
 process.env.OPENAI_API_KEY = 'test-llm-key';
 
@@ -43,7 +44,7 @@ beforeEach(() => {
   leadRate.store = memoryLeadRateStore();
 });
 
-function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happy to help. What brings you here?', existingContacts = [] } = {}) {
+function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happy to help. What brings you here?', existingContacts = [], llmResponse } = {}) {
   const llmBodies = [];
   route(`${SB}/rest/v1/avatar_agents`, (url) => {
     const m = /slug=eq\.([^&]+)/.exec(url);
@@ -53,6 +54,7 @@ function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happ
   });
   route('/chat/completions', (_u, init) => {
     llmBodies.push(JSON.parse(init.body || '{}'));
+    if (llmResponse) return { body: llmResponse };
     return { body: { choices: [{ message: { content: llm } }], model: 'claude-haiku-4-5' } };
   });
   route(`${SB}/rest/v1/agent_memory`, () => ({ body: [{ id: 'm1' }] }));
@@ -386,4 +388,121 @@ test('x-forwarded-for is ignored for the lead-capture IP limit', async () => {
   }, { 'x-nf-client-connection-ip': '203.0.113.11', 'x-forwarded-for': '198.51.100.1' });
   assert.equal(third.status, 200);
   assert.equal(contactPosts().length, 2);
+});
+
+test('an agent.html-shaped demo chat with mocked non-empty LLM text returns 200 and that text', async () => {
+  setup({ llm: 'A-Gent finds buying signals and runs outbound for you. What team are you on?' });
+  const res = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: 'Hi, what does A-Gent do?' }],
+    speak: false,
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(typeof body.reply, 'string');
+  assert.ok(body.reply.trim().length > 0);
+  assert.equal(body.reply, 'A-Gent finds buying signals and runs outbound for you. What team are you on?');
+  // agent.html still treats a missing or empty reply as the friendly fallback, including a 502 body.
+  const agentHtml = readFileSync(join(ROOT, 'agent.html'), 'utf8');
+  assert.match(agentHtml, /data\.reply \|\| "Sorry, I didn't catch that/);
+});
+
+test('empty or whitespace LLM content returns 502 llm_empty_reply and the log has no secrets', async () => {
+  const warns = [];
+  const orig = console.warn;
+  console.warn = (...args) => {
+    warns.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  };
+  try {
+    for (const llm of ['', '   ', null]) {
+      setup({
+        llm,
+        llmResponse: {
+          id: 'cmpl-test',
+          choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: llm } }],
+          model: 'claude-haiku-4-5',
+          usage: { prompt_tokens: 12, completion_tokens: 0, total_tokens: 12 },
+          api_key: 'sk-test-secret-should-not-appear',
+          content: 'SECRET_SHOULD_NOT_LOG',
+        },
+      });
+      const res = await post({
+        action: 'chat',
+        slug: 'demo',
+        messages: [{ role: 'user', content: 'Hi, what does A-Gent do?' }],
+        speak: false,
+      });
+      assert.equal(res.status, 502, `status for ${JSON.stringify(llm)}`);
+      const body = await res.json();
+      assert.equal(body.error, 'llm_empty_reply');
+      assert.equal(body.reply, undefined);
+    }
+  } finally {
+    console.warn = orig;
+  }
+  const blob = warns.join('\n');
+  assert.match(blob, /empty_reply/);
+  assert.match(blob, /finish_reason/);
+  assert.equal(blob.includes('sk-test-secret-should-not-appear'), false);
+  assert.equal(blob.includes('SECRET_SHOULD_NOT_LOG'), false);
+  assert.equal(/Bearer\s/i.test(blob), false);
+  assert.equal(/Authorization/i.test(blob), false);
+  assert.equal(blob.includes('test-llm-key'), false);
+  assert.equal(blob.includes('Hi, what does A-Gent do?'), false);
+});
+
+test('llmResponseShape and normalizeLlmApiBase stay redacted and slash-safe', () => {
+  assert.equal(normalizeLlmApiBase('https://api.anthropic.com/v1/'), 'https://api.anthropic.com/v1');
+  assert.equal(normalizeLlmApiBase('https://api.anthropic.com/v1'), 'https://api.anthropic.com/v1');
+  const shape = llmResponseShape({
+    id: 'cmpl-x',
+    choices: [{ finish_reason: 'stop', message: { content: 'SECRET_SHOULD_NOT_LOG' } }],
+    model: 'claude-haiku-4-5',
+    usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    api_key: 'sk-test-secret-should-not-appear',
+  });
+  const dumped = JSON.stringify(shape);
+  assert.deepEqual(shape.keys.sort(), ['api_key', 'choices', 'id', 'model', 'usage'].sort());
+  assert.equal(shape.choices, 1);
+  assert.equal(shape.finish_reason, 'stop');
+  assert.equal(shape.model, 'claude-haiku-4-5');
+  assert.deepEqual(shape.usage, { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 });
+  assert.equal(dumped.includes('SECRET_SHOULD_NOT_LOG'), false);
+  assert.equal(dumped.includes('sk-test-secret-should-not-appear'), false);
+  try {
+    requireNonEmptyLlmText({ content: '  ', shape }, 'test');
+    assert.fail('expected throw');
+  } catch (e) {
+    assert.equal(isLlmEmptyReplyError(e), true);
+  }
+});
+
+test('OPENAI_API_BASE trailing slash is normalized and optional ANTHROPIC_WORKSPACE_ID is forwarded', async () => {
+  const prevBase = process.env.OPENAI_API_BASE;
+  const prevWs = process.env.ANTHROPIC_WORKSPACE_ID;
+  process.env.OPENAI_API_BASE = 'https://api.anthropic.com/v1/';
+  process.env.ANTHROPIC_WORKSPACE_ID = 'ws-test-id';
+  try {
+    setup({ llm: 'Hello from Anthropic compat.' });
+    const res = await post({
+      action: 'chat',
+      slug: 'demo',
+      messages: [{ role: 'user', content: 'Hi' }],
+      speak: false,
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.reply, 'Hello from Anthropic compat.');
+    const llmCall = calls.find((c) => c.url.includes('chat/completions'));
+    assert.ok(llmCall, 'expected a chat/completions call');
+    assert.equal(llmCall.url, 'https://api.anthropic.com/v1/chat/completions');
+    assert.equal(llmCall.headers.get('Authorization'), 'Bearer test-llm-key');
+    assert.equal(llmCall.headers.get('anthropic-workspace-id'), 'ws-test-id');
+  } finally {
+    if (prevBase === undefined) delete process.env.OPENAI_API_BASE;
+    else process.env.OPENAI_API_BASE = prevBase;
+    if (prevWs === undefined) delete process.env.ANTHROPIC_WORKSPACE_ID;
+    else process.env.ANTHROPIC_WORKSPACE_ID = prevWs;
+  }
 });

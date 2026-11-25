@@ -24,6 +24,7 @@ import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
+import { requireNonEmptyLlmText, isLlmEmptyReplyError } from './_llm.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -143,7 +144,17 @@ async function handleStart(body, corsHeaders) {
     maxTokens: 200
   });
 
-  const greeting = greetingResult.content;
+  let greeting;
+  try {
+    greeting = requireNonEmptyLlmText(greetingResult, 'concierge');
+  } catch (e) {
+    if (isLlmEmptyReplyError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_empty_reply' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    throw e;
+  }
 
   // Do not persist visitorInfo or a session transcript to agent_memory.
 
@@ -196,7 +207,17 @@ async function handleChat(body, corsHeaders, req) {
     maxTokens: 300
   });
 
-  const reply = response.content;
+  let reply;
+  try {
+    reply = requireNonEmptyLlmText(response, 'concierge');
+  } catch (e) {
+    if (isLlmEmptyReplyError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_empty_reply' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    throw e;
+  }
 
   // Server-side lead capture from the conversation text only. A client
   // visitorEmail field is ignored. Failures here must not break the chat.
@@ -264,9 +285,21 @@ async function handleQualify(body, corsHeaders, req) {
     maxTokens: 400
   });
 
+  let qualificationText;
+  try {
+    qualificationText = requireNonEmptyLlmText(qualification, 'concierge');
+  } catch (e) {
+    if (isLlmEmptyReplyError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_empty_reply' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    throw e;
+  }
+
   let result;
   try {
-    result = JSON.parse(qualification.content.replace(/```json\s*/gi, '').replace(/```/g, ''));
+    result = JSON.parse(qualificationText.replace(/```json\s*/gi, '').replace(/```/g, ''));
   } catch {
     result = { qualified: false, fit: 'unknown', next_step: 'Continue conversation' };
   }

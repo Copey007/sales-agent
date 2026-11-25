@@ -13,6 +13,8 @@
  * with a single registry that any agent can use.
  */
 
+import { llmResponseShape, normalizeLlmApiBase, llmAuthHeaders } from './_llm.mjs';
+
 // ─── Connector Base ────────────────────────────────────────────────────────────
 
 class Connector {
@@ -311,13 +313,13 @@ function createLLMConnector() {
     model: { type: 'string', description: 'Override default model' }
   }, async ({ messages, temperature = 0.7, maxTokens = 2000, model }) => {
     const apiKey = env('OPENAI_API_KEY');
-    const apiBase = env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1');
+    const apiBase = normalizeLlmApiBase(env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1'));
     const defaultModel = env('LLM_MODEL', 'claude-haiku-4-5');
     if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
     const res = await fetch(`${apiBase}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers: llmAuthHeaders(apiKey),
       body: JSON.stringify({ model: model || defaultModel, messages, temperature, max_tokens: maxTokens })
     });
     if (!res.ok) throw new Error(`LLM error ${res.status}: ${await res.text()}`);
@@ -325,7 +327,8 @@ function createLLMConnector() {
     return {
       content: data.choices?.[0]?.message?.content || '',
       model: data.model,
-      usage: data.usage
+      usage: data.usage,
+      shape: llmResponseShape(data),
     };
   });
 
@@ -334,7 +337,7 @@ function createLLMConnector() {
     model: { type: 'string', default: 'text-embedding-3-small' }
   }, async ({ text, model = 'text-embedding-3-small' }) => {
     const apiKey = env('OPENAI_API_KEY');
-    const apiBase = env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1');
+    const apiBase = normalizeLlmApiBase(env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1'));
     if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
     // Try the proxy first, fall back to OpenAI direct for embeddings
