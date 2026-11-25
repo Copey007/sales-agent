@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS avatar_sessions (
   tenant_id            UUID,
   liveavatar_session_id TEXT,
   ip                   TEXT,
-  status               TEXT NOT NULL DEFAULT 'active',     -- active | ended | reaped
+  status               TEXT NOT NULL DEFAULT 'active',     -- pending | active | ended | reaped | cancelled
   started_at           TIMESTAMPTZ DEFAULT now(),
   ended_at             TIMESTAMPTZ,
   duration_seconds     INTEGER NOT NULL DEFAULT 0,

@@ -28,11 +28,30 @@ function heygenCalls() {
   );
 }
 
-function setupTokenPostMocks() {
+function setupTokenPostMocks({ attach = 'ok' } = {}) {
   resetFetch();
   route(`${SB}/rest/v1/avatar_agents`, () => ({ body: [DEMO_AGENT] }));
-  route(`${SB}/rest/v1/avatar_sessions`, (_url, init) => {
-    if ((init.method || 'GET') === 'POST') return { body: [{ id: 'row-1' }] };
+  let reserved = null;
+  route(`${SB}/rest/v1/avatar_sessions`, (url, init) => {
+    const method = init.method || 'GET';
+    if (method === 'POST') {
+      reserved = {
+        id: 'row-1',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        started_at: new Date().toISOString(),
+      };
+      return { body: [reserved] };
+    }
+    if (method === 'PATCH') {
+      if (attach === 'fail') return { status: 500, body: { error: 'attach failed' } };
+      if (attach === 'empty') return { body: [] };
+      const patch = JSON.parse(init.body || '{}');
+      reserved = { ...(reserved || { id: 'row-1' }), ...patch };
+      return { body: [reserved] };
+    }
+    if (url.includes('select=duration_seconds')) return { body: [] };
+    if (url.includes('status=in.(active,pending)')) return { body: reserved ? [reserved] : [] };
     return { body: [] };
   });
   route(`${LA}/v1/sessions/token`, () => ({
@@ -89,6 +108,7 @@ test('POST /api/avatar-token still mints a token via the mocked LiveAvatar API',
   assert.equal(sent.avatar_id, DEMO_AGENT.avatar_id);
   assert.equal(sent.mode, 'FULL');
   assert.equal(sent.avatar_persona.voice_id, DEMO_AGENT.voice_id);
+  assert.equal(sent.max_session_duration, 180);
   assert.equal(heygenCalls().filter((c) => c.url.includes('api.heygen.com')).length, 0);
 });
 
@@ -125,7 +145,7 @@ test('reaper POSTs /v1/sessions/stop for each stale LiveAvatar session, then clo
   assert.equal(patched.length, 2);
 });
 
-test('reaper still closes the local row when a LiveAvatar stop fails', async () => {
+test('reaper leaves the local row open when a LiveAvatar stop fails so it stays retryable', async () => {
   resetFetch();
   const stale = [
     { id: 'r3', liveavatar_session_id: 'la-bad', started_at: '2020-01-01T00:00:00Z', last_heartbeat: '2020-01-01T00:00:00Z', duration_seconds: 5 },
@@ -141,7 +161,8 @@ test('reaper still closes the local row when a LiveAvatar stop fails', async () 
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.stopped, 0);
-  assert.equal(body.reaped, 1);
-  assert.equal(patched, 1);
+  assert.equal(body.reaped, 0);
+  assert.equal(body.skipped, 1);
+  assert.equal(patched, 0);
   assert.equal(heygenCalls().length, 1);
 });

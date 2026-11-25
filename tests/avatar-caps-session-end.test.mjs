@@ -116,10 +116,38 @@ test('POST /api/avatar-token returns 402 when the platform monthly cap is reache
   assert.equal(heygenCalls().length, 0);
 });
 
-test('POST /api/avatar-token stops the minted LiveAvatar session if the local row cannot be written', async () => {
+test('POST /api/avatar-token does not mint when the reservation insert fails', async () => {
   routeAgents();
   route(`${SB}/rest/v1/avatar_sessions`, (_url, init) => {
     if ((init.method || 'GET') === 'POST') return { status: 500, body: { error: 'insert failed' } };
+    return { body: [] };
+  });
+  route(`${LA}/v1/sessions/token`, () => ({
+    body: { data: { session_token: 'tok_tmp', session_id: 'sess-untracked' } },
+  }));
+  const res = await token(req('https://aisdr.example.test/api/avatar-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { slug: 'demo' },
+  }));
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.error, 'usage_store_unavailable');
+  assert.equal(heygenCalls().length, 0);
+});
+
+test('POST /api/avatar-token stops the minted LiveAvatar session and returns 503 if the row attach throws', async () => {
+  let reserved = null;
+  routeAgents();
+  route(`${SB}/rest/v1/avatar_sessions`, (url, init) => {
+    const method = init.method || 'GET';
+    if (method === 'POST') {
+      reserved = { id: 'row-1', status: 'pending', created_at: new Date().toISOString(), started_at: new Date().toISOString() };
+      return { body: [reserved] };
+    }
+    if (method === 'PATCH') throw new TypeError('row write failed');
+    if (url.includes('select=duration_seconds')) return { body: [] };
+    if (url.includes('status=in.(active,pending)')) return { body: reserved ? [reserved] : [] };
     return { body: [] };
   });
   route(`${LA}/v1/sessions/token`, () => ({
