@@ -198,8 +198,13 @@ async function handleChat(body, corsHeaders) {
 
   const reply = response.content;
 
-  // Anonymous chat ignores client-supplied visitorEmail. Lead capture stays
-  // on the qualify action, which writes only to the contacts table.
+  // Server-side lead capture from the conversation text only. A client
+  // visitorEmail field is ignored. Failures here must not break the chat.
+  try {
+    await captureLeadFromMessages(messages, { sessionId, slug });
+  } catch (e) {
+    console.warn('[concierge] Lead capture failed:', e.message);
+  }
 
   // Do not write conversation text to agent_memory. Transcripts are not
   // stored server-side for anonymous concierge chats.
@@ -266,28 +271,17 @@ async function handleQualify(body, corsHeaders) {
     result = { qualified: false, fit: 'unknown', next_step: 'Continue conversation' };
   }
 
-  // If qualified with email, capture to CRM
-  if (result.qualified && result.email) {
-    try {
-      const { url, key } = getSupabaseCreds();
-      await fetch(`${url}/rest/v1/contacts`, {
-        method: 'POST',
-        headers: {
-          'apikey': key, 'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json', 'Prefer': 'return=representation'
-        },
-        body: JSON.stringify({
-          email: result.email,
-          name: result.name,
-          company_name: result.company,
-          source: 'signup:concierge'
-        })
-      });
-
-      // Lead capture stays on the contacts table only — no agent_memory copy of PII.
-    } catch (e) {
-      console.warn('[concierge] Lead capture failed:', e.message);
-    }
+  // Capture uses an email extracted from the conversation, never a client field
+  // and never an LLM-invented address that was not in the visitor's messages.
+  try {
+    await captureLeadFromMessages(messages, {
+      sessionId,
+      slug: body.slug,
+      name: result.name,
+      company: result.company,
+    });
+  } catch (e) {
+    console.warn('[concierge] Lead capture failed:', e.message);
   }
 
   return new Response(JSON.stringify(result), {
@@ -297,6 +291,83 @@ async function handleQualify(body, corsHeaders) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
+
+const MAX_EMAIL_LEN = 254;
+const EMAIL_FIND_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const EMAIL_VALID_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+
+/** Lowercase, trim, length-check. Returns null if not a single sane address. */
+export function normalizeEmail(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s || s.length > MAX_EMAIL_LEN) return null;
+  if (!EMAIL_VALID_RE.test(s)) return null;
+  return s;
+}
+
+/** Last valid email found in user (visitor) messages. Ignores assistant text. */
+export function extractVisitorEmail(messages) {
+  let found = null;
+  for (const m of messages || []) {
+    if (m?.role !== 'user') continue;
+    const hits = String(m.content || '').match(EMAIL_FIND_RE) || [];
+    for (const raw of hits) {
+      const normalized = normalizeEmail(raw);
+      if (normalized) found = normalized;
+    }
+  }
+  return found;
+}
+
+/**
+ * Insert a contacts row for an email found in the conversation.
+ * Dedupes by email (and session/agent when a session id is present) so the
+ * same address is not re-submitted. Never writes agent_memory.
+ */
+async function captureLeadFromMessages(messages, { sessionId = null, slug = null, name = null, company = null } = {}) {
+  const email = extractVisitorEmail(messages);
+  if (!email) return { captured: false, reason: 'no_email' };
+
+  const { url, key } = getSupabaseCreds();
+  if (!url || !key) return { captured: false, reason: 'store_unavailable' };
+
+  const headers = {
+    'apikey': key, 'Authorization': `Bearer ${key}`,
+    'Content-Type': 'application/json',
+  };
+
+  const params = new URLSearchParams();
+  params.set('email', `eq.${email}`);
+  params.set('select', 'id,email,source');
+  params.set('limit', '20');
+  const existingRes = await fetch(`${url}/rest/v1/contacts?${params}`, { headers });
+  if (!existingRes.ok) {
+    throw new Error(`contacts lookup failed: ${existingRes.status}`);
+  }
+  const existing = await existingRes.json();
+  // Dedupe by email so the same address is not re-submitted (per session/agent
+  // and globally once it is already on the contacts table).
+  const already = (existing || []).some((row) => normalizeEmail(row.email) === email);
+  if (already) return { captured: false, reason: 'duplicate' };
+  void sessionId;
+  void slug;
+
+  const displayName = name || extractName(messages);
+  const companyName = company || extractCompany(messages);
+  const insertRes = await fetch(`${url}/rest/v1/contacts`, {
+    method: 'POST',
+    headers: { ...headers, 'Prefer': 'return=representation' },
+    body: JSON.stringify({
+      email,
+      name: displayName || null,
+      company_name: companyName || null,
+      source: 'signup:concierge',
+    }),
+  });
+  if (!insertRes.ok) {
+    throw new Error(`contacts insert failed: ${insertRes.status}`);
+  }
+  return { captured: true, email };
+}
 
 function getSupabaseCreds() {
   const url = env('SUPABASE_URL');

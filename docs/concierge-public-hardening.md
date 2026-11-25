@@ -21,3 +21,7 @@ Those writes are removed. Conversation text is not stored server-side for anonym
 ## Out of scope
 
 This change does not add authentication to `/api/concierge`. Tenant members talking to a private agent should use a future authenticated path (the panel uses `/api/avatar-chat` on the week-2 branch). No production deploy or database change is included.
+
+## Server-side lead capture
+
+If a visitor's *user* message contains an email address, the server extracts, lowercases and length-checks it, then inserts a `contacts` row (source `signup:concierge`) after a lookup that skips duplicates. A client `visitorEmail` field is ignored. Capture failures are non-fatal to the chat. Nothing is written to `agent_memory`.

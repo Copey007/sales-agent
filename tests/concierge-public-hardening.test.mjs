@@ -51,7 +51,18 @@ function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happ
     return { body: { choices: [{ message: { content: llm } }], model: 'claude-haiku-4-5' } };
   });
   route(`${SB}/rest/v1/agent_memory`, () => ({ body: [{ id: 'm1' }] }));
-  route(`${SB}/rest/v1/contacts`, () => ({ body: [{ id: 'c1' }] }));
+  const contacts = [];
+  route(`${SB}/rest/v1/contacts`, (url, init) => {
+    const method = (init.method || 'GET').toUpperCase();
+    if (method === 'POST') {
+      const row = { id: `c-${contacts.length + 1}`, ...JSON.parse(init.body || '{}') };
+      contacts.push(row);
+      return { body: [row] };
+    }
+    const m = /email=eq\.([^&]+)/.exec(url);
+    const email = m ? decodeURIComponent(m[1]) : null;
+    return { body: email ? contacts.filter((c) => c.email === email) : contacts };
+  });
   return llmBodies;
 }
 
@@ -60,6 +71,9 @@ const post = (body, headers = {}) =>
 
 function memoryWrites() {
   return calls.filter((c) => c.url.includes('/rest/v1/agent_memory') && (c.method || 'GET').toUpperCase() !== 'GET');
+}
+function contactPosts() {
+  return calls.filter((c) => c.url.includes('/rest/v1/contacts') && (c.method || '').toUpperCase() === 'POST');
 }
 
 function agentLookups() {
@@ -241,5 +255,59 @@ test('an anonymous chat that includes visitorEmail makes zero agent_memory reads
   const src = readFileSync(join(ROOT, 'netlify/functions/concierge.mjs'), 'utf8');
   assert.doesNotMatch(src, /recall\(/);
   assert.doesNotMatch(src, /from '\.\/_supabase-memory\.mjs'/);
+});
+
+test('chat captures a lead from an email in the visitor message, ignoring visitorEmail', async () => {
+  setup();
+  const res = await post({
+    action: 'chat',
+    slug: 'demo',
+    sessionId: 'sess-1',
+    visitorEmail: 'spoofed@evil.example',
+    messages: [{ role: 'user', content: "Hi, I'm Pat at Example, email pat@example.com" }],
+  });
+  assert.equal(res.status, 200);
+  const posts = contactPosts();
+  assert.equal(posts.length, 1);
+  const body = JSON.parse(posts[0].body);
+  assert.equal(body.email, 'pat@example.com');
+  assert.equal(body.source, 'signup:concierge');
+  assert.equal(body.email === 'spoofed@evil.example', false);
+  assert.equal(calls.filter((c) => c.url.includes('/rest/v1/agent_memory')).length, 0);
+});
+
+test('the same email is not re-submitted on a later turn', async () => {
+  setup();
+  const msg = [{ role: 'user', content: 'Reach me at pat@example.com' }];
+  const first = await post({ action: 'chat', slug: 'demo', sessionId: 'sess-1', messages: msg });
+  assert.equal(first.status, 200);
+  assert.equal(contactPosts().length, 1);
+  const second = await post({ action: 'chat', slug: 'demo', sessionId: 'sess-1', messages: msg });
+  assert.equal(second.status, 200);
+  assert.equal(contactPosts().length, 1);
+});
+
+test('a client visitorEmail with no email in the messages is not captured', async () => {
+  setup();
+  const res = await post({
+    action: 'chat',
+    slug: 'a-gent',
+    visitorEmail: 'only-in-client@example.com',
+    messages: [{ role: 'user', content: 'Just browsing, no contact yet.' }],
+  });
+  assert.equal(res.status, 200);
+  assert.equal(contactPosts().length, 0);
+});
+
+test('an oversized or malformed address in a message is not captured', async () => {
+  setup();
+  const huge = `${'a'.repeat(250)}@example.com`;
+  const res = await post({
+    action: 'chat',
+    slug: 'demo',
+    messages: [{ role: 'user', content: `email me at ${huge} or at not-an-email` }],
+  });
+  assert.equal(res.status, 200);
+  assert.equal(contactPosts().length, 0);
 });
 
