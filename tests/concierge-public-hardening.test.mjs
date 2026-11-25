@@ -42,6 +42,7 @@ const PRIVATE_AGENT = {
 beforeEach(() => {
   resetFetch();
   leadRate.store = memoryLeadRateStore();
+  delete process.env.LLM_API_KEY;
 });
 
 function setup({ agents = [PUBLIC_AGENT, DEMO_AGENT, PRIVATE_AGENT], llm = 'Happy to help. What brings you here?', existingContacts = [], llmResponse } = {}) {
@@ -504,5 +505,38 @@ test('OPENAI_API_BASE trailing slash is normalized and optional ANTHROPIC_WORKSP
     else process.env.OPENAI_API_BASE = prevBase;
     if (prevWs === undefined) delete process.env.ANTHROPIC_WORKSPACE_ID;
     else process.env.ANTHROPIC_WORKSPACE_ID = prevWs;
+  }
+});
+
+test('a demo chat uses LLM_API_KEY while speak uses only OPENAI_API_KEY', async () => {
+  const prevLlm = process.env.LLM_API_KEY;
+  const prevOpen = process.env.OPENAI_API_KEY;
+  process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.OPENAI_API_KEY = 'openai-only-test-key';
+  try {
+    setup({ llm: 'Happy to help. What brings you here?' });
+    route('api.openai.com/v1/audio/speech', () => new Response(new Uint8Array([1, 2, 3, 4]), {
+      status: 200,
+      headers: { 'Content-Type': 'audio/mpeg' },
+    }));
+    const res = await post({
+      action: 'chat',
+      slug: 'demo',
+      messages: [{ role: 'user', content: 'Hi' }],
+      speak: true,
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.reply, 'Happy to help. What brings you here?');
+    assert.ok(body.audio && String(body.audio).startsWith('data:audio/mpeg;base64,'));
+    const chatCall = calls.find((c) => c.url.includes('/chat/completions'));
+    const ttsCall = calls.find((c) => c.url.includes('/audio/speech'));
+    assert.equal(chatCall.headers.get('Authorization'), 'Bearer llm-only-test-key');
+    assert.equal(ttsCall.headers.get('Authorization'), 'Bearer openai-only-test-key');
+  } finally {
+    if (prevLlm === undefined) delete process.env.LLM_API_KEY;
+    else process.env.LLM_API_KEY = prevLlm;
+    if (prevOpen === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = prevOpen;
   }
 });
