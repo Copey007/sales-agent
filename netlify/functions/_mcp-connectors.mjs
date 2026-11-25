@@ -13,7 +13,7 @@
  * with a single registry that any agent can use.
  */
 
-import { llmResponseShape, normalizeLlmApiBase, llmAuthHeaders } from './_llm.mjs';
+import { llmResponseShape, normalizeLlmApiBase, llmAuthHeaders, resolveLlmApiKey } from './_llm.mjs';
 
 // ─── Connector Base ────────────────────────────────────────────────────────────
 
@@ -312,10 +312,10 @@ function createLLMConnector() {
     maxTokens: { type: 'number', default: 2000 },
     model: { type: 'string', description: 'Override default model' }
   }, async ({ messages, temperature = 0.7, maxTokens = 2000, model }) => {
-    const apiKey = env('OPENAI_API_KEY');
+    const apiKey = resolveLlmApiKey();
     const apiBase = normalizeLlmApiBase(env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1'));
     const defaultModel = env('LLM_MODEL', 'claude-haiku-4-5');
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set');
+    if (!apiKey) throw new Error('LLM_API_KEY or OPENAI_API_KEY not set');
 
     const res = await fetch(`${apiBase}/chat/completions`, {
       method: 'POST',

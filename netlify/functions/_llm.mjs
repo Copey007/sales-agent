@@ -10,19 +10,35 @@ export function normalizeLlmApiBase(apiBase) {
   return String(apiBase || '').replace(/\/+$/, '');
 }
 
+/** Read a named env var from Netlify.env first, then process.env. Empty is treated as unset. */
+export function readNetlifyOrProcessEnv(name, envSource = process.env) {
+  const fromNetlify = (typeof Netlify !== 'undefined' && Netlify.env?.get?.(name))
+    ? Netlify.env.get(name)
+    : '';
+  return String(fromNetlify || envSource?.[name] || '');
+}
+
+/**
+ * Chat/completions key only. Prefers LLM_API_KEY so a Claude/Anthropic key can
+ * be set without overwriting OPENAI_API_KEY (used by TTS and embeddings).
+ */
+export function resolveLlmApiKey(envSource = process.env) {
+  return readNetlifyOrProcessEnv('LLM_API_KEY', envSource) || readNetlifyOrProcessEnv('OPENAI_API_KEY', envSource);
+}
+
+/** OpenAI-only paths (TTS, embeddings). Ignores LLM_API_KEY. */
+export function resolveOpenAiApiKey(envSource = process.env) {
+  return readNetlifyOrProcessEnv('OPENAI_API_KEY', envSource);
+}
+
 export function getLLMConfig(options = {}) {
-  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_KEY'))
-    ? Netlify.env.get('OPENAI_API_KEY')
-    : (process.env.OPENAI_API_KEY || '');
-  const rawBase = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_BASE'))
-    ? Netlify.env.get('OPENAI_API_BASE')
-    : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
+  const apiKey = resolveLlmApiKey();
+  const rawBase = readNetlifyOrProcessEnv('OPENAI_API_BASE') || 'https://api.manus.im/api/llm-proxy/v1';
   const apiBase = normalizeLlmApiBase(rawBase);
   // Default model: claude-haiku-4-5 for speed (fits within Netlify timeout)
   const model = options.model
-    || ((typeof Netlify !== 'undefined' && Netlify.env?.get('LLM_MODEL'))
-      ? Netlify.env.get('LLM_MODEL')
-      : (process.env.LLM_MODEL || 'claude-haiku-4-5'));
+    || readNetlifyOrProcessEnv('LLM_MODEL')
+    || 'claude-haiku-4-5';
   return { apiKey, apiBase, model };
 }
 
@@ -97,7 +113,7 @@ export async function callLLM(messages, options = {}) {
   const temperature = options.temperature ?? 0.7;
   const maxTokens = options.maxTokens ?? 2000;
 
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  if (!apiKey) throw new Error('LLM_API_KEY or OPENAI_API_KEY not configured');
 
   const response = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
