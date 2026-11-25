@@ -28,11 +28,22 @@ There is no `storage` permission (transcripts are not stored). There is no Gmail
 
 ## What this week includes
 
-- Design states for idle, connecting, live, speaking, thinking, ended, couldn’t start, cool-down / too many starts, monthly cap, session timeout, fail-closed, and not-allowed.
-- “Buy more credits” is a placeholder card only: no billing link, no prices, no hard-coded caps.
-- Captions may stay visible in the panel after End. They live in memory for this page only and are discarded when the panel is closed. Nothing is written to `chrome.storage`, disk, or the server.
+- Design states for idle, connecting, live, speaking, thinking, ended, couldn’t start, cool-down / too many starts, monthly cap, session timeout, fail-closed, not-allowed, the buy-credits placeholders, and Contact your A-Gent admin.
+- Only admins can buy credits. Non-admins see “Contact your A-Gent admin” instead of Buy more credits. The purchase flow is design-only: TBD chips, no prices, no card fields, and no real billing URL. This unpacked build treats the user as a non-admin unless you set `PREVIEW_ADMIN_CREDITS` in `config.js` for a local preview.
+- After End, the transcript can stay visible in the panel (Copy included). It is only in this page’s memory and is discarded when the panel closes. It is not written to `chrome.storage`, disk, or a server. Saving to the CRM record is proposed, not built (see `docs/avatar-transcript-storage-proposal.md`).
 - Gmail draft insertion (`GMAIL_DRAFT_INSERT_ENABLED`) and CRM hooks (`CRM_HOOK_ENABLED`) are off. Week 3 will use the person’s own Gmail signature; that work is not in this PR.
 
-## Allowed sites
+## Allowed sites and URL patterns
 
-See `allowed-sites.js`. The list is the single source of truth and is meant to stay easy to extend (id, label, kind, hosts / hostTest). Launch sites: Gmail, A-Gent CRM, HubSpot, and Salesforce.
+See `allowed-sites.js`. The list is the single source of truth and is meant to stay easy to extend (id, label, kind, hosts / hostTest). Detection uses the `tabs` permission (the tab URL). **Week 2 does not add CRM or Gmail `host_permissions`**, because this PR does not inject into those pages or call their APIs.
+
+Allowed URL patterns (JavaScript allowlist):
+
+| Site | Patterns |
+| --- | --- |
+| Gmail | `mail.google.com` |
+| A-Gent CRM | `crm.a-gent.co` |
+| HubSpot | `app.hubspot.com`, `app-eu1.hubspot.com`, `app-ap1.hubspot.com`, and any `app-<region>.hubspot.com` (`/^app(-[a-z0-9]+)?\.hubspot\.com$/i`). Not `www.hubspot.com`. |
+| Salesforce | `*.lightning.force.com`, `*.my.salesforce.com`, `*.lightning.crmforce.mil`. Not `help.salesforce.com`, `login.salesforce.com`, or the rest of `*.salesforce.com`. |
+
+Proposed **future** `host_permissions` (week 3–4, not in this manifest): `https://mail.google.com/*`, `https://crm.a-gent.co/*`, `https://app.hubspot.com/*`, `https://app-eu1.hubspot.com/*`, `https://app-ap1.hubspot.com/*`, `https://*.lightning.force.com/*`, `https://*.my.salesforce.com/*`.

@@ -1,38 +1,16 @@
 /**
- * Panel copy from the approved design. Cap numbers and reset dates come from
- * the server when available — this file does not hard-code prices or caps
- * in the "Buy more credits" flow.
+ * Panel copy from the revised approved design.
+ *
+ * Cap numbers, pack sizes and prices are drawn as TBD chips until pricing
+ * plans set them — this file does not hard-code prices or caps in the
+ * buy-credits flow. Only admins can buy credits; everyone else gets
+ * "Contact your A-Gent admin".
  */
 
 import { allowedSitesSummary } from './allowed-sites.js';
 
-export const ASK_OWNER = 'your workspace owner';
-
-function fmtReset(iso) {
-  if (!iso) return 'the next reset date';
-  try {
-    const d = new Date(iso);
-    if (!Number.isFinite(d.getTime())) return 'the next reset date';
-    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
-  } catch {
-    return 'the next reset date';
-  }
-}
-
-function fmtMinutes(n) {
-  if (n == null || !Number.isFinite(Number(n))) return 'its';
-  const v = Number(n);
-  return String(Math.round(v) === v ? v : Math.round(v * 10) / 10);
-}
-
-function fmtSessionMax(seconds) {
-  if (seconds == null || !Number.isFinite(Number(seconds))) return 'its time limit';
-  const s = Number(seconds);
-  if (s % 60 === 0) {
-    const m = s / 60;
-    return m === 1 ? '1 minute' : `${m} minutes`;
-  }
-  return s === 1 ? '1 second' : `${s} seconds`;
+export function tbd(label) {
+  return { kind: 'tbd', label: `${label} · TBD` };
 }
 
 export function formatDuration(seconds) {
@@ -42,11 +20,17 @@ export function formatDuration(seconds) {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
-/** Copy and chrome for each panel state. `caps` is optional server status. */
-export function stateCopy(state, { caps = {}, siteHost = '', durationSeconds = 0, retryAfter = 0 } = {}) {
-  const reset = fmtReset(caps.reset_at);
-  const capMin = fmtMinutes(caps.monthly_minute_cap);
-  const sessionMax = fmtSessionMax(caps.max_session_seconds);
+/**
+ * @param {string} state
+ * @param {{ isAdmin?: boolean, siteHost?: string, durationSeconds?: number, retryAfter?: number, turnCount?: number }} [opts]
+ */
+export function stateCopy(state, {
+  isAdmin = false,
+  siteHost = '',
+  durationSeconds = 0,
+  retryAfter = 0,
+  turnCount = 0,
+} = {}) {
   const places = allowedSitesSummary();
 
   switch (state) {
@@ -59,7 +43,7 @@ export function stateCopy(state, { caps = {}, siteHost = '', durationSeconds = 0
     case 'connecting':
       return {
         pill: 'Connecting…', pillKind: 'busy',
-        message: 'Connecting to Katya… Starting a secure live session. Usually under 5 seconds.',
+        message: 'Connecting to Katya… Starting a secure live session.',
         action: 'Cancel', announce: 'status',
       };
     case 'live':
@@ -81,8 +65,8 @@ export function stateCopy(state, { caps = {}, siteHost = '', durationSeconds = 0
     case 'ended':
       return {
         pill: 'Session ended', pillKind: 'off',
-        message: `Session ended · ${formatDuration(durationSeconds)}. Thanks. Your draft and notes stay below until you close the panel.`,
-        action: 'Start again', announce: 'status',
+        message: `Session ended · ${formatDuration(durationSeconds)}. Thanks. The transcript and your draft stay here.`,
+        action: 'Start again', copyTranscript: true, announce: 'status',
       };
     case 'couldnt-start':
       return {
@@ -98,29 +82,9 @@ export function stateCopy(state, { caps = {}, siteHost = '', durationSeconds = 0
         title: "Couldn't start",
         message: retryAfter
           ? `The avatar is busy or you started several sessions quickly. Wait ${retryAfter} second${retryAfter === 1 ? '' : 's'}, then try again.`
-          : 'The avatar is busy or you started several sessions quickly. Wait a moment, then try again.',
-        action: retryAfter ? `Try again in ${retryAfter}s` : 'Try again',
+          : 'The avatar is busy or you started several sessions quickly. Wait a minute, then try again.',
+        action: retryAfter ? `Try again in ${retryAfter}s` : 'Try again in a minute',
         announce: 'alert',
-      };
-    case 'monthly-cap':
-      return {
-        pill: 'Paused', pillKind: 'off',
-        title: "This month's live minutes are used up",
-        kind: 'Monthly limit',
-        message: caps.monthly_minute_cap != null
-          ? `Your workspace used all ${capMin} live minutes. Live video comes back on ${reset}. To raise the limit, ask ${ASK_OWNER}.`
-          : `This month's live minutes are used up. Live video comes back on ${reset}. To raise the limit, ask ${ASK_OWNER}.`,
-        action: null, disabledReason: 'Monthly limit reached',
-        buyMore: true, announce: 'alert',
-      };
-    case 'session-timeout':
-      return {
-        pill: 'Session ended', pillKind: 'off',
-        title: 'Session reached its time limit',
-        kind: 'Per-session limit',
-        message: `Each live session runs up to ${sessionMax}. Your draft and notes are kept. You still have minutes this month.`,
-        action: 'Start new session',
-        buyMore: true, announce: 'status',
       };
     case 'fail-closed':
       return {
@@ -136,11 +100,94 @@ export function stateCopy(state, { caps = {}, siteHost = '', durationSeconds = 0
         message: `It works in ${places}. It doesn't read or record this page.`,
         host: siteHost, action: null, announce: 'status',
       };
-    case 'buy-credits':
+    case 'monthly-cap':
+      if (!isAdmin) {
+        return {
+          pill: 'Paused', pillKind: 'off',
+          title: 'Only admins can buy credits',
+          kind: 'Monthly limit',
+          message: 'Your workspace used all ',
+          chips: [tbd('monthly minutes')],
+          messageAfter: ' live minutes. Ask your A-Gent admin to add credits, or wait until ',
+          chipsAfter: [tbd('reset date')],
+          messageEnd: '.',
+          action: 'Contact your A-Gent admin',
+          contactAdmin: true, buyMore: false, announce: 'alert',
+        };
+      }
       return {
-        pill: null, pillKind: null,
-        title: 'Buy more credits',
-        message: 'Credit purchases are not available in this pilot. Ask your workspace owner if you need a higher limit.',
+        pill: 'Paused', pillKind: 'off',
+        title: "This month's live minutes are used up",
+        kind: 'Monthly limit',
+        message: 'Your workspace used all ',
+        chips: [tbd('monthly minutes')],
+        messageAfter: ' live minutes. Live video comes back on ',
+        chipsAfter: [tbd('reset date')],
+        messageEnd: ', or buy more credits now.',
+        action: 'Buy more credits',
+        secondaryAction: 'Contact your A-Gent admin',
+        contactAdmin: true, buyMore: true, announce: 'alert',
+      };
+    case 'session-timeout':
+      return {
+        pill: 'Session ended', pillKind: 'off',
+        title: 'Session reached its time limit',
+        kind: 'Per-session limit',
+        message: 'Each live session runs up to ',
+        chips: [tbd('session length')],
+        messageAfter: '. Your draft, notes and transcript are kept. You have ',
+        chipsAfter: [tbd('minutes left')],
+        messageEnd: ' this month.',
+        action: 'Start new session',
+        secondaryAction: isAdmin ? 'Buy more credits' : 'Contact your A-Gent admin',
+        buyMore: isAdmin, contactAdmin: !isAdmin, copyTranscript: true, announce: 'status',
+      };
+    case 'choose-credits':
+      return {
+        pill: 'Buy credits', pillKind: 'busy',
+        title: 'Choose credits',
+        message: 'Credits add live avatar minutes for your workspace. Checkout opens on A-Gent billing in a new tab. This panel never asks for card details.',
+        action: 'Continue to checkout (opens new tab)',
+        secondaryAction: 'Cancel',
+        packs: [
+          { id: 'pack-1', name: 'Pack 1' },
+          { id: 'pack-2', name: 'Pack 2' },
+          { id: 'pack-3', name: 'Pack 3' },
+        ],
+        announce: 'status',
+      };
+    case 'checkout-wait':
+      return {
+        pill: 'Waiting for checkout', pillKind: 'busy',
+        title: 'Waiting for checkout',
+        message: 'Checkout is not available in this pilot. This panel never asks for card details, and your credits have not changed.',
+        action: 'Open checkout again (opens new tab)',
+        secondaryAction: 'Cancel purchase',
+        announce: 'status',
+      };
+    case 'credits-added':
+      return {
+        pill: 'Credits added', pillKind: 'live',
+        title: 'Credits added to your workspace',
+        message: 'Credits added to your workspace. New balance: ',
+        chips: [tbd('minutes')],
+        messageEnd: ' live minutes this month.',
+        action: 'Start conversation', announce: 'status',
+      };
+    case 'purchase-failed':
+      return {
+        pill: 'Purchase not completed', pillKind: 'bad',
+        title: 'Purchase not completed',
+        message: "Checkout was closed or the payment didn't go through. Your credits haven't changed.",
+        action: 'Try again',
+        secondaryAction: 'Contact your A-Gent admin',
+        contactAdmin: true, announce: 'alert',
+      };
+    case 'contact-admin':
+      return {
+        pill: 'Paused', pillKind: 'off',
+        title: 'Contact your A-Gent admin',
+        message: 'Only admins can buy credits. Ask your A-Gent admin to add credits for this workspace. This panel does not invent an admin address, and it will not open a message until a tenant admin list is available.',
         action: 'Got it', announce: 'status',
       };
     default:

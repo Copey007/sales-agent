@@ -22,7 +22,7 @@ import {
 import { operatorEmailsFromEnv, STOP_FAIL_ALERT_AFTER, alertPermanentStopFailure } from '../netlify/functions/_avatar-stop-alert.mjs';
 import { siteForUrl, allowedCrmLabels, allowedSitesSummary, hostMatches } from '../avatar-side-panel/allowed-sites.js';
 import { stateCopy } from '../avatar-side-panel/copy.js';
-import { GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED } from '../avatar-side-panel/config.js';
+import { GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, PREVIEW_ADMIN_CREDITS } from '../avatar-side-panel/config.js';
 
 process.env.LIVEAVATAR_API_KEY = 'test-liveavatar-key';
 
@@ -282,20 +282,33 @@ test('panel is allowed on Gmail, A-Gent CRM, HubSpot, and Salesforce, and blocke
   assert.match(allowedSitesSummary(), /Salesforce/);
 });
 
-test('Buy more credits copy has no prices, no hard-coded caps, and no billing link', () => {
-  const buy = stateCopy('buy-credits', { caps: { monthly_minute_cap: 60, max_session_seconds: 180 } });
-  assert.equal(buy.title, 'Buy more credits');
-  assert.doesNotMatch(buy.message, /\$/);
-  assert.doesNotMatch(buy.message, /\b60\b/);
-  assert.doesNotMatch(buy.message, /\b3 minute/);
+test('Buy more credits is admin-only, uses TBD chips, and has no prices or billing link', () => {
+  const buy = stateCopy('choose-credits', { isAdmin: true });
+  assert.equal(buy.title, 'Choose credits');
+  assert.doesNotMatch(JSON.stringify(buy), /\$/);
   assert.doesNotMatch(JSON.stringify(buy), /https?:\/\//);
-  const cap = stateCopy('monthly-cap', { caps: { monthly_minute_cap: 90, reset_at: '2026-12-26T00:00:00Z' } });
-  assert.equal(cap.buyMore, true);
-  assert.match(cap.message, /90/);
-  assert.match(cap.message, /December 26/);
-  const timeout = stateCopy('session-timeout', { caps: { max_session_seconds: 180 } });
-  assert.equal(timeout.buyMore, true);
-  assert.match(timeout.message, /3 minutes/);
+  assert.ok(buy.packs.every((p) => /Pack /.test(p.name)));
+  const capAdmin = stateCopy('monthly-cap', { isAdmin: true });
+  assert.equal(capAdmin.buyMore, true);
+  assert.equal(capAdmin.contactAdmin, true);
+  assert.equal(capAdmin.action, 'Buy more credits');
+  assert.equal(capAdmin.secondaryAction, 'Contact your A-Gent admin');
+  assert.ok(capAdmin.chips.some((c) => c.label.includes('TBD')));
+  assert.doesNotMatch(JSON.stringify(capAdmin), /\b60\b/);
+  const capMember = stateCopy('monthly-cap', { isAdmin: false });
+  assert.equal(capMember.buyMore, false);
+  assert.equal(capMember.action, 'Contact your A-Gent admin');
+  assert.match(capMember.title, /Only admins/);
+  const timeoutMember = stateCopy('session-timeout', { isAdmin: false });
+  assert.equal(timeoutMember.buyMore, false);
+  assert.equal(timeoutMember.action, 'Start new session');
+  assert.equal(timeoutMember.secondaryAction, 'Contact your A-Gent admin');
+  const timeoutAdmin = stateCopy('session-timeout', { isAdmin: true });
+  assert.equal(timeoutAdmin.buyMore, true);
+  assert.equal(timeoutAdmin.secondaryAction, 'Buy more credits');
+  const contact = stateCopy('contact-admin');
+  assert.doesNotMatch(contact.message, /@/);
+  assert.doesNotMatch(contact.message, /mailto:/);
 });
 
 test('extension manifest permissions are minimal and justified, and week-3 flags stay off', () => {
@@ -310,6 +323,7 @@ test('extension manifest permissions are minimal and justified, and week-3 flags
   assert.ok(manifest.side_panel.default_path);
   assert.equal(GMAIL_DRAFT_INSERT_ENABLED, false);
   assert.equal(CRM_HOOK_ENABLED, false);
+  assert.equal(PREVIEW_ADMIN_CREDITS, false);
   const js = readFileSync(join(ROOT, 'avatar-side-panel/sidepanel.js'), 'utf8')
     + readFileSync(join(ROOT, 'avatar-side-panel/background.js'), 'utf8');
   assert.doesNotMatch(js, /gmail\.send/i);

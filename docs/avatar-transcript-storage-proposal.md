@@ -1,77 +1,49 @@
-# Proposal: persist avatar-session transcripts (not built)
+# Proposal: save avatar transcripts on the CRM record (not built)
 
-Status: **proposal only**. This PR does not create a table, write captions, or send transcript text to an LLM store. The side panel may keep captions in memory after End so the person can reread them until they close the panel; closing the panel discards them.
+Status: **proposal only**. This PR does not write a transcript to any CRM, to `chrome.storage`, to a new A-Gent table, or to logs. The side panel may show the session’s turns after End so the person can reread or Copy them; that copy lives only in the panel page’s memory and is discarded when the panel is closed.
 
-Mark asked that the transcript persist after the session ends. This is the storage design for Eng Lead / Mark to approve before any implementation.
+Mark’s decision (25 Nov 2026, 3:25 PM ET): transcripts are saved to the **CRM record** (A-Gent CRM, HubSpot, or Salesforce). Nothing is stored in the panel. This replaces the earlier `avatar_transcripts` table proposal.
 
-## Where it would be stored
+Save only when a contact is identified. If no contact is found, keep the turns in the panel for this session and do not create an orphan CRM record. Do not send the transcript to LiveAvatar as `context_id`, and do not use it for model training, unless that is approved separately.
 
-New table `avatar_transcripts` in the same Supabase project as `avatar_sessions` (`byospmliiokgrdjjxsde`), not on the extension, not in `chrome.storage`, and not in logs.
+## Where it would go, per CRM
 
-Suggested schema:
+### A-Gent CRM (`crm.a-gent.co`)
 
-```sql
-CREATE TABLE avatar_transcripts (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id          UUID NOT NULL REFERENCES avatar_sessions(id) ON DELETE CASCADE,
-  tenant_id           UUID,                 -- copy of the session's tenant
-  agent_slug          TEXT NOT NULL,
-  started_at          TIMESTAMPTZ NOT NULL,
-  ended_at            TIMESTAMPTZ,
-  -- Ordered turns. speaker is 'user' | 'agent'. text is the finished sentence
-  -- (the panel already updates captions once per sentence, not per word).
-  turns               JSONB NOT NULL DEFAULT '[]',
-  -- Optional redaction / consent metadata
-  consent_at          TIMESTAMPTZ,
-  retention_until     TIMESTAMPTZ NOT NULL,
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+- **Object / field (proposed):** a note (or activity) on the open contact, e.g. `contact_notes` / `activities` with `contact_id`, `type = 'avatar_transcript'`, `body` (text), `session_id`, `created_at`. Exact table is **unknown** in `Copey007/sales-agent` — this repo has no CRM contacts/notes schema (the product is a separate host). Confirm against the A-Gent CRM codebase before building.
+- **Visibility:** on the contact record, next to ordinary notes.
+- **If the table does not exist:** add a tenant-scoped notes table with RLS matching other A-Gent CRM data (anon: none; authenticated: own tenant only; writes through a service-role function).
 
-One row per session, written only when the session ends (or on a periodic flush of finished sentences if we later need crash-safety). No partial word stream. The extension would POST finished sentences to a new authenticated endpoint; it would not keep a second copy.
+### HubSpot
 
-## RLS and tenant scoping
+- **Object / field:** a **Note** engagement on the contact, via `POST /crm/objects/2026-09/notes` (or the current Notes API), properties `hs_timestamp` (required) and `hs_note_body` (text, documented limit **65,536 characters**), associated with the contact (`associationTypeId` **202**, note-to-contact).
+- **Source:** [HubSpot Notes API](https://developers.hubspot.com/docs/api-reference/latest/crm/activities/notes/guide).
+- **Title / first line:** `A-Gent avatar session · {date}` so it is easy to scan on the timeline.
+- **If the body would exceed the limit:** split into a second note or attach a file; a 3-minute session should fit.
 
-- Enable RLS. Anon: **no** access (same posture as `avatar_sessions` after the lockdown).
-- Authenticated: `SELECT` (and no client-side insert/update/delete) only when `tenant_id IN (SELECT auth_tenant_ids())` or `is_super_admin()`.
-- Writes go through a service-role Netlify function after `requireTenant` / the existing session-row owner check, so a caller can only append to their own `session_row`.
-- Operators (`OPERATOR_EMAILS`) may read via an operator-guarded admin path if Mark later wants support access; until then, operator read is out of scope.
-- The service role key never ships to the extension.
+### Salesforce
+
+- **Recommendation: a completed Task**, not a ContentNote, as the primary record.
+- **Object / field:** `Task` with `WhoId` = Contact or Lead, `Status = Completed`, `Subject = 'A-Gent avatar session'`, `Description` = the transcript, `TaskSubtype` or a “Log a Call” style completed activity so it appears on the **Activity Timeline**.
+- **Why a Task, not a Note:** Salesforce’s “Log a Call” action “creates a completed task or activity record” and is how communications are documented on a contact; in Lightning those records show under past activity on the [Activity Timeline](https://help.salesforce.com/s/articleView?id=sales.activity_timeline_parent.htm&language=en_US&type=5). [Log a Call](https://help.salesforce.com/s/articleView?id=000387963&language=en_US&type=1) (Help, 22 Sep 2026) is explicitly a Task. ContentNote (enhanced Notes / Files) is a document linked with `ContentDocumentLink`; it is not an activity and does not show in the Activity Timeline the same way. Tasks are also the type used in standard [Activity Reports](https://help.salesforce.com/s/articleView?id=analytics.reports_activity.htm&language=en_US&type=5).
+- **Limits / fallback:** Task `Description` is a long text field (commonly 32,000 characters; confirm on the org). If a transcript would overflow, add a **ContentNote** (or a File) for the full text and keep a short completed Task that points at it. Do not use the legacy `Note` sObject (superseded by ContentNote).
+- **Alternative considered:** ContentNote only. Better for long rich text, worse for timeline and activity reports. Not recommended as the only record.
 
 ## Retention and deletion
 
-Proposal, pending Mark’s confirmation:
+- **HubSpot and Salesforce:** the transcript lives under the **customer’s CRM retention and deletion policy**. Public docs do not give a single default retention period we can promise; it depends on the hub / org (and any GDPR / HIPAA add-ons). Unknown: whether Mark wants an A-Gent-side expiry that deletes the CRM note after N days. Proposed default: **do not auto-delete in the CRM**; let the workspace’s CRM policy govern, and support a manual “delete this note” later.
+- **A-Gent CRM:** proposed default **30 days** from session end, env-overridable, plus hard-delete on request or when the contact is deleted (cascade). Confirm with Mark.
+- **The panel:** no retention, because nothing is stored there.
 
-- Default retention: **30 days** from `ended_at` (`retention_until`). Env-overridable later, not before approval.
-- A scheduled job deletes rows where `retention_until < now()`. Deleting the parent `avatar_sessions` row cascades.
-- The person (or a tenant admin) can request earlier deletion; the function hard-deletes the row, it does not soft-delete.
-- Backups follow the project’s existing Supabase backup window; we should say so in a privacy notice before launch.
+## Privacy and consent notice (proposed text)
 
-Unknown until Mark confirms: whether 30 days is the right default, and whether a “download my transcript” export is required.
+Show this once before the first session that can be saved, after a contact is in context (or as a general start notice when a CRM tab is allowed). Record `consent_at` only after they Start. If they decline, run the session with in-memory captions only.
 
-## PII and consent
+> We can save this conversation to the contact in {A-Gent CRM / HubSpot / Salesforce} so you and your workspace can reread it there. A-Gent does not keep a copy in this side panel. The note follows that CRM’s access and retention rules. We only save finished sentences, not a raw email dump. By starting, you agree to save this session to the open contact when one is found.
 
-Transcripts can contain names, email subject lines, and whatever the person or the avatar says about a lead. Treat the row as **personal data**.
-
-- Do not put raw Gmail body dumps into the transcript; only the spoken / typed turns and a short “read 1 open message from X” receipt (as the design already shows), not the full email.
-- Show a one-line notice before the first session that records: that the conversation is kept for a stated period so the person can reread it, and who in their workspace can see it.
-- Record `consent_at` when they Start after that notice. If they decline, run the session with in-memory captions only (today’s behaviour).
-- Do not use transcripts for model training. Do not send them to LiveAvatar as a `context_id` unless that is separately approved (today we omit LiveAvatar’s context_id).
-- Access logs for the read API should record tenant and actor, not the transcript text.
-
-## What would be sent to the LLM
-
-Until this is approved, **nothing** is stored and the concierge only sees the current in-session turns already sent through `repeat(text)` / the existing speak path.
-
-If approved, a later week could:
-
-- Send the current session’s prior turns (not other sessions, not other tenants) as short context when drafting a reply, still fail-closed if the store is down.
-- Cap context size (for example the last N turns or ~2k tokens) and strip email signatures and quoted history.
-- Never send another tenant’s transcript, and never send the store contents to a third-party model without a documented processor list.
-
-Week 3 Gmail insertion can draft from the in-memory captions and the visible message, without this table.
+Short receipt after a successful save (week 4+): `Transcript saved to {Name} in {CRM} · just now`.
 
 ## What this PR does instead
 
-- No `avatar_transcripts` table, no endpoint, no `chrome.storage`.
-- Captions remain in the side-panel page’s memory after End, and go away when the panel document is closed.
+- No CRM write, no `avatar_transcripts` table, no `chrome.storage`.
+- After End, the transcript can stay visible in the panel (Copy included) until the panel document is closed.

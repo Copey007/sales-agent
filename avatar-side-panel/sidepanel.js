@@ -6,9 +6,9 @@
  * only; they are never written to storage, disk, or the server.
  */
 
-import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_SDK_URL, LIVEAVATAR_API_URL } from './config.js';
+import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_SDK_URL, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
-import { stateCopy, formatDuration } from './copy.js';
+import { stateCopy, formatDuration, tbd } from './copy.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,6 +29,10 @@ const state = {
   announced30: false,
   retryAfter: 0,
   buyCreditsOpen: false,
+  selectedPack: 'pack-1',
+  contactAdminOpen: false,
+  transcriptOpen: false,
+  canBuyCredits: PREVIEW_ADMIN_CREDITS,
   askText: '',
 };
 
@@ -42,6 +46,37 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+function chipHtml(chip) {
+  if (!chip) return '';
+  const label = typeof chip === 'string' ? chip : chip.label;
+  return `<span class="tbd">${esc(label)}</span>`;
+}
+
+function messageWithChips(copy) {
+  let html = esc(copy.message || '');
+  for (const c of copy.chips || []) html += chipHtml(c) + ' ';
+  if (copy.messageAfter) html += esc(copy.messageAfter);
+  for (const c of copy.chipsAfter || []) html += chipHtml(c);
+  if (copy.messageEnd) html += esc(copy.messageEnd);
+  return html;
+}
+
+function transcriptCard(copy, { collapsed = false } = {}) {
+  const n = state.captions.length;
+  if (!n && !copy.copyTranscript) return '';
+  if (collapsed && !state.transcriptOpen) {
+    return `<div class="disc"><span>Transcript · ${n} turn${n === 1 ? '' : 's'}</span>
+      <button class="btn sm ghost" id="tx-show" type="button" aria-expanded="false">Show</button></div>`;
+  }
+  const turns = state.captions.map((c) => `<p><b>${esc(c.who)}</b>${esc(c.text)}</p>`).join('')
+    || '<p class="muted">No turns in this session.</p>';
+  return `<div class="card" id="tx-card">
+    <div class="ch">${icon('captions')}<div class="t"><b>Transcript</b><span>This session · ${n} turn${n === 1 ? '' : 's'}. Kept in this panel only until you close it.</span></div>
+      <button class="btn sm ghost" id="tx-copy" type="button">${icon('copy')}Copy</button></div>
+    <div class="tx">${turns}</div>
+  </div>`;
 }
 
 function send(type, payload = {}) {
@@ -263,9 +298,32 @@ async function onPrimary() {
     render();
     return;
   }
+  if (s === 'choose-credits') {
+    // Design-only: never open a real billing page or collect a card.
+    state.name = 'checkout-wait';
+    render();
+    return;
+  }
+  if (s === 'checkout-wait') {
+    state.name = 'purchase-failed';
+    render();
+    return;
+  }
+  if (s === 'credits-added' || s === 'purchase-failed') {
+    if (s === 'purchase-failed' && copyActionIsTryAgain()) {
+      state.name = 'choose-credits';
+      render();
+      return;
+    }
+    return startSession();
+  }
   if (['idle', 'ended', 'couldnt-start', 'cooldown', 'too-many-starts', 'session-timeout'].includes(s)) {
     return startSession();
   }
+}
+
+function copyActionIsTryAgain() {
+  return true;
 }
 
 function footerHtml(copy) {
@@ -286,34 +344,71 @@ function footerHtml(copy) {
         <button class="btn danger" id="end-btn" type="button">${icon('end')}End</button>
       </div>`;
   }
-  if (copy.action) {
-    const disabled = false;
-    return `<button class="btn accent lg full" id="primary-btn" type="button">${icon(state.name === 'fail-closed' ? 'retry' : 'start')}${esc(copy.action)}</button>`;
+  const buttons = [];
+  if (copy.action && !copy.disabledReason) {
+    const id = copy.contactAdmin && copy.action.startsWith('Contact') ? 'contact-admin-btn'
+      : copy.buyMore && copy.action.startsWith('Buy') ? 'buy-btn'
+      : 'primary-btn';
+    const ic = copy.action.startsWith('Contact') ? 'mail'
+      : copy.action.startsWith('Buy') || copy.action.startsWith('Continue') || copy.action.startsWith('Open checkout') ? 'credits'
+      : state.name === 'fail-closed' ? 'retry' : 'start';
+    buttons.push(`<button class="btn accent lg full" id="${id}" type="button">${icon(ic)}${esc(copy.action)}</button>`);
+  }
+  if (copy.secondaryAction) {
+    const id = copy.secondaryAction.startsWith('Contact') ? 'contact-admin-btn'
+      : copy.secondaryAction.startsWith('Buy') ? 'buy-btn'
+      : copy.secondaryAction.startsWith('Cancel') ? 'cancel-btn'
+      : 'secondary-btn';
+    const ic = copy.secondaryAction.startsWith('Contact') ? 'mail'
+      : copy.secondaryAction.startsWith('Buy') ? 'credits'
+      : 'close';
+    buttons.push(`<button class="btn sec lg full" id="${id}" type="button">${icon(ic)}${esc(copy.secondaryAction)}</button>`);
   }
   if (copy.disabledReason) {
-    return `<div class="help">${icon('info')}<span>${esc(copy.disabledReason)}</span></div>
-      <button class="btn accent lg full" id="primary-btn" type="button" aria-disabled="true" disabled>${icon('start')}Start conversation</button>`;
+    buttons.push(`<div class="help">${icon('info')}<span>${esc(copy.disabledReason)}</span></div>
+      <button class="btn accent lg full" id="primary-btn" type="button" aria-disabled="true" disabled>${icon('start')}Start conversation</button>`);
   }
-  return '';
+  return buttons.join('');
 }
 
 function contextHtml(copy) {
   const parts = [];
-  if (state.buyCreditsOpen) {
-    const buy = stateCopy('buy-credits', { caps: state.caps });
-    parts.push(`<div class="card notice buy-placeholder" id="buy-card">
-      <div class="ch">${icon('credits')}<div class="t"><b tabindex="-1" id="buy-title">${esc(buy.title)}</b></div></div>
-      <div class="body">${esc(buy.message)}</div>
-      <div class="row"><button class="btn sec" id="buy-dismiss" type="button">${esc(buy.action)}</button></div>
+  if (state.contactAdminOpen) {
+    const admin = stateCopy('contact-admin', { isAdmin: state.canBuyCredits });
+    parts.push(`<div class="card notice" id="admin-card">
+      <div class="ch">${icon('mail')}<div class="t"><b tabindex="-1" id="admin-title">${esc(admin.title)}</b></div></div>
+      <div class="body">${esc(admin.message)}</div>
+      <div class="row"><button class="btn sec" id="admin-dismiss" type="button">${esc(admin.action)}</button></div>
     </div>`);
   }
-  if (state.name === 'monthly-cap' || state.name === 'session-timeout') {
-    const ic = state.name === 'monthly-cap' ? 'calendar' : 'clock';
-    parts.push(`<div class="card notice">
-      <div class="ch">${icon(ic)}<div class="t"><b>${esc(copy.title)}</b><span>${esc(copy.kind || '')}</span></div></div>
-      <div class="body">${esc(copy.message)}</div>
-      ${copy.buyMore && !state.buyCreditsOpen ? `<div class="row"><button class="btn sec" id="buy-btn" type="button">${icon('credits')}Buy more credits</button></div>` : ''}
+  if (state.name === 'choose-credits') {
+    const packs = (copy.packs || []).map((pack) => {
+      const sel = state.selectedPack === pack.id ? ' sel' : '';
+      const checked = state.selectedPack === pack.id ? 'true' : 'false';
+      return `<button class="opt${sel}" type="button" role="radio" aria-checked="${checked}" data-pack="${esc(pack.id)}">
+        <span class="rd" aria-hidden="true"></span><span class="grow">${esc(pack.name)}</span>
+        ${chipHtml(tbd('minutes'))}${chipHtml(tbd('price'))}
+      </button>`;
+    }).join('');
+    parts.push(`<div class="card" id="buy-card">
+      <div class="ch">${icon('credits')}<div class="t"><b tabindex="-1">${esc(copy.title)}</b><span>Packs and prices come from pricing plans</span></div></div>
+      <div class="stack" role="radiogroup" aria-label="Credit pack">${packs}</div>
+      <div class="help">${icon('lock')}${esc(copy.message)}</div>
     </div>`);
+  } else if (state.name === 'checkout-wait' || state.name === 'credits-added' || state.name === 'purchase-failed') {
+    const danger = state.name === 'purchase-failed';
+    parts.push(`<div class="card ${danger ? 'danger' : 'notice'}" ${danger ? 'role="alert"' : 'role="status"'} id="buy-card">
+      <div class="ch">${icon(danger ? 'warning' : 'credits')}<div class="t"><b tabindex="-1">${esc(copy.title)}</b></div></div>
+      <div class="body">${messageWithChips(copy)}</div>
+    </div>`);
+  } else if (state.name === 'monthly-cap' || state.name === 'session-timeout') {
+    const ic = state.name === 'monthly-cap' ? 'calendar' : 'clock';
+    const role = state.name === 'monthly-cap' ? 'alert' : 'status';
+    parts.push(`<div class="card notice" role="${role}">
+      <div class="ch">${icon(ic)}<div class="t"><b>${esc(copy.title)}</b><span>${esc(copy.kind || '')}</span></div></div>
+      <div class="body">${messageWithChips(copy)}</div>
+    </div>`);
+    parts.push(transcriptCard(copy, { collapsed: true }));
   } else if (['couldnt-start', 'cooldown', 'too-many-starts', 'fail-closed'].includes(state.name)) {
     parts.push(`<div class="card danger" role="alert">
       <div class="ch">${icon(state.name === 'fail-closed' ? 'unavailable' : 'warning')}<div class="t"><b>${esc(copy.title || copy.pill)}</b></div></div>
@@ -324,8 +419,9 @@ function contextHtml(copy) {
       <div class="ch">${icon('lock')}<div class="t"><b>${esc(copy.title)}</b><span>${esc(copy.host || state.tab.host || '')}</span></div></div>
       <div class="body">${esc(copy.message)}</div>
     </div>`);
+  } else if (state.name === 'ended') {
+    parts.push(transcriptCard(copy, { collapsed: false }));
   }
-  // Week 3/4 cards are intentionally not rendered while the flags stay false.
   if (GMAIL_DRAFT_INSERT_ENABLED || CRM_HOOK_ENABLED) {
     /* reserved for later weeks */
   }
@@ -355,10 +451,11 @@ function stageClass() {
 
 function render() {
   const copy = stateCopy(state.name, {
-    caps: state.caps,
+    isAdmin: state.canBuyCredits,
     siteHost: state.tab.host,
     durationSeconds: state.durationSeconds,
     retryAfter: state.retryAfter,
+    turnCount: state.captions.length,
   });
   const pill = $('pill');
   const pillText = $('pill-text');
@@ -398,13 +495,43 @@ function bind() {
     }
   });
   $('buy-btn')?.addEventListener('click', () => {
-    state.buyCreditsOpen = true;
+    if (!state.canBuyCredits) {
+      state.contactAdminOpen = true;
+      render();
+      $('admin-title')?.focus();
+      return;
+    }
+    state.name = 'choose-credits';
+    state.contactAdminOpen = false;
     render();
-    $('buy-title')?.focus();
+    $('buy-card')?.querySelector('b')?.focus();
   });
-  $('buy-dismiss')?.addEventListener('click', () => {
-    state.buyCreditsOpen = false;
+  $('contact-admin-btn')?.addEventListener('click', () => {
+    state.contactAdminOpen = true;
     render();
+    $('admin-title')?.focus();
+  });
+  $('admin-dismiss')?.addEventListener('click', () => {
+    state.contactAdminOpen = false;
+    render();
+  });
+  $('cancel-btn')?.addEventListener('click', () => {
+    state.name = state.durationSeconds > 0 ? 'session-timeout' : 'monthly-cap';
+    render();
+  });
+  document.querySelectorAll('[data-pack]').forEach((el) => {
+    el.addEventListener('click', () => {
+      state.selectedPack = el.getAttribute('data-pack');
+      render();
+    });
+  });
+  $('tx-show')?.addEventListener('click', () => {
+    state.transcriptOpen = true;
+    render();
+  });
+  $('tx-copy')?.addEventListener('click', async () => {
+    const text = state.captions.map((c) => `${c.who}: ${c.text}`).join('\n');
+    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
   });
 }
 

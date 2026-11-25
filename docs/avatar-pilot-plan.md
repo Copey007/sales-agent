@@ -44,7 +44,8 @@ Mark's later answers that change the week-2+ plan:
 - Launch CRMs: **A-Gent CRM, HubSpot, and Salesforce**. The panel allowlist is one extensible list (`avatar-side-panel/allowed-sites.js`).
 - On monthly cap or session timeout, the panel offers **"Buy more credits"** as a placeholder only: no billing link, no purchases, no hard-coded prices or caps in that CTA. Cap numbers shown in the limit notices come from the server.
 - Gmail drafts use **the person's own Gmail signature** (the earlier "no signature" answer is withdrawn). Planned in week 3; not built in week 2.
-- The transcript should persist after End. **Storage is not built** until Eng Lead / Mark approve `docs/avatar-transcript-storage-proposal.md`. Until then, captions may stay in the panel's memory only.
+- Transcripts will be saved to the **CRM record** (A-Gent CRM, HubSpot, Salesforce), not in the panel. **Storage is not built** until Eng Lead / Mark approve `docs/avatar-transcript-storage-proposal.md`. Until then, captions may stay in the panel's memory only and are discarded when the panel closes.
+- Only **admins** can buy credits. Non-admins get Contact your A-Gent admin. The purchase flow stays design-only (TBD chips, no prices, no real billing page).
 
 ---
 
@@ -62,7 +63,7 @@ Mark's later answers that change the week-2+ plan:
 - A test account run shows: draft appears with the person's signature still present, no message is sent until a person clicks Send, and a sent-mail search does not contain a bot-sent copy from that run.
 - Gmail DOM selectors are covered by a test fixture so a UI change fails the suite instead of silently sending nothing (or, worse, sending).
 - Still no background `gmail.send` or similar scope that would trigger Google's security audit. Tab-only access. Week 3 may add a `mail.google.com` content script / host permission; justify it then. Do not add it in week 2.
-- Transcript storage is still not built unless the proposal has been approved. Drafting may use in-memory captions only.
+- Transcript save-to-CRM is still not built unless the proposal has been approved. The panel may show in-memory captions after End; it must not store them locally. Week 4 should write the transcript to the CRM contact when one is found.
 
 ---
 
