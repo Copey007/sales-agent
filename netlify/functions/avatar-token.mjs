@@ -19,6 +19,8 @@
  *   - per-IP rate limit, using only the Netlify connection IP
  *   - token request includes max_session_duration so LiveAvatar enforces the cap
  *   - if the row write fails after mint, stop the session and return 503
+ *   - only public slugs (a-gent, demo) may mint anonymously; any other
+ *     slug requires an authenticated member of that agent's tenant
  *
  * Env: LIVEAVATAR_API_KEY (shared platform key; per-tenant keys come later)
  */
@@ -35,6 +37,8 @@ import {
 import { getAvatarCaps } from './_avatar-caps.mjs';
 import { stopLiveAvatarSession } from './avatar-reaper.mjs';
 import { withCors } from './_auth.mjs';
+import { isPublicAvatarSlug, requireAvatarLogin } from './_avatar-access.mjs';
+import { canAccessTenant } from './_tenant.mjs';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -86,6 +90,15 @@ const __handler = async (req) => {
   const slug = body.slug || 'demo';
   const ip = clientIp(req);
 
+  // Private slugs require a login before we even look the agent up, so an
+  // anonymous caller cannot probe tenant names or trigger a mint.
+  let memberCtx = null;
+  if (!isPublicAvatarSlug(slug)) {
+    const login = await requireAvatarLogin(req);
+    if (!login.ok) return json({ error: login.error, reason: login.reason }, login.status);
+    memberCtx = login.ctx;
+  }
+
   let agent;
   try {
     agent = await getAgentBySlug(slug);
@@ -93,6 +106,9 @@ const __handler = async (req) => {
     return json({ error: `lookup_failed: ${err.message}` }, 500);
   }
   if (!agent) return json({ error: 'agent_not_found', slug }, 404);
+  if (memberCtx && !canAccessTenant(memberCtx, agent.tenant_id || null)) {
+    return json({ error: 'agent_not_found' }, 404);
+  }
   if (agent.status !== 'active') return json({ error: 'agent_unavailable', status: agent.status }, 403);
 
   const caps = getAvatarCaps(agent);
