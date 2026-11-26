@@ -12,7 +12,7 @@
  * Storage: Netlify Blobs (serverless KV)
  */
 
-import { callLLM as llmChat, cleanLLMJson } from './_llm.mjs';
+import { callLLM as llmChat, cleanLLMJson, isLlmConfigIncompleteError } from './_llm.mjs';
 
 // ─── LLM Configuration ──────────────────────────────────────────────────────────
 // Chat goes through shared getLLMConfig / callLLM (LLM_API_KEY, LLM_API_BASE).
@@ -525,6 +525,12 @@ export default async (req, context) => {
     });
 
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({
       success: false,
       error: e.message,

@@ -512,6 +512,7 @@ test('a demo chat uses LLM_API_KEY while speak uses only OPENAI_API_KEY', async 
   const prevLlm = process.env.LLM_API_KEY;
   const prevOpen = process.env.OPENAI_API_KEY;
   process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
   process.env.OPENAI_API_KEY = 'openai-only-test-key';
   try {
     setup({ llm: 'Happy to help. What brings you here?' });
@@ -536,6 +537,7 @@ test('a demo chat uses LLM_API_KEY while speak uses only OPENAI_API_KEY', async 
   } finally {
     if (prevLlm === undefined) delete process.env.LLM_API_KEY;
     else process.env.LLM_API_KEY = prevLlm;
+    delete process.env.LLM_API_BASE;
     if (prevOpen === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = prevOpen;
   }

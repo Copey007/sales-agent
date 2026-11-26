@@ -4,6 +4,7 @@
  */
 
 export const LLM_EMPTY_REPLY = 'llm_empty_reply';
+export const LLM_CONFIG_INCOMPLETE = 'llm_config_incomplete';
 
 /** Strip trailing slashes so `${apiBase}/chat/completions` is correct for either form of a provider base URL. */
 export function normalizeLlmApiBase(apiBase) {
@@ -45,9 +46,11 @@ export function resolveLlmApiBase(envSource = process.env) {
  */
 export function parseClaudeModelId(model) {
   const id = String(model || '').toLowerCase();
-  const m = id.match(/claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?/);
+  // Prefer an 8-digit date suffix (e.g. claude-opus-4-20250514) over treating
+  // the date as a minor version. Minor versions are 1-2 digits (4-5, 4-7, 5-2).
+  const m = id.match(/claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{8})|(?:-(\d{1,2})(?:-(\d{8}))?))?/);
   if (!m) return null;
-  return { family: m[1], major: Number(m[2]), minor: m[3] != null ? Number(m[3]) : 0 };
+  return { family: m[1], major: Number(m[2]), minor: m[4] != null ? Number(m[4]) : 0 };
 }
 
 /**
@@ -104,9 +107,46 @@ export function redactSecrets(value) {
     .replace(/eyJ[A-Za-z0-9_\-]+=*/g, '[redacted-jwt]');
 }
 
+export class LlmConfigIncompleteError extends Error {
+  constructor(detail = LLM_CONFIG_INCOMPLETE) {
+    super(LLM_CONFIG_INCOMPLETE);
+    this.name = 'LlmConfigIncompleteError';
+    this.code = LLM_CONFIG_INCOMPLETE;
+    this.detail = detail;
+  }
+}
+
+export function isLlmConfigIncompleteError(err) {
+  return Boolean(err && (
+    err.code === LLM_CONFIG_INCOMPLETE
+    || err.name === 'LlmConfigIncompleteError'
+    || err.message === LLM_CONFIG_INCOMPLETE
+  ));
+}
+
+/**
+ * Pair LLM_API_KEY with LLM_API_BASE. A partial pair is a hard failure so a
+ * Claude key is never sent to OpenAI/Manus, and an OpenAI key is never sent
+ * to the Anthropic base. When neither is set, fall back to OPENAI_API_KEY
+ * plus OPENAI_API_BASE or the Manus default.
+ */
 export function getLLMConfig(options = {}) {
-  const apiKey = resolveLlmApiKey();
-  const apiBase = resolveLlmApiBase();
+  const llmKey = readNetlifyOrProcessEnv('LLM_API_KEY').trim();
+  const llmBase = readNetlifyOrProcessEnv('LLM_API_BASE').trim();
+  const hasKey = Boolean(llmKey);
+  const hasBase = Boolean(llmBase);
+
+  if (hasKey !== hasBase) {
+    const detail = hasKey ? 'LLM_API_BASE missing' : 'LLM_API_KEY missing';
+    console.warn('[llm] llm_config_incomplete', detail);
+    throw new LlmConfigIncompleteError(detail);
+  }
+
+  const apiKey = hasKey ? llmKey : resolveOpenAiApiKey();
+  const apiBase = hasBase
+    ? normalizeLlmApiBase(llmBase)
+    : normalizeLlmApiBase(readNetlifyOrProcessEnv('OPENAI_API_BASE') || 'https://api.manus.im/api/llm-proxy/v1');
+
   // Default stays claude-haiku-4-5 (still Active, and the Manus-default stopgap).
   // Set LLM_MODEL=claude-haiku-5-5 in env to use the current recommended Haiku.
   const model = options.model

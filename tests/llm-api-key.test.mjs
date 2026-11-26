@@ -26,6 +26,7 @@ function embedCalls() {
 beforeEach(() => {
   resetFetch();
   delete process.env.LLM_API_KEY;
+  delete process.env.LLM_API_BASE;
   process.env.OPENAI_API_KEY = OPENAI_KEY;
 });
 
@@ -44,17 +45,25 @@ test('resolveOpenAiApiKey ignores LLM_API_KEY', () => {
   assert.equal(resolveOpenAiApiKey({ LLM_API_KEY: LLM_KEY }), '');
 });
 
-test('getLLMConfig uses LLM_API_KEY first and falls back to OPENAI_API_KEY', () => {
+test('getLLMConfig uses the LLM pair when both are set, and OPENAI_API_KEY when neither is', () => {
   process.env.LLM_API_KEY = LLM_KEY;
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
   process.env.OPENAI_API_KEY = OPENAI_KEY;
-  assert.equal(getLLMConfig().apiKey, LLM_KEY);
+  process.env.OPENAI_API_BASE = 'https://api.openai.com/v1';
+  const paired = getLLMConfig();
+  assert.equal(paired.apiKey, LLM_KEY);
+  assert.equal(paired.apiBase, 'https://api.anthropic.com/v1');
   delete process.env.LLM_API_KEY;
-  assert.equal(getLLMConfig().apiKey, OPENAI_KEY);
+  delete process.env.LLM_API_BASE;
+  const fallback = getLLMConfig();
+  assert.equal(fallback.apiKey, OPENAI_KEY);
+  assert.equal(fallback.apiBase, 'https://api.openai.com/v1');
 });
 
 test('chat completions send LLM_API_KEY when both keys are set', async () => {
   initConnectors();
   process.env.LLM_API_KEY = LLM_KEY;
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
   route('/chat/completions', () => ({ body: { choices: [{ message: { content: 'hi' } }] } }));
   const out = await invoke('llm', 'chat', { messages: [{ role: 'user', content: 'hello' }] });
   assert.equal(out.content, 'hi');

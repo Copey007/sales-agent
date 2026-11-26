@@ -24,7 +24,7 @@ import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
-import { requireNonEmptyLlmText, isLlmEmptyReplyError, redactSecrets } from './_llm.mjs';
+import { requireNonEmptyLlmText, isLlmEmptyReplyError, isLlmConfigIncompleteError, redactSecrets } from './_llm.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -90,6 +90,11 @@ const __handler = async (req, context) => {
         });
     }
   } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
     console.error('[concierge] Error:', redactSecrets(err.message), redactSecrets(err.stack || ''));
     return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -153,6 +158,11 @@ async function handleStart(body, corsHeaders) {
         status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
     throw e;
   }
 
@@ -213,6 +223,11 @@ async function handleChat(body, corsHeaders, req) {
   } catch (e) {
     if (isLlmEmptyReplyError(e)) {
       return new Response(JSON.stringify({ error: 'llm_empty_reply' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
         status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
@@ -291,6 +306,11 @@ async function handleQualify(body, corsHeaders, req) {
   } catch (e) {
     if (isLlmEmptyReplyError(e)) {
       return new Response(JSON.stringify({ error: 'llm_empty_reply' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
         status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
