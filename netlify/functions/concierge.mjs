@@ -24,7 +24,7 @@ import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
-import { requireNonEmptyLlmText, isLlmEmptyReplyError } from './_llm.mjs';
+import { requireNonEmptyLlmText, isLlmEmptyReplyError, redactSecrets } from './_llm.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -90,8 +90,8 @@ const __handler = async (req, context) => {
         });
     }
   } catch (err) {
-    console.error('[concierge] Error:', err.message, err.stack);
-    return new Response(JSON.stringify({ error: err.message }), {
+    console.error('[concierge] Error:', redactSecrets(err.message), redactSecrets(err.stack || ''));
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }

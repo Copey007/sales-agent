@@ -13,7 +13,7 @@
  * with a single registry that any agent can use.
  */
 
-import { llmResponseShape, normalizeLlmApiBase, llmAuthHeaders, resolveLlmApiKey } from './_llm.mjs';
+import { llmResponseShape, llmAuthHeaders, getLLMConfig, chatCompletionBody, resolveOpenAiApiKey } from './_llm.mjs';
 
 // ─── Connector Base ────────────────────────────────────────────────────────────
 
@@ -312,15 +312,18 @@ function createLLMConnector() {
     maxTokens: { type: 'number', default: 2000 },
     model: { type: 'string', description: 'Override default model' }
   }, async ({ messages, temperature = 0.7, maxTokens = 2000, model }) => {
-    const apiKey = resolveLlmApiKey();
-    const apiBase = normalizeLlmApiBase(env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1'));
-    const defaultModel = env('LLM_MODEL', 'claude-haiku-4-5');
-    if (!apiKey) throw new Error('LLM_API_KEY or OPENAI_API_KEY not set');
+    const cfg = getLLMConfig({ model });
+    if (!cfg.apiKey) throw new Error('LLM_API_KEY or OPENAI_API_KEY not set');
 
-    const res = await fetch(`${apiBase}/chat/completions`, {
+    const res = await fetch(`${cfg.apiBase}/chat/completions`, {
       method: 'POST',
-      headers: llmAuthHeaders(apiKey),
-      body: JSON.stringify({ model: model || defaultModel, messages, temperature, max_tokens: maxTokens })
+      headers: llmAuthHeaders(cfg.apiKey),
+      body: JSON.stringify(chatCompletionBody({
+        model: cfg.model,
+        messages,
+        temperature,
+        maxTokens,
+      })),
     });
     if (!res.ok) throw new Error(`LLM error ${res.status}: ${await res.text()}`);
     const data = await res.json();
@@ -336,43 +339,23 @@ function createLLMConnector() {
     text: { type: 'string', required: true },
     model: { type: 'string', default: 'text-embedding-3-small' }
   }, async ({ text, model = 'text-embedding-3-small' }) => {
-    const apiKey = env('OPENAI_API_KEY');
-    const apiBase = normalizeLlmApiBase(env('OPENAI_API_BASE', 'https://api.manus.im/api/llm-proxy/v1'));
+    // Always OpenAI direct. Do not send embeddings to LLM_API_BASE / OPENAI_API_BASE
+    // (those may point at Anthropic or the Manus proxy, which are not OpenAI embeddings).
+    const apiKey = resolveOpenAiApiKey() || env('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY not set');
 
-    // Try the proxy first, fall back to OpenAI direct for embeddings
-    // (not all proxies support the embeddings endpoint)
-    try {
-      const res = await fetch(`${apiBase}/embeddings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ input: text, model })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          embedding: data.data?.[0]?.embedding || [],
-          model: data.model,
-          usage: data.usage
-        };
-      }
-      // If proxy doesn't support embeddings, try OpenAI direct
-      throw new Error(`Proxy embed failed: ${res.status}`);
-    } catch (proxyErr) {
-      // Fall back to OpenAI direct for embeddings
-      const res = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ input: text, model })
-      });
-      if (!res.ok) throw new Error(`Embedding error ${res.status}: ${await res.text()}`);
-      const data = await res.json();
-      return {
-        embedding: data.data?.[0]?.embedding || [],
-        model: data.model,
-        usage: data.usage
-      };
-    }
+    const res = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ input: text, model })
+    });
+    if (!res.ok) throw new Error(`Embedding error ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return {
+      embedding: data.data?.[0]?.embedding || [],
+      model: data.model,
+      usage: data.usage
+    };
   });
 
   return c;

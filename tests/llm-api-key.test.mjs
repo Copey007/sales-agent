@@ -85,23 +85,23 @@ test('TTS speak uses only OPENAI_API_KEY and never LLM_API_KEY', async () => {
   assert.equal(bearer(ttsCalls()[0]).includes(LLM_KEY), false);
 });
 
-test('embeddings use only OPENAI_API_KEY, including the OpenAI fallback', async () => {
+test('embeddings use only OPENAI_API_KEY and only api.openai.com', async () => {
   initConnectors();
   process.env.LLM_API_KEY = LLM_KEY;
+  process.env.OPENAI_API_BASE = 'https://api.manus.im/api/llm-proxy/v1';
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
   route('/embeddings', (url) => {
     if (url.includes('api.openai.com')) {
       return { body: { data: [{ embedding: [0.1, 0.2] }], model: 'text-embedding-3-small' } };
     }
-    return { status: 404, body: { error: 'no embeddings on this base' } };
+    return { status: 500, body: { error: 'proxy should not be used' } };
   });
   const out = await invoke('llm', 'embed', { text: 'hello' });
   assert.deepEqual(out.embedding, [0.1, 0.2]);
-  assert.ok(embedCalls().length >= 1);
-  for (const c of embedCalls()) {
-    assert.equal(bearer(c), `Bearer ${OPENAI_KEY}`, c.url);
-    assert.equal(bearer(c).includes(LLM_KEY), false, c.url);
-  }
-  assert.ok(embedCalls().some((c) => c.url.includes('api.openai.com/v1/embeddings')));
+  assert.equal(embedCalls().length, 1);
+  assert.equal(embedCalls()[0].url, 'https://api.openai.com/v1/embeddings');
+  assert.equal(bearer(embedCalls()[0]), `Bearer ${OPENAI_KEY}`);
+  assert.equal(bearer(embedCalls()[0]).includes(LLM_KEY), false);
 });
 
 test('TTS does not send LLM_API_KEY when OPENAI_API_KEY is missing', async () => {

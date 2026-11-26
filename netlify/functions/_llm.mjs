@@ -31,11 +31,84 @@ export function resolveOpenAiApiKey(envSource = process.env) {
   return readNetlifyOrProcessEnv('OPENAI_API_KEY', envSource);
 }
 
+/** Chat-only base: LLM_API_BASE first, then OPENAI_API_BASE, then the Manus proxy default. */
+export function resolveLlmApiBase(envSource = process.env) {
+  const raw = readNetlifyOrProcessEnv('LLM_API_BASE', envSource)
+    || readNetlifyOrProcessEnv('OPENAI_API_BASE', envSource)
+    || 'https://api.manus.im/api/llm-proxy/v1';
+  return normalizeLlmApiBase(raw);
+}
+
+/**
+ * Parse a Claude model id like claude-haiku-5-5 or claude-opus-4-7-20250401.
+ * Returns { family, major, minor } or null.
+ */
+export function parseClaudeModelId(model) {
+  const id = String(model || '').toLowerCase();
+  const m = id.match(/claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d+))?/);
+  if (!m) return null;
+  return { family: m[1], major: Number(m[2]), minor: m[3] != null ? Number(m[3]) : 0 };
+}
+
+/**
+ * Whether the model accepts temperature / top_p on Anthropic's OpenAI-compat
+ * layer and the native API. Claude 4.7+, all Claude 5.x, and Mythos Preview
+ * reject non-default (or any) sampling params with HTTP 400, so omit them.
+ */
+export function modelAcceptsSampling(model) {
+  const id = String(model || '').toLowerCase();
+  if (!id.includes('claude')) return true;
+  if (id.includes('mythos-preview')) return false;
+  const parsed = parseClaudeModelId(id);
+  if (!parsed) return true;
+  if (parsed.major > 4) return false;
+  if (parsed.major === 4 && parsed.minor >= 7) return false;
+  return true;
+}
+
+/** Claude 5 family (Haiku 5.5, Opus 5, Fable 5.x, ...). Thinking is on by default. */
+export function isClaude5Family(model) {
+  const parsed = parseClaudeModelId(model);
+  return Boolean(parsed && parsed.major >= 5);
+}
+
+/** Floor max_tokens for Claude 5.x so adaptive thinking does not exhaust the budget. */
+export const CLAUDE_5X_MIN_MAX_TOKENS = 2000;
+
+export function resolveChatMaxTokens(model, requested) {
+  const n = Number(requested);
+  const req = Number.isFinite(n) && n > 0 ? n : CLAUDE_5X_MIN_MAX_TOKENS;
+  if (isClaude5Family(model)) return Math.max(req, CLAUDE_5X_MIN_MAX_TOKENS);
+  return req;
+}
+
+/** OpenAI-compat chat/completions body. Omits temperature/top_p when the model rejects them. */
+export function chatCompletionBody({ model, messages, temperature, maxTokens, top_p }) {
+  const body = {
+    model,
+    messages,
+    max_tokens: resolveChatMaxTokens(model, maxTokens),
+  };
+  if (modelAcceptsSampling(model)) {
+    if (temperature != null) body.temperature = temperature;
+    if (top_p != null) body.top_p = top_p;
+  }
+  return body;
+}
+
+/** Redact key-like substrings before logging. Never log the raw return value's secrets. */
+export function redactSecrets(value) {
+  return String(value ?? '')
+    .replace(/sk-[A-Za-z0-9_\-]+/g, '[redacted-key]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/eyJ[A-Za-z0-9_\-]+=*/g, '[redacted-jwt]');
+}
+
 export function getLLMConfig(options = {}) {
   const apiKey = resolveLlmApiKey();
-  const rawBase = readNetlifyOrProcessEnv('OPENAI_API_BASE') || 'https://api.manus.im/api/llm-proxy/v1';
-  const apiBase = normalizeLlmApiBase(rawBase);
-  // Default model: claude-haiku-4-5 for speed (fits within Netlify timeout)
+  const apiBase = resolveLlmApiBase();
+  // Default stays claude-haiku-4-5 (still Active, and the Manus-default stopgap).
+  // Set LLM_MODEL=claude-haiku-5-5 in env to use the current recommended Haiku.
   const model = options.model
     || readNetlifyOrProcessEnv('LLM_MODEL')
     || 'claude-haiku-4-5';
@@ -100,7 +173,11 @@ export function requireNonEmptyLlmText(response, label = 'llm') {
   const text = String(response?.content ?? '').trim();
   if (text) return text;
   const shape = response?.shape || llmResponseShape(null);
-  console.warn(`[${label}] empty_reply`, shape);
+  if (shape.finish_reason === 'length') {
+    console.warn(`[${label}] empty_reply finish_reason=length (thinking or output may have exhausted max_tokens)`, shape);
+  } else {
+    console.warn(`[${label}] empty_reply`, shape);
+  }
   throw new LlmEmptyReplyError(shape);
 }
 
@@ -118,7 +195,7 @@ export async function callLLM(messages, options = {}) {
   const response = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
     headers: llmAuthHeaders(apiKey),
-    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
+    body: JSON.stringify(chatCompletionBody({ model, messages, temperature, maxTokens })),
   });
 
   if (!response.ok) {
