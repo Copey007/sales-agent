@@ -3,8 +3,8 @@
 export const API_BASE = 'https://aisdr.a-gent.co';
 export const DEFAULT_SLUG = 'a-gent';
 
-/** Week 3: Gmail draft insertion. Off in this PR — do not build or enable it. */
-export const GMAIL_DRAFT_INSERT_ENABLED = false;
+/** Week 3: Gmail draft insertion (tab-only; Gmail's Send is the only send action). */
+export const GMAIL_DRAFT_INSERT_ENABLED = true;
 
 /** Week 4: CRM lookup / notes. Off in this PR; allowed sites already include the three CRMs. */
 export const CRM_HOOK_ENABLED = false;

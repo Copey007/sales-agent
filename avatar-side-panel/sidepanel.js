@@ -1,14 +1,17 @@
 /**
- * A-Gent avatar side panel UI. Matches the approved design states for week 2.
+ * A-Gent avatar side panel UI. Matches the approved design states for weeks 2–3.
  *
- * No send path. Gmail draft insertion and CRM hooks are behind disabled flags
- * and are not built here. Captions may stay visible after End in this page
- * only; they are never written to storage, disk, or the server.
+ * No send path. Gmail draft insertion (week 3) writes into the open compose
+ * box through a mail.google.com content script; Gmail's Send stays the only
+ * send action. CRM hooks stay behind CRM_HOOK_ENABLED. Captions may stay
+ * visible after End in this page only; they are never written to storage,
+ * disk, or the server.
  */
 
 import { DEFAULT_SLUG, GMAIL_DRAFT_INSERT_ENABLED, CRM_HOOK_ENABLED, LIVEAVATAR_API_URL, PREVIEW_ADMIN_CREDITS, VOICE_CHAT_ENABLED } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
 import { stateCopy, formatDuration, tbd } from './copy.js';
+import { isDraftRequest, shortDraftCaption, buildDraftPrompt, extractDraftBody, gmailDraftCardHtml } from './gmail-draft.js';
 import { loadSdkThenMint, createLiveSession, startAndAttach, setMuted, askAGent, bindTranscriptEvents, createSessionEnder } from './live-session.js';
 import { ensureMicAccess } from './mic-permission.js';
 
@@ -39,7 +42,19 @@ const state = {
   history: [],
   sessionEnder: createSessionEnder(),
   askText: '',
+  thread: null,
+  draft: '',
+  gmailInsertStatus: null,
 };
+
+
+function isGmailTab() {
+  return state.tab?.site?.id === 'gmail' || /(?:^|\.)mail\.google\.com$/i.test(state.tab?.host || '');
+}
+
+function inLiveSession() {
+  return ['live', 'speaking', 'thinking'].includes(state.name);
+}
 
 function icon(name, { hidden = true, label = '' } = {}) {
   const alt = label ? ` alt="${esc(label)}"` : ' alt=""';
@@ -308,31 +323,43 @@ async function endSession(next = 'ended') {
   render();
 }
 
+async function askConciergeForSession(body) {
+  const res = await send('AVATAR_CHAT', {
+    session_row: state.sessionRow,
+    messages: body.messages,
+  });
+  if (!res.ok) throw new Error(res.data?.error || 'avatar_chat_failed');
+  return res.data?.reply;
+}
+
 async function onAsk() {
   const text = state.askText.trim();
   if (!text || !state.liveSession) return;
+  const wantsDraft = GMAIL_DRAFT_INSERT_ENABLED && isGmailTab() && isDraftRequest(text);
+  const prompt = wantsDraft && state.thread ? buildDraftPrompt(state.thread, text) : text;
+  const caption = wantsDraft ? shortDraftCaption(state.thread) : text;
   state.askText = '';
   state.name = 'thinking';
   render();
-  pushCaption('You', text);
+  pushCaption('You', caption);
   try {
     const reply = await askAGent({
-      text,
+      text: prompt,
       history: state.history,
       slug: DEFAULT_SLUG,
       session: state.liveSession,
-      askConcierge: async (body) => {
-        const res = await send('AVATAR_CHAT', {
-          session_row: state.sessionRow,
-          messages: body.messages,
-        });
-        if (!res.ok) throw new Error(res.data?.error || 'avatar_chat_failed');
-        return res.data?.reply;
-      },
+      askConcierge: askConciergeForSession,
     });
     if (reply) {
-      state.history.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
+      state.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: reply });
       pushCaption('A-Gent', reply);
+      if (wantsDraft) {
+        const draft = extractDraftBody(reply);
+        if (draft) {
+          state.draft = draft;
+          state.gmailInsertStatus = null;
+        }
+      }
       state.name = 'speaking';
     } else {
       state.name = 'live';
@@ -342,6 +369,65 @@ async function onAsk() {
     state.name = 'live';
     render();
   }
+}
+
+async function onReadEmail() {
+  if (!GMAIL_DRAFT_INSERT_ENABLED || !isGmailTab()) return;
+  const res = await send('GMAIL_READ_THREAD', { tabId: state.tab.tabId });
+  if (res.ok && res.thread) state.thread = res.thread;
+  else state.thread = state.thread || null;
+  render();
+}
+
+async function onProposeReply() {
+  if (!GMAIL_DRAFT_INSERT_ENABLED || !isGmailTab() || !state.liveSession) return;
+  if (!state.thread) await onReadEmail();
+  const prompt = buildDraftPrompt(state.thread || {}, '');
+  state.name = 'thinking';
+  render();
+  pushCaption('You', shortDraftCaption(state.thread));
+  try {
+    const reply = await askAGent({
+      text: prompt,
+      history: state.history,
+      slug: DEFAULT_SLUG,
+      session: state.liveSession,
+      askConcierge: askConciergeForSession,
+    });
+    if (reply) {
+      state.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: reply });
+      pushCaption('A-Gent', reply);
+      const draft = extractDraftBody(reply);
+      if (draft) {
+        state.draft = draft;
+        state.gmailInsertStatus = null;
+      }
+      state.name = 'speaking';
+    } else {
+      state.name = 'live';
+    }
+    render();
+  } catch {
+    state.name = 'live';
+    render();
+  }
+}
+
+async function onInsertDraft() {
+  if (!GMAIL_DRAFT_INSERT_ENABLED || !state.draft) return;
+  const res = await send('GMAIL_INSERT_DRAFT', { tabId: state.tab.tabId, body: state.draft });
+  if (res.ok) state.gmailInsertStatus = 'inserted';
+  else if (res.error === 'compose_missing' || res.error === 'compose_unavailable') {
+    state.gmailInsertStatus = 'compose_missing';
+  } else {
+    state.gmailInsertStatus = 'error';
+  }
+  render();
+}
+
+async function onCopyDraft() {
+  if (!state.draft) return;
+  try { await navigator.clipboard.writeText(state.draft); } catch { /* leave the draft on screen */ }
 }
 
 async function onPrimary() {
@@ -481,8 +567,19 @@ function contextHtml(copy) {
   } else if (state.name === 'ended') {
     parts.push(transcriptCard(copy, { collapsed: false }));
   }
-  if (GMAIL_DRAFT_INSERT_ENABLED || CRM_HOOK_ENABLED) {
-    /* reserved for later weeks */
+  if (GMAIL_DRAFT_INSERT_ENABLED) {
+    parts.push(gmailDraftCardHtml({
+      enabled: true,
+      isGmail: isGmailTab(),
+      thread: state.thread,
+      draft: state.draft,
+      insertStatus: state.gmailInsertStatus,
+      sessionLive: inLiveSession() && !!state.liveSession,
+      icon,
+    }));
+  }
+  if (CRM_HOOK_ENABLED) {
+    /* reserved for week 4 */
   }
   return parts.join('');
 }
@@ -595,6 +692,10 @@ function bind() {
     const text = state.captions.map((c) => `${c.who}: ${c.text}`).join('\n');
     try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
   });
+  $('gmail-read-btn')?.addEventListener('click', onReadEmail);
+  $('gmail-propose-btn')?.addEventListener('click', onProposeReply);
+  $('gmail-insert-btn')?.addEventListener('click', onInsertDraft);
+  $('gmail-copy-btn')?.addEventListener('click', onCopyDraft);
 }
 
 function updateTimer() {

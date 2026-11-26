@@ -51,13 +51,15 @@ Mark's later answers that change the week-2+ plan:
 
 ## Week 3 — Gmail draft insertion (draft only)
 
+**Status (this draft PR):** implemented in the unpacked side panel, not deployed. DOM approach: `docs/gmail-draft-insert.md`.
+
 **Goal.** From the open Gmail thread, the avatar can read the visible message (in the tab, not via background Gmail scopes) and insert a draft into the open compose box, including the person's own Gmail signature. Nothing is sent except when the person clicks Gmail's Send.
 
 **Acceptance criteria**
 
 - On an open Gmail thread, the panel can summarize the visible message and propose a reply.
 - "Insert draft" writes the proposal into the open compose box (or opens compose and inserts there). Gmail's Send button remains the only send action.
-- The inserted draft uses **the person's existing Gmail signature**, not an A-Gent signature and not a name we invent. Prefer Gmail's own compose signature (the one Gmail would add if the person typed the draft). If the signature cannot be read from the open compose box, leave Gmail's signature in place and insert only the body above it; never overwrite a signature with a blank. Document the DOM approach in the PR. This is week-3 work; it is behind `GMAIL_DRAFT_INSERT_ENABLED` (off) until then.
+- The inserted draft uses **the person's existing Gmail signature**, not an A-Gent signature and not a name we invent. Prefer Gmail's own compose signature (the one Gmail would add if the person typed the draft). If the signature cannot be read from the open compose box, leave Gmail's signature in place and insert only the body above it; never overwrite a signature with a blank. Document the DOM approach in the PR. This is week-3 work; it is behind `GMAIL_DRAFT_INSERT_ENABLED` (on in this draft).
 - There is no Send, "send for me", or automatable send path in the extension, the avatar tools, or the aisdr API.
 - If compose is not open and cannot be opened, the panel says so and leaves the draft on screen for copy.
 - A test account run shows: draft appears with the person's signature still present, no message is sent until a person clicks Send, and a sent-mail search does not contain a bot-sent copy from that run.

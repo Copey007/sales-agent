@@ -4,10 +4,15 @@
  *
  * There is no send path. This worker never POSTs /api/avatar-session.
  * Transcripts are not written here or anywhere else.
+ *
+ * Week 3: GMAIL_READ_THREAD and GMAIL_INSERT_DRAFT are forwarded only to a
+ * mail.google.com tab's content script. This worker never clicks Send and
+ * never calls a Gmail API.
  */
 
 import { API_BASE, DEFAULT_SLUG } from './config.js';
 import { siteForUrl } from './allowed-sites.js';
+import { isGmailUrl } from './gmail-dom.js';
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -59,6 +64,22 @@ chrome.tabs.onUpdated.addListener((_id, change, tab) => {
   chrome.runtime.sendMessage({ type: 'TAB_CHANGED', info: tabInfo(tab) }).catch(() => {});
 });
 
+
+async function gmailTabCommand(msg) {
+  const [tab] = msg.tabId
+    ? [await chrome.tabs.get(msg.tabId)]
+    : await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const url = tab?.url || '';
+  if (!tab?.id || !isGmailUrl(url)) {
+    return { ok: false, error: 'not_gmail' };
+  }
+  try {
+    return await chrome.tabs.sendMessage(tab.id, { type: msg.type, body: msg.body });
+  } catch {
+    return { ok: false, error: 'gmail_unavailable' };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (!msg || typeof msg !== 'object') return { error: 'bad_message' };
@@ -95,6 +116,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         await chrome.tabs.create({ url, active: true });
         return { ok: true };
       }
+      case 'GMAIL_READ_THREAD':
+      case 'GMAIL_INSERT_DRAFT':
+        return gmailTabCommand(msg);
       default:
         return { error: 'unknown_message' };
     }

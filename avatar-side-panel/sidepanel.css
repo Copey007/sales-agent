@@ -57,7 +57,7 @@ body{font:var(--t14);min-width:280px}
 .card.danger{background:#1a1112;border-color:color-mix(in srgb,var(--red-400) 35%,transparent)}.card.danger .ch svg,.card.danger .ch b{color:var(--status-danger)}
 .card.danger .body{color:var(--text-primary)}
 .card.ok .ch svg{color:var(--status-success)}
-.draft{background:var(--surface-sunken);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font:var(--t14);color:var(--text-primary);white-space:pre-line;max-height:140px;overflow:hidden}
+.draft{background:var(--surface-sunken);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font:var(--t14);color:var(--text-primary);white-space:pre-line;max-height:140px;overflow:auto}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 14px;border-radius:10px;font:600 14px/20px var(--font);border:1px solid transparent;cursor:pointer;white-space:nowrap}
 .btn svg{width:20px;height:20px}

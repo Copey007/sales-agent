@@ -325,17 +325,19 @@ test('Buy more credits is admin-only, uses TBD chips, and has no prices or billi
   assert.doesNotMatch(contact.message, /mailto:/);
 });
 
-test('extension manifest permissions are minimal and justified, and week-3 flags stay off', () => {
+test('extension manifest permissions stay minimal, CRM hooks stay off, and there is no send path', () => {
   const manifest = JSON.parse(readFileSync(join(ROOT, 'avatar-side-panel/manifest.json'), 'utf8'));
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.permissions.sort(), ['sidePanel', 'tabs'].sort());
   assert.deepEqual(manifest.host_permissions.sort(), [
     'https://aisdr.a-gent.co/*',
     'https://api.liveavatar.com/*',
+    'https://mail.google.com/*',
   ].sort());
   assert.ok(!manifest.host_permissions.some((h) => /esm\.sh/i.test(h)));
+  assert.ok(!manifest.host_permissions.some((h) => /googleapis|gmail\.googleapis/i.test(h)));
   assert.ok(manifest.side_panel.default_path);
-  assert.equal(GMAIL_DRAFT_INSERT_ENABLED, false);
+  assert.equal(GMAIL_DRAFT_INSERT_ENABLED, true);
   assert.equal(CRM_HOOK_ENABLED, false);
   assert.equal(PREVIEW_ADMIN_CREDITS, false);
   const js = readFileSync(join(ROOT, 'avatar-side-panel/sidepanel.js'), 'utf8')

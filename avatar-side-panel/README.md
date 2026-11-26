@@ -1,4 +1,4 @@
-# A-Gent avatar Chrome side panel (week 2 scaffold)
+# A-Gent avatar Chrome side panel (weeks 2–3 scaffold)
 
 Unpacked Manifest V3 side panel for the A-Gent avatar pilot. It is **not** listed on the Chrome Web Store. Do not submit it.
 
@@ -22,10 +22,11 @@ This directory is separate from the existing `extension/` tree. **Do not modify 
 | `tabs` | Read the active tab’s URL so the panel can allow only Gmail and the launch CRMs, and show the not-allowed state everywhere else. |
 | `https://aisdr.a-gent.co/*` | The service worker calls the existing avatar-token, avatar-caps, heartbeat, and end APIs. The panel has no send path. |
 | `https://api.liveavatar.com/*` | The locally bundled SDK talks to LiveAvatar once a session token has been minted. |
+| `https://mail.google.com/*` | Week 3: a content script on Gmail only, so the panel can read the visible thread and insert a draft into the open compose box. There is no Gmail send scope and no Google API access. |
 
-There is no `storage` permission (transcripts are not stored). There is no Gmail send scope, no `<all_urls>`, and no content script in this week. The LiveAvatar web SDK (`@heygen/liveavatar-web-sdk@0.0.18`) is bundled at `vendor/liveavatar-web-sdk.js` and loaded from the extension origin only. There is no remote script host (esm.sh is not permitted).
+There is no `storage` permission (transcripts are not stored). There is no Gmail send scope, no `<all_urls>`, and no content script outside `https://mail.google.com/*`. The LiveAvatar web SDK (`@heygen/liveavatar-web-sdk@0.0.18`) is bundled at `vendor/liveavatar-web-sdk.js` and loaded from the extension origin only. There is no remote script host (esm.sh is not permitted).
 
-`tabs` is required in week 2 to read the active tab URL on sites we do not yet have `host_permissions` for. Once weeks 3–4 add host permissions for the allowed sites, `tab.url` is available for those hosts without `tabs`, so **`tabs` can be dropped then** (or replaced with `activeTab` if we only need the tab the person clicked the action on). The Web Store currently shows a “Read your browsing history” warning because of `tabs`.
+`tabs` is still required to read the active tab URL on CRM hosts we do not yet have `host_permissions` for (week 4). Gmail now has a host permission, but dropping `tabs` before the CRM permissions land would break the allowlist on those sites. The Web Store currently shows a “Read your browsing history” warning because of `tabs`.
 
 ### Microphone permission
 
@@ -36,11 +37,12 @@ Chrome side panels often cannot show a `getUserMedia` permission prompt. On Star
 - Design states for idle, connecting, live, speaking, thinking, ended, couldn’t start, cool-down / too many starts, monthly cap, session timeout, fail-closed, not-allowed, the buy-credits placeholders, and Contact your A-Gent admin.
 - Only admins can buy credits. Non-admins see “Contact your A-Gent admin” instead of Buy more credits. The purchase flow is design-only: TBD chips, no prices, no card fields, and no real billing URL. Checkout buttons are labelled “(preview)” and do not open a tab. The server `can_buy` flag (from a signed-in `/api/avatar-caps` call) is the source of truth; `PREVIEW_ADMIN_CREDITS` only previews the admin placeholders locally.
 - After End, the transcript can stay visible in the panel (Copy included). It is only in this page’s memory and is discarded when the panel closes. It is not written to `chrome.storage`, disk, or a server. Saving to the CRM record is proposed, not built (see `docs/avatar-transcript-storage-proposal.md`).
-- Gmail draft insertion (`GMAIL_DRAFT_INSERT_ENABLED`) and CRM hooks (`CRM_HOOK_ENABLED`) are off. Week 3 will use the person’s own Gmail signature; that work is not in this PR.
+- Gmail draft insertion (`GMAIL_DRAFT_INSERT_ENABLED`) is on. The panel can read the visible Gmail thread, propose a reply during a live session (via `/api/avatar-chat`, no extra LiveAvatar mint), and insert that draft into the open compose box above the person’s existing Gmail signature. Gmail’s Send button remains the only send action. If compose cannot be opened, the draft stays in the panel to copy. See `docs/gmail-draft-insert.md` for the DOM approach.
+- CRM hooks (`CRM_HOOK_ENABLED`) stay off. Transcript save-to-CRM is week 4.
 
 ## Allowed sites and URL patterns
 
-See `allowed-sites.js`. The list is the single source of truth and is meant to stay easy to extend (id, label, kind, hosts / hostTest). Detection uses the `tabs` permission (the tab URL). **Week 2 does not add CRM or Gmail `host_permissions`**, because this PR does not inject into those pages or call their APIs.
+See `allowed-sites.js`. The list is the single source of truth and is meant to stay easy to extend (id, label, kind, hosts / hostTest). Detection uses the `tabs` permission (the tab URL). Week 3 adds `https://mail.google.com/*` only, for the draft-insert content script. CRM hosts are still not in `host_permissions`.
 
 Allowed URL patterns (JavaScript allowlist):
 
@@ -51,7 +53,7 @@ Allowed URL patterns (JavaScript allowlist):
 | HubSpot | `app.hubspot.com`, `app-eu1.hubspot.com`, `app-ap1.hubspot.com`, and any `app-<region>.hubspot.com` (`/^app(-[a-z0-9]+)?\.hubspot\.com$/i`). Not `www.hubspot.com`. |
 | Salesforce | `*.lightning.force.com`, `*.my.salesforce.com`. Not GovCloud (`*.lightning.crmforce.mil`), `help.salesforce.com`, `login.salesforce.com`, or the rest of `*.salesforce.com`. |
 
-Proposed **future** `host_permissions` (week 3–4, not in this manifest): `https://mail.google.com/*`, `https://crm.a-gent.co/*`, `https://app.hubspot.com/*`, `https://app-eu1.hubspot.com/*`, `https://app-ap1.hubspot.com/*`, `https://*.lightning.force.com/*`, `https://*.my.salesforce.com/*`.
+Proposed **future** `host_permissions` (week 4 CRM hooks, not in this manifest): `https://crm.a-gent.co/*`, `https://app.hubspot.com/*`, `https://app-eu1.hubspot.com/*`, `https://app-ap1.hubspot.com/*`, `https://*.lightning.force.com/*`, `https://*.my.salesforce.com/*`.
 
 ## Panel login, caps, and checkout (not built)
 
