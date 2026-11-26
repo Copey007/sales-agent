@@ -10,6 +10,7 @@
  */
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
+import { canonicalPlanKey } from './_plans.mjs';
 
 export const TENANT_STATUS = {
   trialing: 'active',
@@ -65,16 +66,19 @@ export function quantityOf(sub) {
 }
 
 /**
- * Map a Stripe price + checkout metadata onto a product plan name.
- * Does not invent price IDs — only reads env vars if they are already set.
+ * Map a Stripe price + checkout metadata onto a canonical product plan name.
+ * The legacy "live-agent" alias (metadata or STRIPE_PRICE_LIVE_AGENT) resolves
+ * to "starter". Does not invent price IDs — only reads env vars if they are already set.
  */
 export function resolvePlan({ metadataPlan, priceId } = {}, getEnv = env) {
   const meta = String(metadataPlan || '').trim();
-  if (KNOWN_PLANS.has(meta)) return meta;
+  // live-agent is a legacy alias for Starter; always persist the canonical key
+  // so webhooks and reconcile write tenants.plan / subscriptions.plan = starter.
+  if (KNOWN_PLANS.has(meta)) return canonicalPlanKey(meta) || meta;
   const id = String(priceId || '').trim();
   if (id) {
     const mapped = [
-      [getEnv('STRIPE_PRICE_LIVE_AGENT'), 'live-agent'],
+      [getEnv('STRIPE_PRICE_LIVE_AGENT'), 'starter'],
       [getEnv('STRIPE_PRICE_STARTER'), 'starter'],
       [getEnv('STRIPE_PRICE_GROWTH'), 'growth'],
       [getEnv('STRIPE_PRICE_ENTERPRISE'), 'enterprise'],
@@ -83,7 +87,7 @@ export function resolvePlan({ metadataPlan, priceId } = {}, getEnv = env) {
       if (envId && envId === id) return name;
     }
   }
-  if (meta && meta !== 'workspace' && meta !== 'unknown') return meta;
+  if (meta && meta !== 'workspace' && meta !== 'unknown') return canonicalPlanKey(meta) || meta;
   return null;
 }
 

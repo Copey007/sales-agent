@@ -13,7 +13,8 @@
  * later checkouts — tenantFromRequest now selects stripe_customer_id). Stamps
  * tenant_id and plan onto both session metadata and subscription_data.metadata
  * so the webhook can resolve the tenant on subscription events. Pure REST against
- * the Stripe API — no SDK. Gated on STRIPE_SECRET_KEY + STRIPE_PRICE_ID.
+ * the Stripe API — no SDK. Gated on STRIPE_SECRET_KEY plus the plan's
+ * STRIPE_PRICE_* env var (see _plans.mjs). Fails closed when that var is missing.
  */
 
 import { env } from './_mcp-connectors.mjs';
@@ -97,7 +98,7 @@ const __handler = async (req) => {
       'line_items[0][quantity]': '1',
       'subscription_data[trial_period_days]': String(trialDays),
       'subscription_data[metadata][tenant_id]': tenant.id,
-      'subscription_data[metadata][plan]': plan || 'workspace',
+      'subscription_data[metadata][plan]': resolved.canonicalKey || 'workspace',
       payment_method_collection: 'always',         // card required up front
       success_url: successUrl,
       cancel_url: cancelUrl,

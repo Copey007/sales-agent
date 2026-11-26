@@ -140,10 +140,24 @@ test('periodEndIso reads Subscription or 2025 item-level period end', () => {
 test('resolvePlan prefers metadata, then env-mapped price ids, never invents', () => {
   const envMap = (k) => ({ STRIPE_PRICE_LIVE_AGENT: PRICE, STRIPE_PRICE_STARTER: 'price_starter_test' }[k] || '');
   assert.equal(resolvePlan({ metadataPlan: 'starter', priceId: PRICE }, envMap), 'starter');
-  assert.equal(resolvePlan({ metadataPlan: '', priceId: PRICE }, envMap), 'live-agent');
+  assert.equal(resolvePlan({ metadataPlan: '', priceId: PRICE }, envMap), 'starter');
   assert.equal(resolvePlan({ metadataPlan: 'workspace', priceId: 'price_other' }, envMap), null);
   assert.equal(resolvePlan({ metadataPlan: 'unknown' }, envMap), null);
   assert.ok(KNOWN_PLANS.has('live-agent') && KNOWN_PLANS.has('starter'));
+});
+
+test('resolvePlan canonicalizes live-agent metadata and STRIPE_PRICE_LIVE_AGENT to starter', () => {
+  const envMap = (k) => ({
+    STRIPE_PRICE_LIVE_AGENT: PRICE,
+    STRIPE_PRICE_STARTER: 'price_starter_test',
+    STRIPE_PRICE_GROWTH: 'price_growth_test',
+  }[k] || '');
+  assert.equal(resolvePlan({ metadataPlan: 'live-agent' }, envMap), 'starter');
+  assert.equal(resolvePlan({ metadataPlan: 'LIVE-AGENT' }, envMap), 'starter');
+  assert.equal(resolvePlan({ metadataPlan: '', priceId: PRICE }, envMap), 'starter');
+  assert.equal(resolvePlan({ metadataPlan: 'workspace', priceId: PRICE }, envMap), 'starter');
+  assert.equal(resolvePlan({ metadataPlan: 'growth', priceId: PRICE }, envMap), 'growth');
+  assert.notEqual(resolvePlan({ metadataPlan: 'live-agent' }, envMap), 'live-agent');
 });
 
 test('mrrCents converts monthly, yearly, and quarterly prices', () => {
@@ -203,11 +217,11 @@ test('checkout.session.completed upserts the subscription and sets tenants.plan 
   const row = parsed(subWrite);
   assert.equal(row.tenant_id, TENANT);
   assert.equal(row.stripe_subscription_id, SUB);
-  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.plan, 'starter');
   assert.equal(row.status, 'active');
   assert.equal(row.current_period_end, '2026-01-01T00:00:00.000Z');
   const tenantPatch = writes().find((c) => c.method === 'PATCH' && c.url.includes('tenants'));
-  assert.deepEqual(parsed(tenantPatch), { status: 'active', plan: 'live-agent' });
+  assert.deepEqual(parsed(tenantPatch), { status: 'active', plan: 'starter' });
   assert.ok(calls.some((c) => c.url.startsWith('https://api.stripe.com/v1/subscriptions/') && (c.method === 'GET')));
 });
 
@@ -226,11 +240,11 @@ test('checkout.session.completed still works when the session carries metadata a
 
 test('customer.subscription.created maps a price id to the product plan and writes MRR fields', async () => {
   setup();
-  const obj = subFixture({ metadata: { tenant_id: TENANT } }); // no plan in metadata; price maps to live-agent
+  const obj = subFixture({ metadata: { tenant_id: TENANT } }); // no plan in metadata; price maps live-agent → starter
   delete obj.metadata.plan;
   await postEvent('customer.subscription.created', obj, { status: 200 });
   const row = parsed(writes().find((c) => c.method === 'POST' && c.url.includes('subscriptions')));
-  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.plan, 'starter');
   const mrrPatch = writes().find((c) => c.method === 'PATCH' && c.url.includes('subscriptions'));
   assert.equal(parsed(mrrPatch).mrr_cents, 12000);
   assert.equal(parsed(mrrPatch).stripe_price_id, PRICE);
@@ -277,7 +291,7 @@ test('invoice.payment_failed retrieves the full subscription, sets past_due, and
   }, { status: 200 });
   const row = parsed(writes().find((c) => c.method === 'POST' && c.url.includes('subscriptions')));
   assert.equal(row.status, 'past_due');
-  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.plan, 'starter');
   assert.equal(row.current_period_end, '2026-01-01T00:00:00.000Z');
   assert.equal(row.plan === 'unknown', false);
   assert.ok(row.current_period_end);
@@ -366,7 +380,7 @@ test('checkout retrieve failure writes a stub row then returns 500 for retry', a
   assert.equal((await r.json()).error, 'sync_failed');
   const row = parsed(writes().find((c) => c.method === 'POST' && c.url.includes('subscriptions')));
   assert.equal(row.stripe_subscription_id, SUB);
-  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.plan, 'starter');
 });
 
 test('unknown event types return received:true and write nothing', async () => {
@@ -399,10 +413,12 @@ test('billing-checkout stamps subscription_data metadata and reuses the stored c
   assert.equal(r.status, 200, await r.clone().text());
   const sessionCall = calls.find((c) => c.url.includes('/v1/checkout/sessions'));
   assert.ok(sessionCall, 'expected a Checkout Session create');
-  const form = String(sessionCall.body);
-  assert.ok(form.includes(`subscription_data%5Bmetadata%5D%5Btenant_id%5D=${encodeURIComponent(TENANT)}`) || form.includes(`subscription_data[metadata][tenant_id]=${TENANT}`));
-  assert.ok(form.includes('subscription_data') && form.includes('tenant_id') && form.includes(TENANT));
-  assert.ok(form.includes('live-agent'));
+  const form = new URLSearchParams(String(sessionCall.body));
+  assert.equal(form.get('subscription_data[metadata][tenant_id]'), TENANT);
+  assert.equal(form.get('subscription_data[metadata][plan]'), 'starter');
+  assert.equal(form.get('metadata[tenant_id]'), TENANT);
+  assert.equal(form.get('metadata[plan]'), 'starter');
+  assert.equal(form.get('metadata[plan_requested]'), 'live-agent');
   // Reused the existing customer — no customers POST.
   assert.equal(calls.some((c) => c.url === 'https://api.stripe.com/v1/customers' || c.url.endsWith('/v1/customers')), false);
 });
@@ -463,7 +479,7 @@ test('billing-reconcile backfills subscriptions for Stripe-linked tenants (mocke
   assert.equal(body.subscriptions, 1);
   const row = parsed(writes().find((c) => c.method === 'POST' && c.url.includes('subscriptions')));
   assert.equal(row.tenant_id, TENANT);
-  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.plan, 'starter');
   assert.ok(calls.some((c) => c.url.includes('https://api.stripe.com/v1/subscriptions?customer=')));
 });
 

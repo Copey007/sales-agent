@@ -202,6 +202,17 @@ async function checkoutBody(res) {
   catch { return { status: res.status, body: text }; }
 }
 
+function checkoutForm(call) {
+  return new URLSearchParams(String(call?.body || ''));
+}
+
+function assertSubscriptionMeta(form, { tenantId = 't-acme', plan }) {
+  assert.equal(form.get('subscription_data[metadata][tenant_id]'), tenantId);
+  assert.equal(form.get('subscription_data[metadata][plan]'), plan);
+  assert.equal(form.get('metadata[tenant_id]'), tenantId);
+  assert.equal(form.get('metadata[plan]'), plan);
+}
+
 test('checkout: missing STRIPE_SECRET_KEY fails closed without calling Stripe', async () => {
   setupAuth();
   clearPriceEnv();
@@ -272,8 +283,8 @@ test('checkout: starter session uses STRIPE_PRICE_STARTER and never a live Strip
   assert.equal(stripeCalls.length, 1);
   assert.match(stripeCalls[0].url, /checkout\/sessions/);
   assert.match(String(stripeCalls[0].body), /price_test_starter/);
-  assert.match(String(stripeCalls[0].body), /metadata%5Bplan%5D=starter/);
   assert.equal(String(stripeCalls[0].body).includes('price_test_growth'), false);
+  assertSubscriptionMeta(checkoutForm(stripeCalls[0]), { plan: 'starter' });
 });
 
 test('checkout: growth session uses STRIPE_PRICE_GROWTH', async () => {
@@ -290,7 +301,47 @@ test('checkout: growth session uses STRIPE_PRICE_GROWTH', async () => {
   const stripeCalls = calls.filter((c) => c.url.includes('api.stripe.com'));
   assert.equal(stripeCalls.length, 1);
   assert.match(String(stripeCalls[0].body), /price_test_growth/);
-  assert.match(String(stripeCalls[0].body), /metadata%5Bplan%5D=growth/);
+  assertSubscriptionMeta(checkoutForm(stripeCalls[0]), { plan: 'growth' });
+});
+
+test('checkout: Starter stamps subscription_data[metadata][tenant_id] and [plan]', async () => {
+  setupAuth();
+  clearPriceEnv();
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+  process.env.STRIPE_PRICE_STARTER = 'price_test_starter';
+  route('https://api.stripe.com/v1/checkout/sessions', () => ({
+    body: { id: 'cs_meta_starter', url: 'https://checkout.stripe.com/c/pay/cs_meta_starter' },
+  }));
+  const { status } = await checkoutBody(await checkout.default(req(CHECKOUT, { method: 'POST', headers: bearer, body: { plan: 'starter' } })));
+  assert.equal(status, 200);
+  const session = calls.find((c) => c.url.includes('/v1/checkout/sessions'));
+  assert.ok(session);
+  const form = checkoutForm(session);
+  assert.equal(form.get('subscription_data[metadata][tenant_id]'), 't-acme');
+  assert.equal(form.get('subscription_data[metadata][plan]'), 'starter');
+  assert.equal(form.get('metadata[tenant_id]'), 't-acme');
+  assert.equal(form.get('metadata[plan]'), 'starter');
+  assert.equal(form.get('line_items[0][price]'), 'price_test_starter');
+});
+
+test('checkout: Growth stamps subscription_data[metadata][tenant_id] and [plan]', async () => {
+  setupAuth();
+  clearPriceEnv();
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+  process.env.STRIPE_PRICE_GROWTH = 'price_test_growth';
+  route('https://api.stripe.com/v1/checkout/sessions', () => ({
+    body: { id: 'cs_meta_growth', url: 'https://checkout.stripe.com/c/pay/cs_meta_growth' },
+  }));
+  const { status } = await checkoutBody(await checkout.default(req(CHECKOUT, { method: 'POST', headers: bearer, body: { plan: 'growth' } })));
+  assert.equal(status, 200);
+  const session = calls.find((c) => c.url.includes('/v1/checkout/sessions'));
+  assert.ok(session);
+  const form = checkoutForm(session);
+  assert.equal(form.get('subscription_data[metadata][tenant_id]'), 't-acme');
+  assert.equal(form.get('subscription_data[metadata][plan]'), 'growth');
+  assert.equal(form.get('metadata[tenant_id]'), 't-acme');
+  assert.equal(form.get('metadata[plan]'), 'growth');
+  assert.equal(form.get('line_items[0][price]'), 'price_test_growth');
 });
 
 test('checkout: live-agent alias bills the live-agent or starter price and stores canonical starter', async () => {
@@ -307,8 +358,9 @@ test('checkout: live-agent alias bills the live-agent or starter price and store
   const stripeCalls = calls.filter((c) => c.url.includes('api.stripe.com'));
   assert.equal(stripeCalls.length, 1);
   assert.match(String(stripeCalls[0].body), /price_test_live/);
-  assert.match(String(stripeCalls[0].body), /metadata%5Bplan%5D=starter/);
-  assert.match(String(stripeCalls[0].body), /metadata%5Bplan_requested%5D=live-agent/);
+  const form = checkoutForm(stripeCalls[0]);
+  assertSubscriptionMeta(form, { plan: 'starter' });
+  assert.equal(form.get('metadata[plan_requested]'), 'live-agent');
 });
 
 test('checkout: no plan uses STRIPE_PRICE_ID (legacy default workspace checkout)', async () => {
@@ -324,7 +376,27 @@ test('checkout: no plan uses STRIPE_PRICE_ID (legacy default workspace checkout)
   assert.ok(body.url);
   const stripeCalls = calls.filter((c) => c.url.includes('api.stripe.com'));
   assert.match(String(stripeCalls[0].body), /price_test_default/);
-  assert.match(String(stripeCalls[0].body), /metadata%5Bplan%5D=workspace/);
+  assertSubscriptionMeta(checkoutForm(stripeCalls[0]), { plan: 'workspace' });
+});
+
+test('checkout: stripe_customer_id PATCH failure returns 502 and does not open a Checkout Session', async () => {
+  resetFetch();
+  mockAuth(USERS, {
+    'u-mem': [{ role: 'owner', tenant_id: 't-acme', tenants: { id: 't-acme', slug: 'acme', name: 'Acme', plan: 'trial', status: 'active' } }],
+  });
+  clearPriceEnv();
+  process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+  process.env.STRIPE_PRICE_STARTER = 'price_test_starter';
+  route(`${SB}/rest/v1/tenants`, () => ({ status: 500, body: { message: 'patch failed' } }));
+  route('https://api.stripe.com/v1/customers', () => ({ body: { id: 'cus_new_test' } }));
+  route('https://api.stripe.com/v1/checkout/sessions', () => ({ body: { id: 'cs_should_not_create', url: 'https://checkout.stripe.com/c/pay/nope' } }));
+  const { status, body } = await checkoutBody(await checkout.default(req(CHECKOUT, { method: 'POST', headers: bearer, body: { plan: 'starter' } })));
+  assert.equal(status, 502);
+  assert.ok(body.error);
+  assert.match(String(body.error), /stripe_customer_id/);
+  assert.equal(/cus_new_test|sk_test_dummy|price_test_starter/.test(JSON.stringify(body)), false, 'must not leak ids or dummy keys');
+  assert.equal(calls.some((c) => c.url.includes('/v1/checkout/sessions')), false, 'must not open a session after a failed customer save');
+  assert.ok(calls.some((c) => c.url.includes('/v1/customers')));
 });
 
 test('checkout OPTIONS is 204 and POST-only otherwise', async () => {
