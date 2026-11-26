@@ -266,8 +266,9 @@ test('invoice.paid retrieves the subscription and sets the tenant active', async
   assert.equal(row.status, 'active');
 });
 
-test('invoice.payment_failed marks the tenant past_due and the subscription past_due', async () => {
-  setup();
+test('invoice.payment_failed retrieves the full subscription, sets past_due, and keeps plan and period end', async () => {
+  const sub = subFixture({ status: 'active' });
+  setup({ stripeSubs: [sub] });
   await postEvent('invoice.payment_failed', {
     id: 'in_fail',
     customer: CUST,
@@ -276,7 +277,59 @@ test('invoice.payment_failed marks the tenant past_due and the subscription past
   }, { status: 200 });
   const row = parsed(writes().find((c) => c.method === 'POST' && c.url.includes('subscriptions')));
   assert.equal(row.status, 'past_due');
+  assert.equal(row.plan, 'live-agent');
+  assert.equal(row.current_period_end, '2026-01-01T00:00:00.000Z');
+  assert.equal(row.plan === 'unknown', false);
+  assert.ok(row.current_period_end);
   assert.equal(parsed(writes().find((c) => c.method === 'PATCH' && c.url.includes('tenants'))).status, 'past_due');
+});
+
+test('invoice.payment_failed falls back to a status-only PATCH and does not clobber plan or period end', async () => {
+  const existing = {
+    tenant_id: TENANT,
+    stripe_subscription_id: SUB,
+    plan: 'live-agent',
+    status: 'active',
+    current_period_end: '2026-01-01T00:00:00.000Z',
+  };
+  let stored = { ...existing };
+  setup({ stripeSubs: () => ({ status: 502, body: { error: { message: 'stripe down' } } }) });
+  await postEvent('invoice.payment_failed', {
+    id: 'in_fail',
+    customer: CUST,
+    subscription: SUB,
+    metadata: { tenant_id: TENANT },
+  }, { status: 200 });
+  const subWrites = writes().filter((c) => c.url.includes('subscriptions'));
+  assert.ok(subWrites.length, 'expected a subscription write');
+  assert.ok(subWrites.every((c) => c.method === 'PATCH'), 'must not upsert a sparse row (POST merge would clobber)');
+  for (const c of subWrites) {
+    const body = parsed(c);
+    assert.equal('plan' in body, false, 'status-only PATCH must not include plan');
+    assert.equal('current_period_end' in body, false, 'status-only PATCH must not include current_period_end');
+    stored = { ...stored, ...body };
+  }
+  assert.equal(stored.plan, 'live-agent');
+  assert.equal(stored.current_period_end, '2026-01-01T00:00:00.000Z');
+  assert.equal(stored.status, 'past_due');
+  assert.equal(parsed(writes().find((c) => c.method === 'PATCH' && c.url.includes('tenants'))).status, 'past_due');
+});
+
+test('invoice.paid returns 500 when subscription retrieve fails and does not write a sparse row', async () => {
+  setup({ stripeSubs: () => ({ status: 502, body: { error: { message: 'stripe down' } } }) });
+  const r = await postEvent('invoice.paid', {
+    id: 'in_paid',
+    customer: CUST,
+    subscription: SUB,
+    metadata: {},
+    subscription_details: { metadata: { tenant_id: TENANT, plan: 'live-agent' } },
+  }, { status: 500 });
+  const body = await r.json();
+  assert.equal(body.received, false);
+  assert.equal(body.error, 'sync_failed');
+  const subWrites = writes().filter((c) => c.url.includes('/rest/v1/subscriptions'));
+  assert.equal(subWrites.length, 0, 'must not upsert a sparse subscription row');
+  assert.equal(writes().filter((c) => c.url.includes('/rest/v1/tenants') && c.method === 'PATCH').length, 0);
 });
 
 test('subscription events resolve the tenant by stripe_customer_id when metadata is missing', async () => {

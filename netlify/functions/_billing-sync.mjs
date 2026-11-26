@@ -205,6 +205,17 @@ export async function upsertSubscription(tenantId, sub, { plan } = {}) {
   return { ...core, ...(extra || {}) };
 }
 
+/** PATCH only `status` on an existing subscription row — never touches plan or period end. */
+export async function patchSubscriptionStatus(subscriptionId, status) {
+  const subId = stripeId(subscriptionId) || subscriptionId;
+  if (!subId || !status) throw new SyncError('patchSubscriptionStatus: missing id or status');
+  await restOk(`subscriptions?stripe_subscription_id=eq.${encodeURIComponent(subId)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function updateTenantBilling(tenantId, { status, plan } = {}) {
   if (!tenantId) return;
   const patch = {};
@@ -322,10 +333,13 @@ export async function handleStripeEvent(event) {
       if (!tenantId) return { ignored: 'no_tenant' };
       const subId = stripeId(obj.subscription);
       if (subId) {
-        let sub = null;
-        try { sub = await retrieveSubscription(subId); } catch (err) {
+        let sub;
+        try {
+          sub = await retrieveSubscription(subId);
+        } catch (err) {
           console.warn('[billing-sync] invoice.paid retrieve failed:', err.message);
-          sub = { id: subId, status: 'active', metadata: obj.subscription_details?.metadata || {} };
+          // Do not write a sparse row (it would clobber plan / current_period_end).
+          throw new SyncError('invoice.paid: subscription retrieve failed; Stripe should retry', { status: 502 });
         }
         await syncSubscription(tenantId, sub);
       } else {
@@ -338,11 +352,14 @@ export async function handleStripeEvent(event) {
       if (!tenantId) return { ignored: 'no_tenant' };
       const subId = stripeId(obj.subscription);
       if (subId) {
-        await upsertSubscription(tenantId, {
-          id: subId,
-          status: 'past_due',
-          metadata: obj.subscription_details?.metadata || {},
-        });
+        try {
+          const sub = await retrieveSubscription(subId);
+          await syncSubscription(tenantId, { ...sub, status: 'past_due' });
+        } catch (err) {
+          console.warn('[billing-sync] invoice.payment_failed retrieve failed; status-only patch:', err.message);
+          // Existing plan and current_period_end must stay intact.
+          await patchSubscriptionStatus(subId, 'past_due');
+        }
       }
       await updateTenantBilling(tenantId, { status: 'past_due' });
       return { tenantId };
