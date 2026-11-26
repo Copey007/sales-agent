@@ -18,6 +18,7 @@ import { serviceCreds } from './_supabase-rest.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
+import { resolveStripePrice, TRIAL_DAYS as DEFAULT_TRIAL_DAYS } from './_plans.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -53,16 +54,22 @@ const __handler = async (req) => {
   const tenant = ctx.tenant;
 
   let b = {}; try { b = await req.json(); } catch {}
-  // Resolve the price from the selected plan (offers page), else the default
-  // workspace price. Each plan's price id lives in its own env var.
+  // Resolve the price from the selected plan (offers / pricing page), else the
+  // default workspace price. Never bills a different plan's price as a fallback
+  // for starter/growth — see resolveStripePrice in _plans.mjs.
   const plan = (b.plan || '').trim();
-  const PLAN_PRICE_ENV = { 'live-agent': 'STRIPE_PRICE_LIVE_AGENT', 'starter': 'STRIPE_PRICE_STARTER' };
-  const PRICE = (PLAN_PRICE_ENV[plan] && env(PLAN_PRICE_ENV[plan])) || env('STRIPE_PRICE_ID');
-  if (!PRICE) return json({ configured: false, reason: 'No Stripe price configured for this plan.' });
+  const resolved = resolveStripePrice(plan, env);
+  if (!resolved.ok) {
+    return json(
+      { configured: false, reason: resolved.reason, env_var: resolved.envVar || undefined },
+      resolved.status || 200,
+    );
+  }
+  const PRICE = resolved.priceId;
 
   const successUrl = b.success_url || 'https://missioncontrol.a-gent.co/?welcome=1';
   const cancelUrl = b.cancel_url || 'https://missioncontrol.a-gent.co/?billing=cancelled';
-  const trialDays = Math.min(60, Math.max(0, parseInt(b.trial_days, 10) || 15));
+  const trialDays = Math.min(60, Math.max(0, parseInt(b.trial_days, 10) || DEFAULT_TRIAL_DAYS));
 
   try {
     // Reuse or create the Stripe customer for this tenant.
@@ -83,7 +90,8 @@ const __handler = async (req) => {
       success_url: successUrl,
       cancel_url: cancelUrl,
       'metadata[tenant_id]': tenant.id,
-      'metadata[plan]': plan || 'workspace',
+      'metadata[plan]': resolved.canonicalKey || 'workspace',
+      'metadata[plan_requested]': plan || '',
     });
 
     return json({ url: session.url });

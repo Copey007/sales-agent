@@ -13,6 +13,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { withCors } from './_auth.mjs';
 import { operatorEmails } from './_tenant.mjs';
+import { normalizeSignupPlan, TRIAL_DAYS } from './_plans.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -59,8 +60,11 @@ const __handler = async (req) => {
   const worker = b.worker && typeof b.worker === 'object' ? b.worker : null;
   const workerGoal = (b.goal || '').trim();
   const workerContext = (b.context || '').trim();
-  // Optional: the offer plan the visitor picked (offers-demo.html → ?plan=…).
-  const plan = (b.plan || '').trim();
+  // Optional: the offer plan the visitor picked (offers-demo / pricing → ?plan=…).
+  // Aliases like live-agent are normalized to a canonical tenants.plan key.
+  const planResult = normalizeSignupPlan(b.plan);
+  if (!planResult.ok) return json({ error: planResult.reason }, 400);
+  const plan = planResult.key;
 
   // ── Validate ────────────────────────────────────────────────────────────
   if (!name || !company) return json({ error: 'Name and company are required.' }, 400);
@@ -99,12 +103,11 @@ const __handler = async (req) => {
     const userId = userBody.id || userBody.user?.id;
 
     // 2) Tenant + owner membership
-    const tenant = (await sb(url, key, 'tenants', { slug, name: company, plan: plan || 'trial', status: 'active' }))[0];
+    const tenant = (await sb(url, key, 'tenants', { slug, name: company, plan, status: 'active' }))[0];
     await sb(url, key, 'memberships', { tenant_id: tenant.id, user_id: userId, role: 'owner' }, 'return=minimal');
 
     // 2b) Start the 15-day trial clock (best-effort — column added by workforce-schema.sql).
     //     Matches the Stripe trial (billing-checkout trial_period_days) + all signup copy.
-    const TRIAL_DAYS = 15;
     const trialEnds = new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString();
     try {
       await fetch(`${url}/rest/v1/tenants?id=eq.${tenant.id}`, {
