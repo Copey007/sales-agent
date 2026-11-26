@@ -5,24 +5,25 @@
  *
  * Verifies the Stripe signature (STRIPE_WEBHOOK_SECRET), then reflects
  * subscription lifecycle onto our tables:
- *   - upserts subscriptions(stripe_subscription_id, plan, status, period end)
+ *   - upserts subscriptions(stripe_subscription_id, plan, status, period end,
+ *     and price/MRR fields when the optional migration has been applied)
  *   - maps the Stripe status onto tenants.status (active | past_due | suspended | cancelled)
+ *   - updates tenants.plan from confirmed subscription metadata / price mapping
  *
  * Resolves the tenant from the event's metadata.tenant_id when present, else by
- * the tenant's stored stripe_customer_id. Always returns 200 quickly so Stripe
- * doesn't retry on our own downstream hiccups (logged instead).
+ * the tenant's stored stripe_customer_id (customer may be a string or { id }).
+ *
+ * Signature failures return 400. Database / hard sync failures return 500 so
+ * Stripe retries — they are no longer swallowed behind a 200.
  */
 
 import crypto from 'node:crypto';
 import { env } from './_mcp-connectors.mjs';
-import { serviceCreds } from './_supabase-rest.mjs';
+import { handleStripeEvent, SyncError } from './_billing-sync.mjs';
 
-// Service role only — never the anon key (fails closed if unset; see _supabase-rest.mjs).
-function creds() { return serviceCreds(); }
-async function rest(path, init = {}) {
-  const { url, key } = creds();
-  return fetch(`${url}/rest/v1/${path}`, { ...init, headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
-}
+// verify lives here historically (tests import it from this module). Keep a
+// local implementation that also remains the source of truth for tests, and
+// re-export it. (The shared module does not own signature checks.)
 
 // Verify Stripe's signature header against the raw body (no SDK).
 // Accepts any of multiple v1 signatures (secret rotation) and rejects
@@ -42,37 +43,8 @@ export function verify(rawBody, sigHeader, secret, { toleranceSec = 300, nowSec 
   return v1s.some((v1) => { const got = Buffer.from(v1); return got.length === expected.length && crypto.timingSafeEqual(got, expected); });
 }
 
-// Stripe subscription status → our tenants.status
-const TENANT_STATUS = { trialing: 'active', active: 'active', past_due: 'past_due', unpaid: 'suspended', canceled: 'cancelled', incomplete_expired: 'cancelled' };
-
-async function tenantIdFor(obj) {
-  if (obj?.metadata?.tenant_id) return obj.metadata.tenant_id;
-  const customer = obj?.customer;
-  if (!customer) return null;
-  const res = await rest(`tenants?stripe_customer_id=eq.${encodeURIComponent(customer)}&select=id&limit=1`);
-  if (!res.ok) return null;
-  return (await res.json())[0]?.id || null;
-}
-
-async function setTenantStatus(tenantId, status) {
-  if (!tenantId || !status) return;
-  await rest(`tenants?id=eq.${tenantId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-}
-
-async function upsertSubscription(tenantId, sub) {
-  if (!tenantId || !sub?.id) return;
-  const row = {
-    tenant_id: tenantId,
-    stripe_subscription_id: sub.id,
-    plan: sub.items?.data?.[0]?.price?.id || 'unknown',
-    status: sub.status,
-    current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-  };
-  await rest('subscriptions?on_conflict=stripe_subscription_id', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(row),
-  });
+function json(body, status) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 const __handler = async (req) => {
@@ -87,39 +59,13 @@ const __handler = async (req) => {
   try { event = JSON.parse(raw); } catch { return new Response('bad json', { status: 400 }); }
 
   try {
-    const obj = event.data?.object || {};
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const tenantId = await tenantIdFor(obj);
-        await setTenantStatus(tenantId, 'active');
-        break;
-      }
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated': {
-        const tenantId = await tenantIdFor(obj);
-        await upsertSubscription(tenantId, obj);
-        await setTenantStatus(tenantId, TENANT_STATUS[obj.status] || 'active');
-        break;
-      }
-      case 'customer.subscription.deleted': {
-        const tenantId = await tenantIdFor(obj);
-        await upsertSubscription(tenantId, obj);
-        await setTenantStatus(tenantId, 'cancelled');
-        break;
-      }
-      case 'invoice.payment_failed': {
-        const tenantId = await tenantIdFor(obj);
-        await setTenantStatus(tenantId, 'past_due');
-        break;
-      }
-      default:
-        break; // ignore other events
-    }
+    const result = await handleStripeEvent(event);
+    return json({ received: true, ...(result || {}) }, 200);
   } catch (err) {
-    console.error('[billing-webhook]', event?.type, err.message);
+    console.error('[billing-webhook]', event?.type, err?.message || err);
+    const retry = !(err instanceof SyncError) || err.retry !== false;
+    return json({ received: false, error: 'sync_failed' }, retry ? 500 : 400);
   }
-
-  return new Response(JSON.stringify({ received: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 
 export const config = { path: '/api/billing-webhook' };

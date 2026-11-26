@@ -9,8 +9,11 @@
  *
  * Creates a subscription Checkout Session with a free trial and ALWAYS collects
  * a card (payment_method_collection: 'always'), so it converts automatically when
- * the trial ends. Stores the Stripe customer id on the tenant. Pure REST against the
- * Stripe API — no SDK. Gated on STRIPE_SECRET_KEY + STRIPE_PRICE_ID.
+ * the trial ends. Stores the Stripe customer id on the tenant (and reuses it on
+ * later checkouts — tenantFromRequest now selects stripe_customer_id). Stamps
+ * tenant_id and plan onto both session metadata and subscription_data.metadata
+ * so the webhook can resolve the tenant on subscription events. Pure REST against
+ * the Stripe API — no SDK. Gated on STRIPE_SECRET_KEY + STRIPE_PRICE_ID.
  */
 
 import { env } from './_mcp-connectors.mjs';
@@ -77,15 +80,24 @@ const __handler = async (req) => {
     if (!customerId) {
       const customer = await stripe(SECRET, 'customers', { name: tenant.name, email: ctx.user?.email || '', 'metadata[tenant_id]': tenant.id, 'metadata[slug]': tenant.slug });
       customerId = customer.id;
-      await sbRest(`tenants?id=eq.${tenant.id}`, { method: 'PATCH', body: JSON.stringify({ stripe_customer_id: customerId }) });
+      const saved = await sbRest(`tenants?id=eq.${tenant.id}`, { method: 'PATCH', body: JSON.stringify({ stripe_customer_id: customerId }) });
+      if (!saved.ok) {
+        const detail = await saved.text().catch(() => '');
+        throw new Error(`Failed to store stripe_customer_id (${saved.status})${detail ? ': ' + detail.slice(0, 200) : ''}`);
+      }
     }
 
+    // metadata on the session is not copied onto the Subscription object,
+    // so also stamp tenant_id / plan onto subscription_data.metadata. That is
+    // what customer.subscription.* events carry.
     const session = await stripe(SECRET, 'checkout/sessions', {
       mode: 'subscription',
       customer: customerId,
       'line_items[0][price]': PRICE,
       'line_items[0][quantity]': '1',
       'subscription_data[trial_period_days]': String(trialDays),
+      'subscription_data[metadata][tenant_id]': tenant.id,
+      'subscription_data[metadata][plan]': plan || 'workspace',
       payment_method_collection: 'always',         // card required up front
       success_url: successUrl,
       cancel_url: cancelUrl,
