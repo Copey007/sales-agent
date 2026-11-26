@@ -9,7 +9,7 @@ Status: **built in this draft PR, not deployed**. The unpacked side panel can re
 Week 2 only read the tab URL (via `tabs`) and never touched the Gmail page. Inserting text into compose, and reading the message that is already on screen, requires a content script in the tab. The manifest therefore adds:
 
 - `host_permissions`: `https://mail.google.com/*` (justified: tab-only read of the visible thread and insert into compose).
-- `content_scripts`: `gmail-content.js` on `https://mail.google.com/*` only, `document_idle`, module.
+- `content_scripts`: `gmail-dom-classic.js` then `gmail-content.js` on `https://mail.google.com/*` only, `document_idle`. These are **classic** scripts (no `"type": "module"`, no `import`/`export`). MV3 ignores `type: module` on content scripts and would otherwise reject ESM syntax, leaving no message listener.
 
 It does **not** add `<all_urls>`, `scripting`, `identity`, Gmail REST scopes, or any Google API host. `tabs` is kept so the allowlist still works on CRM hosts that do not yet have host permissions.
 
@@ -44,6 +44,14 @@ Selectors live in `avatar-side-panel/gmail-dom.js` (`GMAIL_SELECTORS`) and are l
 6. If compose is not open, click **Reply** (preferred) or **Compose** (`[aria-label="Reply"]` / `[role="button"][gh="cm"]`) and wait briefly for the box. Those clicks are rejected if the control looks like Send. If no box appears, return `compose_unavailable` so the panel can say so and leave the draft on screen to copy.
 
 Gmail then keeps the signature it would have added if the person had typed the draft themselves. We never write an A-Gent signature, a name placeholder, or a blank over that block.
+
+## Prompt construction
+
+The visible subject, sender, and message are placed in a clearly delimited
+`BEGIN/END UNTRUSTED EMAIL CONTENT` block and marked as data, not instructions.
+Subject is capped at 200 characters and sender at 150; the body is already
+capped at 1,200. Any delimiter text that appeared in the email is stripped so
+it cannot close the block early.
 
 ## What the panel does
 

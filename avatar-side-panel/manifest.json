@@ -37,8 +37,7 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["gmail-content.js"],
-      "type": "module",
+      "js": ["gmail-dom-classic.js", "gmail-content.js"],
       "run_at": "document_idle"
     }
   ]
