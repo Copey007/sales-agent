@@ -513,7 +513,11 @@ for (const page of ['offers-demo.html', 'pricing.html']) {
     assert.equal(/credit top-ups?/i.test(html), false);
     assert.equal(/buy more credits/i.test(html), false);
     assert.equal(/cancel[^.]{0,80}from Mission Control/i.test(html), false);
+    assert.equal(/Stripe customer portal|billing portal/i.test(html), false);
     assert.equal(html.includes('Explore Consulting'), false);
     assert.equal(html.includes('style="font-size:2rem"'), false);
+    assert.match(html, /@media \(max-width:360px\)\{[\s\S]*\.nav\{padding:14px 16px\}[\s\S]*\.nav nav\{gap:\.75rem\}[\s\S]*\.nav img\{height:24px\}/);
+    assert.match(html, /\.price-card \.features li\{[^}]*display:block;position:relative/);
+    assert.match(html, /\.price-card \.features li::before\{[^}]*position:absolute;left:0/);
   });
 }
