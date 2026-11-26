@@ -1,6 +1,6 @@
 import { withCors } from './_auth.mjs';
 import { operatorGuard } from './_tenant.mjs';
-import { callLLM as llmChat } from './_llm.mjs';
+import { callLLM as llmChat, isLlmConfigIncompleteError } from './_llm.mjs';
 /**
  * GAP Email Pipeline — End-to-End Signal Gathering + Email Generation
  * 
@@ -377,6 +377,12 @@ const __handler = async (req, context) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({ 
       error: e.message,
       hint: 'Ensure OPENAI_API_KEY is set in Netlify environment variables'

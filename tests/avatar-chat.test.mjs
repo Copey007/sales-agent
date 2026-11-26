@@ -279,3 +279,110 @@ test('POST /api/avatar-chat still returns 503 llm_unavailable when the LLM reque
   assert.equal(res.status, 503);
   assert.equal((await res.json()).error, 'llm_unavailable');
 });
+
+function chatCompletions() {
+  return calls.filter((c) => c.url.includes('/chat/completions'));
+}
+
+function noLeak(body, ...secrets) {
+  const dumped = JSON.stringify(body);
+  for (const s of secrets) assert.equal(dumped.includes(s), false, `leaked ${s}`);
+}
+
+test('avatar-chat uses only the LLM pair when both LLM_API_KEY and LLM_API_BASE are set', async () => {
+  process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
+  process.env.OPENAI_API_KEY = 'openai-only-test-key';
+  process.env.OPENAI_API_BASE = 'https://api.openai.com/v1';
+  try {
+    setup({ llm: 'panel-ok' });
+    const res = await post({
+      session_row: ACTIVE_ROW.id,
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal((await res.json()).reply, 'panel-ok');
+    const llm = chatCompletions();
+    assert.equal(llm.length, 1);
+    assert.equal(llm[0].url, 'https://api.anthropic.com/v1/chat/completions');
+    assert.equal(llm[0].headers.get('Authorization'), 'Bearer llm-only-test-key');
+  } finally {
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_API_BASE;
+    delete process.env.OPENAI_API_BASE;
+    process.env.OPENAI_API_KEY = 'test-llm-key';
+  }
+});
+
+test('avatar-chat returns 502 llm_config_incomplete when LLM_API_KEY is set without LLM_API_BASE', async () => {
+  process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.OPENAI_API_KEY = 'openai-only-test-key';
+  process.env.OPENAI_API_BASE = 'https://api.openai.com/v1';
+  delete process.env.LLM_API_BASE;
+  try {
+    setup({ llm: 'should-not-run' });
+    const res = await post({
+      session_row: ACTIVE_ROW.id,
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json();
+    assert.equal(body.error, 'llm_config_incomplete');
+    assert.equal(body.reply, undefined);
+    noLeak(body, 'llm-only-test-key', 'openai-only-test-key');
+    assert.equal(chatCompletions().length, 0);
+  } finally {
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_API_BASE;
+    delete process.env.OPENAI_API_BASE;
+    process.env.OPENAI_API_KEY = 'test-llm-key';
+  }
+});
+
+test('avatar-chat returns 502 llm_config_incomplete when LLM_API_BASE is set without LLM_API_KEY', async () => {
+  delete process.env.LLM_API_KEY;
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
+  process.env.OPENAI_API_KEY = 'openai-only-test-key';
+  process.env.OPENAI_API_BASE = 'https://api.openai.com/v1';
+  try {
+    setup({ llm: 'should-not-run' });
+    const res = await post({
+      session_row: ACTIVE_ROW.id,
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json();
+    assert.equal(body.error, 'llm_config_incomplete');
+    noLeak(body, 'llm-only-test-key', 'openai-only-test-key');
+    assert.equal(chatCompletions().length, 0);
+    assert.equal(calls.some((c) => c.url.includes('api.anthropic.com')), false);
+  } finally {
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_API_BASE;
+    delete process.env.OPENAI_API_BASE;
+    process.env.OPENAI_API_KEY = 'test-llm-key';
+  }
+});
+
+test('avatar-chat keeps OPENAI_API_KEY with OPENAI_API_BASE when neither LLM var is set', async () => {
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_API_BASE;
+  process.env.OPENAI_API_KEY = 'openai-only-test-key';
+  process.env.OPENAI_API_BASE = 'https://api.openai.com/v1';
+  try {
+    setup({ llm: 'fallback-ok' });
+    const res = await post({
+      session_row: ACTIVE_ROW.id,
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal((await res.json()).reply, 'fallback-ok');
+    const llm = chatCompletions();
+    assert.equal(llm.length, 1);
+    assert.equal(llm[0].url, 'https://api.openai.com/v1/chat/completions');
+    assert.equal(llm[0].headers.get('Authorization'), 'Bearer openai-only-test-key');
+  } finally {
+    delete process.env.OPENAI_API_BASE;
+    process.env.OPENAI_API_KEY = 'test-llm-key';
+  }
+});

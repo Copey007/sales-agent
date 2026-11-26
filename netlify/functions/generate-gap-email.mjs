@@ -1,6 +1,6 @@
 import { withCors } from './_auth.mjs';
 import { operatorGuard } from './_tenant.mjs';
-import { callLLM as llmChat } from './_llm.mjs';
+import { callLLM as llmChat, isLlmConfigIncompleteError } from './_llm.mjs';
 /**
  * GAP Email Generator — Netlify Serverless Function
  * 
@@ -133,6 +133,12 @@ const __handler = async (req, context) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
