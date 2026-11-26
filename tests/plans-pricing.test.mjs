@@ -489,3 +489,31 @@ test('offers-demo.html and pricing.html advertise the same public prices', () =>
     assert.ok(b.includes(needle), `pricing.html missing ${needle}`);
   }
 });
+
+for (const page of ['offers-demo.html', 'pricing.html']) {
+  test(`${page} uses semantic landmarks, direct button links, and 12px badges`, () => {
+    const html = read(page);
+    assert.match(html, /<header class="nav">/);
+    assert.match(html, /<nav aria-label="Primary">/);
+    assert.match(html, /<footer class="footer">/);
+    assert.match(html, /<article class="price-card"[^>]*data-plan="starter"/);
+    assert.match(html, /<article class="price-card[^>]*data-plan="growth"/);
+    assert.match(html, /<article class="price-card"[^>]*data-plan="enterprise"/);
+    assert.equal(/<a class="card-cta"[^>]*>\s*<span class="btn/.test(html), false);
+    assert.match(html, /<a class="btn btn-secondary card-cta" href="\/signup.html\?plan=starter">Start 15-day trial</);
+    assert.match(html, /<a class="btn btn-primary card-cta" href="\/signup.html\?plan=growth">Start 15-day trial</);
+    assert.match(html, /<a class="btn btn-secondary card-cta" href="https:\/\/a-gent\.co\/#book-demo">Book a Demo</);
+    assert.match(html, /\.badge\{[^}]*font-size:\.75rem/);
+    assert.match(html, /\.nav nav\{display:flex;gap:1\.25rem;align-items:center\}/);
+    assert.match(html, /\.nav a\{[^}]*white-space:nowrap[^}]*min-height:44px/);
+    assert.match(html, /\.hero h1\{[^}]*font-weight:600/);
+    assert.match(html, /\.price-card \.amount\{[^}]*font-size:2\.6rem/);
+    assert.match(html, /\.price-card \.sub\{[^}]*color:var\(--muted\)/);
+    assert.match(html, /--radius:12px/);
+    assert.equal(/credit top-ups?/i.test(html), false);
+    assert.equal(/buy more credits/i.test(html), false);
+    assert.equal(/cancel[^.]{0,80}from Mission Control/i.test(html), false);
+    assert.equal(html.includes('Explore Consulting'), false);
+    assert.equal(html.includes('style="font-size:2rem"'), false);
+  });
+}
