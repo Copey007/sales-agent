@@ -1,5 +1,6 @@
 import { withCors } from './_auth.mjs';
 import { operatorGuard } from './_tenant.mjs';
+import { callLLM as llmChat, isLlmConfigIncompleteError } from './_llm.mjs';
 /**
  * GAP Email Generator — Netlify Serverless Function
  * 
@@ -132,6 +133,12 @@ const __handler = async (req, context) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({ error: 'internal_error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -179,46 +186,10 @@ function buildUserPrompt(prospect, signals, sender, productContext) {
 
 // ─── LLM Call ──────────────────────────────────────────────────────────────────
 async function callLLM(systemPrompt, userPrompt) {
-  // Use OpenAI-compatible endpoint (configured via env vars)
-  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
-    ? Netlify.env.get('OPENAI_API_KEY')
-    : process.env.OPENAI_API_KEY;
-  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
-    ? Netlify.env.get('OPENAI_API_BASE')
-    : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
-  const model = (typeof Netlify !== 'undefined' && Netlify.env.get('LLM_MODEL'))
-    ? Netlify.env.get('LLM_MODEL')
-    : (process.env.LLM_MODEL || 'gpt-5-mini');
-  
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is not set');
-  }
-  
-  const response = await fetch(`${apiBase}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 4000,
-      // response_format: { type: 'json_object' } // not all providers support this
-    })
-  });
-  
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`LLM API error ${response.status}: ${errText}`);
-  }
-  
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return llmChat([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ], { temperature: 0.7, maxTokens: 4000 });
 }
 
 export const config = {

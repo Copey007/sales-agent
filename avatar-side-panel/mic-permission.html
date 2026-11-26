@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Allow the microphone — A-Gent</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <style>
+    body { max-width: 32rem; margin: 2rem auto; padding: 0 1.25rem; }
+    main { display: grid; gap: 1rem; }
+    #status[data-kind="ok"] { color: #c8b48c; }
+    #status[data-kind="bad"] { color: #e8a0a0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Allow the microphone</h1>
+    <p>
+      A-Gent needs the microphone so you can talk to the avatar. Chrome may not
+      show that prompt in the side panel, so this page asks once for the
+      extension. After you allow it, you can close this tab and press Start
+      again in the panel.
+    </p>
+    <p>
+      Audio is sent to LiveAvatar / HeyGen during a live session. Do not discuss
+      health information. This page does not start a paid session.
+    </p>
+    <p>
+      <button type="button" class="btn pri" id="allow">Allow microphone</button>
+    </p>
+    <p id="status" role="status"></p>
+  </main>
+  <script type="module" src="mic-permission-page.js"></script>
+</body>
+</html>

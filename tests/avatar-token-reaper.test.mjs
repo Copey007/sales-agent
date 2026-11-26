@@ -150,9 +150,13 @@ test('reaper leaves the local row open when a LiveAvatar stop fails so it stays 
   const stale = [
     { id: 'r3', liveavatar_session_id: 'la-bad', started_at: '2020-01-01T00:00:00Z', last_heartbeat: '2020-01-01T00:00:00Z', duration_seconds: 5 },
   ];
-  let patched = 0;
+  const patches = [];
   route(`${SB}/rest/v1/avatar_sessions`, (_url, init) => {
-    if ((init.method || 'GET') === 'PATCH') { patched++; return { body: [{ id: 'r3' }] }; }
+    if ((init.method || 'GET') === 'PATCH') {
+      const body = JSON.parse(init.body || '{}');
+      patches.push(body);
+      return { body: [{ id: 'r3', ...body }] };
+    }
     return { body: stale };
   });
   route(`${LA}/v1/sessions/stop`, () => ({ status: 502, body: { error: 'upstream' } }));
@@ -163,6 +167,6 @@ test('reaper leaves the local row open when a LiveAvatar stop fails so it stays 
   assert.equal(body.stopped, 0);
   assert.equal(body.reaped, 0);
   assert.equal(body.skipped, 1);
-  assert.equal(patched, 0);
+  assert.equal(patches.every((p) => !p.status || !['ended', 'reaped', 'cancelled'].includes(p.status)), true, JSON.stringify(patches));
   assert.equal(heygenCalls().length, 1);
 });

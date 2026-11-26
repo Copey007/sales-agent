@@ -15,8 +15,9 @@
  * remote session are cancelled locally without a stop call.
  */
 
-import { listStaleSessions, endSession } from './_avatar-store.mjs';
+import { listStaleSessions, endSession, recordStopFailure } from './_avatar-store.mjs';
 import { getAvatarCaps, serverDurationSeconds } from './_avatar-caps.mjs';
+import { STOP_FAIL_ALERT_AFTER, alertPermanentStopFailure } from './_avatar-stop-alert.mjs';
 
 const API_URL = 'https://api.liveavatar.com';
 
@@ -85,6 +86,26 @@ export async function reap() {
       } catch (err) {
         console.error('[avatar-reaper] stop failed; leaving session', s.id, 'retryable:', err.message);
         skipped++;
+        if (s._stopAlertColumnsMissing) {
+          console.error('[avatar-reaper] stop_fail_count columns missing; alerts disabled until the migration is applied. Stop retries continue.');
+          continue;
+        }
+        const failCount = (Number(s.stop_fail_count) || 0) + 1;
+        const already = !!s.stop_alerted_at;
+        const shouldAlert = failCount >= STOP_FAIL_ALERT_AFTER && !already;
+        if (shouldAlert) {
+          const alerted = await alertPermanentStopFailure({ session: s, error: err.message, failCount });
+          const saved = await recordStopFailure(s.id, { failCount, alerted: true });
+          if (!saved) {
+            console.error('[avatar-reaper] PERMANENT_STOP_FAILURE: could not persist stop_alerted_at; skip further emails this tick');
+          }
+          if (!alerted?.emailed) {
+            /* log-only is intentional when OPERATOR_EMAILS / transport is unset */
+          }
+        } else {
+          // Do not pass alerted:true here — that would overwrite stop_alerted_at.
+          await recordStopFailure(s.id, { failCount, alerted: false });
+        }
         continue;
       }
     }

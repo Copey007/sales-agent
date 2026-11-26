@@ -23,5 +23,8 @@
     "edge-tts": "^1.0.1",
     "msedge-tts": "^2.0.6",
     "resend": "^6.12.4"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
   }
 }
