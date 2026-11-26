@@ -4,7 +4,7 @@
  * paginates the full result set, and hard-screens candidates for relevance.
  */
 
-import { callLLM, parseLLMJson } from './_llm.mjs';
+import { callLLM, parseLLMJson, isLlmConfigIncompleteError } from './_llm.mjs';
 
 // Turns the campaign's free-text ICP into a REAL company list via Hunter
 // Discover, instead of the static demo domain map. Two steps:
@@ -35,6 +35,9 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
       f = parseLLMJson(content);
       if (f && f.query) parseCache.set(icpText, f);
     } catch (e) {
+      if (isLlmConfigIncompleteError(e)) {
+        return { companies: [], mode: 'llm_config_incomplete', transient: true };
+      }
       return { companies: [], mode: `icp_parse_failed: ${e.message}`, transient: true };
     }
   }
@@ -92,7 +95,12 @@ exclude_domains/exclude_keywords: any companies or categories the ICP explicitly
           const keep = new Set(parsed.keep.map(d => String(d).toLowerCase().replace(/^www\./, '')));
           gated = companies.filter(c => keep.has(c.domain.toLowerCase().replace(/^www\./, '')));
         }
-      } catch (e) { /* retry once, then heuristic */ }
+      } catch (e) {
+        if (isLlmConfigIncompleteError(e)) {
+          return { companies: [], mode: 'llm_config_incomplete', transient: true };
+        }
+        /* retry once, then heuristic */
+      }
     }
     if (gated === null) {
       // Heuristic fallback: drop obvious non-commercial fits

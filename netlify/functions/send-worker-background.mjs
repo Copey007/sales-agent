@@ -21,7 +21,7 @@ import {
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
   listCampaignSends, logActivity, getFeatureFlag, isEmailSuppressed, DEFAULTS
 } from "./_campaign-store.mjs";
-import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
+import { callLLM, parseLLMJson, isLlmConfigIncompleteError } from "./_llm.mjs";
 import { requireInternal, internalHeaders, siteUrl, env as authEnv } from "./_auth.mjs";
 import { complianceOrBlock } from "./_email-compliance.mjs";
 
@@ -490,6 +490,12 @@ export default async (req, context) => {
         const result = await processSend(sendId, campaign, persona, signalConfig, sequence, { dryRun });
         results.push(result);
       } catch (sendErr) {
+        if (isLlmConfigIncompleteError(sendErr)) {
+          return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+            status: 502,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
         results.push({ send_id: sendId, failed: true, error: sendErr.message });
       }
     }
@@ -535,6 +541,12 @@ export default async (req, context) => {
     });
 
   } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     console.error('[send-worker-background]', err.message, err.stack);
     return new Response(JSON.stringify({
       success: false,

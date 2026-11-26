@@ -14,7 +14,7 @@
  */
 
 import { resolveTenantContext } from './_tenant.mjs';
-import { callLLM, parseLLMJson } from './_llm.mjs';
+import { callLLM, parseLLMJson, isLlmConfigIncompleteError } from './_llm.mjs';
 import { DEFAULTS, logActivity } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -312,6 +312,9 @@ const __handler = async (req) => {
 
     return json({ error: `unknown action: ${action}` }, 400);
   } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return json({ error: 'llm_config_incomplete' }, 502);
+    }
     console.error('[gtm-brain]', err.message);
     return json({ error: 'internal_error' }, 500);
   }
