@@ -32,6 +32,9 @@ const DEFAULT_ORIGINS = [
   'https://fleet.a-gent.co',
   'https://a-gent.co',
   'https://www.a-gent.co',
+  'https://askarlen.com',
+  'https://www.askarlen.com',
+  'https://app.askarlen.com',
 ].join(',');
 
 export function allowedOrigins() {

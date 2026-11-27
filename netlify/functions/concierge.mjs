@@ -24,14 +24,26 @@ import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
+import { getBuiltinPersona, normalizeConciergeSlug } from './_concierge-personas.mjs';
 import { requireNonEmptyLlmText, isLlmEmptyReplyError, isLlmConfigIncompleteError, isLlmUpstreamError, redactSecrets } from './_llm.mjs';
 
 /**
- * Resolve the system prompt + scoping for a given agent slug. Per-tenant
- * agents bring their own persona + knowledge; absent a slug we fall back to
- * the built-in A-Gent prompt so existing callers keep working.
+ * Resolve the system prompt + scoping for a given agent slug. Built-in public
+ * personas (arlen / askarlen) always win so the AskArlen widget does not
+ * depend on an avatar_agents row. Per-tenant agents bring their own persona
+ * + knowledge; absent a slug we fall back to the built-in A-Gent prompt so
+ * existing callers keep working.
  */
 async function resolveAgent(slug) {
+  const builtin = getBuiltinPersona(slug);
+  if (builtin) {
+    return {
+      systemPrompt: builtin.systemPrompt,
+      accountId: builtin.accountId,
+      name: builtin.name,
+      greetingHint: builtin.greetingHint,
+    };
+  }
   if (!slug) return { systemPrompt: SYSTEM_PROMPT, accountId: 'a-gent', name: 'A-Gent' };
   try {
     const agent = await getAgentBySlug(slug);
@@ -45,6 +57,21 @@ async function resolveAgent(slug) {
     console.warn('[concierge] agent resolve failed, using default:', e.message);
   }
   return { systemPrompt: SYSTEM_PROMPT, accountId: slug || 'a-gent', name: 'A-Gent' };
+}
+
+/** Public slug or null. Returns { slug } or { error, status, body }. */
+function publicSlugOrError(raw, corsHeaders) {
+  if (raw == null || raw === '') return { slug: null };
+  const slug = normalizeConciergeSlug(raw);
+  if (!slug || !isPublicConciergeSlug(slug)) {
+    return {
+      error: true,
+      response: new Response(JSON.stringify({ error: 'agent_not_found' }), {
+        status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      }),
+    };
+  }
+  return { slug };
 }
 
 const __handler = async (req, context) => {
@@ -146,14 +173,18 @@ Rules:
 // ─── Handlers ──────────────────────────────────────────────────────────────────
 
 async function handleStart(body, corsHeaders) {
+  const resolved = publicSlugOrError(body.slug, corsHeaders);
+  if (resolved.error) return resolved.response;
   const { visitorInfo = {} } = body;
   const sessionId = `concierge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const agent = await resolveAgent(resolved.slug);
+  const greetAs = agent.greetingHint || `Greet them naturally and ask what brings them to ${agent.name} today.`;
 
   // Generate a personalized greeting
   const greetingResult = await invoke('llm', 'chat', {
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `A new visitor has arrived. ${visitorInfo.referrer ? 'They came from ' + String(visitorInfo.referrer).slice(0, 200) + '.' : ''} ${visitorInfo.page ? 'They are on the ' + String(visitorInfo.page).slice(0, 200) + ' page.' : ''} Greet them naturally and ask what brings them to A-Gent today.` }
+      { role: 'system', content: agent.systemPrompt },
+      { role: 'user', content: `A new visitor has arrived. ${visitorInfo.referrer ? 'They came from ' + String(visitorInfo.referrer).slice(0, 200) + '.' : ''} ${visitorInfo.page ? 'They are on the ' + String(visitorInfo.page).slice(0, 200) + ' page.' : ''} ${greetAs}` }
     ],
     temperature: 0.7,
     maxTokens: 200
@@ -189,16 +220,14 @@ async function handleStart(body, corsHeaders) {
 }
 
 async function handleChat(body, corsHeaders, req) {
-  const { sessionId, speak = false, slug = null } = body;
+  const { sessionId, speak = false } = body;
   // visitorEmail is ignored for anonymous callers: it used to trigger a
   // memory-store text search on "concierge" that leaked other visitors' notes.
 
   // Anonymous website visitors may only talk to public agents.
-  if (slug && !isPublicConciergeSlug(slug)) {
-    return new Response(JSON.stringify({ error: 'agent_not_found' }), {
-      status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  }
+  const resolved = publicSlugOrError(body.slug, corsHeaders);
+  if (resolved.error) return resolved.response;
+  const slug = resolved.slug;
 
   const cleaned = sanitizeChatMessages(body.messages);
   if (cleaned.error) {
@@ -208,8 +237,8 @@ async function handleChat(body, corsHeaders, req) {
   }
   const messages = cleaned.messages;
 
-  // Public slug or built-in A-Gent prompt only — never a private tenant prompt.
-  const { systemPrompt, accountId } = await resolveAgent(slug && isPublicConciergeSlug(slug) ? slug : null);
+  // Public slug, built-in persona, or built-in A-Gent prompt only — never a private tenant prompt.
+  const { systemPrompt, accountId } = await resolveAgent(slug);
 
   // Build the conversation. Do not read agent_memory for anonymous callers.
   const llmMessages = [
