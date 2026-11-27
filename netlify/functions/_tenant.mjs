@@ -115,7 +115,7 @@ export async function tenantFromRequest(req, { tenantSlug = null } = {}) {
   const user = await userFromToken(token);
   if (!user?.id) return null;
 
-  let q = `memberships?user_id=eq.${user.id}&select=role,tenant_id,tenants(id,slug,name,plan,status)`;
+  let q = `memberships?user_id=eq.${user.id}&select=role,tenant_id,tenants(id,slug,name,plan,status,stripe_customer_id)`;
   const res = await rest(q);
   if (!res.ok) return null;
   const rows = await res.json();
