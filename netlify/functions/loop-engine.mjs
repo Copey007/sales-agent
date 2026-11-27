@@ -12,43 +12,13 @@
  * Storage: Netlify Blobs (serverless KV)
  */
 
+import { callLLM as llmChat, cleanLLMJson, isLlmConfigIncompleteError } from './_llm.mjs';
+
 // ─── LLM Configuration ──────────────────────────────────────────────────────────
-
-function getLLMConfig() {
-  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_KEY'))
-    ? Netlify.env.get('OPENAI_API_KEY')
-    : process.env.OPENAI_API_KEY;
-  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env?.get('OPENAI_API_BASE'))
-    ? Netlify.env.get('OPENAI_API_BASE')
-    : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
-  const model = (typeof Netlify !== 'undefined' && Netlify.env?.get('LLM_MODEL'))
-    ? Netlify.env.get('LLM_MODEL')
-    : (process.env.LLM_MODEL || 'claude-haiku-4-5');
-  return { apiKey, apiBase, model };
-}
-
-function cleanLLMJson(content) {
-  // Strip markdown code fences that Claude sometimes adds
-  let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
-  return cleaned;
-}
+// Chat goes through shared getLLMConfig / callLLM (LLM_API_KEY, LLM_API_BASE).
 
 async function callLLM(messages, temperature = 0.7, maxTokens = 2000) {
-  const { apiKey, apiBase, model } = getLLMConfig();
-  const response = await fetch(`${apiBase}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`LLM API error ${response.status}: ${errText}`);
-  }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  return llmChat(messages, { temperature, maxTokens });
 }
 
 // ─── Experiment Storage via Netlify Blobs ────────────────────────────────────────
@@ -555,6 +525,12 @@ export default async (req, context) => {
     });
 
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({
       success: false,
       error: e.message,

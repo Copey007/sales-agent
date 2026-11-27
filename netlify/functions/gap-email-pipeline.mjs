@@ -1,5 +1,6 @@
 import { withCors } from './_auth.mjs';
 import { operatorGuard } from './_tenant.mjs';
+import { callLLM as llmChat, isLlmConfigIncompleteError } from './_llm.mjs';
 /**
  * GAP Email Pipeline — End-to-End Signal Gathering + Email Generation
  * 
@@ -234,20 +235,6 @@ Return ONLY valid JSON:
 }`;
 
 async function generateGapEmail(prospect, signals, sender, productContext) {
-  const apiKey = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_KEY'))
-    ? Netlify.env.get('OPENAI_API_KEY')
-    : process.env.OPENAI_API_KEY;
-  const apiBase = (typeof Netlify !== 'undefined' && Netlify.env.get('OPENAI_API_BASE'))
-    ? Netlify.env.get('OPENAI_API_BASE')
-    : (process.env.OPENAI_API_BASE || 'https://api.manus.im/api/llm-proxy/v1');
-  const model = (typeof Netlify !== 'undefined' && Netlify.env.get('LLM_MODEL'))
-    ? Netlify.env.get('LLM_MODEL')
-    : (process.env.LLM_MODEL || 'gpt-5-mini');
-  
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is not set. Configure it in Netlify env vars.');
-  }
-  
   // Build user prompt
   let userPrompt = `## Prospect Information
 - **Name:** ${prospect.contact_name}
@@ -279,30 +266,10 @@ async function generateGapEmail(prospect, signals, sender, productContext) {
   
   userPrompt += `\n## Task\nWrite a GAP Prospecting email for this prospect. Follow the methodology exactly. Return valid JSON only.`;
   
-  const response = await fetch(`${apiBase}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: GAP_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 4000
-    })
-  });
-  
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`LLM API error ${response.status}: ${errText}`);
-  }
-  
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
+  const content = await llmChat([
+    { role: 'system', content: GAP_SYSTEM_PROMPT },
+    { role: 'user', content: userPrompt },
+  ], { temperature: 0.7, maxTokens: 4000 });
   
   // Parse JSON from response
   try {
@@ -410,6 +377,12 @@ const __handler = async (req, context) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (e) {
+    if (isLlmConfigIncompleteError(e)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     return new Response(JSON.stringify({ 
       error: e.message,
       hint: 'Ensure OPENAI_API_KEY is set in Netlify environment variables'
