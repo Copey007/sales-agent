@@ -13,7 +13,7 @@
  * with a single registry that any agent can use.
  */
 
-import { llmResponseShape, llmAuthHeaders, getLLMConfig, chatCompletionBody, resolveOpenAiApiKey } from './_llm.mjs';
+import { llmResponseShape, llmAuthHeaders, getLLMConfig, chatCompletionBody, resolveOpenAiApiKey, throwIfLlmResponseNotOk } from './_llm.mjs';
 
 // ─── Connector Base ────────────────────────────────────────────────────────────
 
@@ -317,7 +317,7 @@ function createLLMConnector() {
 
     const res = await fetch(`${cfg.apiBase}/chat/completions`, {
       method: 'POST',
-      headers: llmAuthHeaders(cfg.apiKey),
+      headers: llmAuthHeaders(cfg.apiKey, process.env, { apiBase: cfg.apiBase }),
       body: JSON.stringify(chatCompletionBody({
         model: cfg.model,
         messages,
@@ -325,7 +325,7 @@ function createLLMConnector() {
         maxTokens,
       })),
     });
-    if (!res.ok) throw new Error(`LLM error ${res.status}: ${await res.text()}`);
+    await throwIfLlmResponseNotOk(res, 'llm');
     const data = await res.json();
     return {
       content: data.choices?.[0]?.message?.content || '',

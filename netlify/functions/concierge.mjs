@@ -24,7 +24,7 @@ import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { sanitizeChatMessages, isPublicConciergeSlug } from './_chat-input.mjs';
-import { requireNonEmptyLlmText, isLlmEmptyReplyError, isLlmConfigIncompleteError, redactSecrets } from './_llm.mjs';
+import { requireNonEmptyLlmText, isLlmEmptyReplyError, isLlmConfigIncompleteError, isLlmUpstreamError, redactSecrets } from './_llm.mjs';
 
 /**
  * Resolve the system prompt + scoping for a given agent slug. Per-tenant
@@ -92,6 +92,16 @@ const __handler = async (req, context) => {
   } catch (err) {
     if (isLlmConfigIncompleteError(err)) {
       return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    if (isLlmUpstreamError(err)) {
+      // Status + allowlisted type only. Never include upstream message/body.
+      return new Response(JSON.stringify({
+        error: 'llm_upstream_error',
+        status: err.status || 0,
+        type: err.upstreamType || null,
+      }), {
         status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }

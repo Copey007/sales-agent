@@ -18,6 +18,12 @@ import {
   requireNonEmptyLlmText,
   isLlmEmptyReplyError,
   CLAUDE_5X_MIN_MAX_TOKENS,
+  llmAuthHeaders,
+  isAnthropicApiBase,
+  ANTHROPIC_API_VERSION,
+  parseLlmUpstreamError,
+  isLlmUpstreamError,
+  LLM_UPSTREAM_ERROR,
 } from '../netlify/functions/_llm.mjs';
 import { initConnectors, invoke } from '../netlify/functions/_mcp-connectors.mjs';
 
@@ -119,6 +125,7 @@ test('chat completions for claude-haiku-5-5 omit temperature and raise max_token
   assert.equal(chatCalls().length, 1);
   assert.equal(chatCalls()[0].url, 'https://api.anthropic.com/v1/chat/completions');
   assert.equal(bearer(chatCalls()[0]), 'Bearer llm-only-test-key');
+  assert.equal(chatCalls()[0].headers.get('anthropic-version'), '2026-10-21');
   const body = JSON.parse(chatCalls()[0].body);
   assert.equal(body.model, 'claude-haiku-5-5');
   assert.equal('temperature' in body, false);
@@ -197,10 +204,12 @@ test('concierge does not expose provider error text to the client', async () => 
       method: 'POST',
       body: { action: 'chat', slug: 'demo', messages: [{ role: 'user', content: 'Hi' }], speak: false },
     }));
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 502);
     const body = await res.json();
     const dumped = JSON.stringify(body);
-    assert.equal(body.error, 'internal_error');
+    assert.equal(body.error, 'llm_upstream_error');
+    assert.equal(body.status, 400);
+    assert.equal(body.type, null);
     assert.equal(dumped.includes('temperature below 1'), false);
     assert.equal(dumped.includes('SECRET_SHOULD_NOT_LEAK'), false);
     assert.equal(dumped.includes('sk-test-secret-should-not-appear'), false);
@@ -210,6 +219,9 @@ test('concierge does not expose provider error text to the client', async () => 
   }
   const log = errors.join('\n');
   assert.equal(log.includes('sk-test-secret-should-not-appear'), false);
+  assert.equal(log.includes('SECRET_SHOULD_NOT_LEAK'), false);
+  assert.equal(log.includes('temperature below 1'), false);
+  assert.match(log, /llm_upstream_error/);
 });
 
 test('embeddings go only to api.openai.com, never LLM_API_BASE or OPENAI_API_BASE', async () => {
@@ -438,9 +450,79 @@ test('neither LLM_API_KEY nor LLM_API_BASE: keep OPENAI_API_KEY with OPENAI_API_
   assert.equal(text, 'fallback-ok');
   assert.equal(chatCalls()[0].url, 'https://api.openai.com/v1/chat/completions');
   assert.equal(bearer(chatCalls()[0]), 'Bearer openai-only-test-key');
+  assert.equal(chatCalls()[0].headers.get('anthropic-version'), null);
 
   delete process.env.OPENAI_API_BASE;
   const manus = getLLMConfig();
   assert.equal(manus.apiKey, 'openai-only-test-key');
   assert.equal(manus.apiBase, 'https://api.manus.im/api/llm-proxy/v1');
 });
+
+test('isAnthropicApiBase and llmAuthHeaders add anthropic-version only for Anthropic hosts', () => {
+  assert.equal(isAnthropicApiBase('https://api.anthropic.com/v1'), true);
+  assert.equal(isAnthropicApiBase('https://api.anthropic.com/v1/'), true);
+  assert.equal(isAnthropicApiBase('https://api.openai.com/v1'), false);
+  assert.equal(isAnthropicApiBase('https://api.manus.im/api/llm-proxy/v1'), false);
+  assert.equal(ANTHROPIC_API_VERSION, '2026-10-21');
+
+  const ant = llmAuthHeaders('test-key', {}, { apiBase: 'https://api.anthropic.com/v1' });
+  assert.equal(ant['anthropic-version'], '2026-10-21');
+  assert.equal(ant.Authorization, 'Bearer test-key');
+  assert.equal(ant['anthropic-workspace-id'], undefined);
+
+  const withWs = llmAuthHeaders('test-key', { ANTHROPIC_WORKSPACE_ID: 'wrkspc_test' }, { apiBase: 'https://api.anthropic.com/v1' });
+  assert.equal(withWs['anthropic-workspace-id'], 'wrkspc_test');
+  assert.equal(withWs['anthropic-version'], '2026-10-21');
+
+  const oai = llmAuthHeaders('test-key', {}, { apiBase: 'https://api.openai.com/v1' });
+  assert.equal(oai['anthropic-version'], undefined);
+  const manus = llmAuthHeaders('test-key', {}, { apiBase: 'https://api.manus.im/api/llm-proxy/v1' });
+  assert.equal(manus['anthropic-version'], undefined);
+});
+
+test('parseLlmUpstreamError keeps only status and type/code, never the message', () => {
+  const info = parseLlmUpstreamError(400, JSON.stringify({
+    error: {
+      type: 'invalid_request_error',
+      message: 'sk-ant-test-should-never-leak missing anthropic-version',
+    },
+  }));
+  assert.equal(info.status, 400);
+  assert.equal(info.type, 'invalid_request_error');
+  assert.equal(info.code, null);
+  assert.equal(JSON.stringify(info).includes('sk-ant-test-should-never-leak'), false);
+  assert.equal(JSON.stringify(info).includes('anthropic-version'), false);
+
+  const html = parseLlmUpstreamError(502, '<html>not json sk-secret</html>');
+  assert.equal(html.status, 502);
+  assert.equal(html.type, null);
+  assert.equal(JSON.stringify(html).includes('sk-secret'), false);
+});
+
+test('invoke(llm, chat) throws LlmUpstreamError on a non-OK Anthropic response', async () => {
+  initConnectors();
+  process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
+  process.env.LLM_MODEL = 'claude-haiku-5-5';
+  route('/chat/completions', () => ({
+    status: 400,
+    body: { error: { type: 'invalid_request_error', message: 'sk-ant-test-should-never-leak' } },
+  }));
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map((a) => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')); };
+  try {
+    await invoke('llm', 'chat', { messages: [{ role: 'user', content: 'hi' }] });
+    assert.fail('expected throw');
+  } catch (err) {
+    assert.equal(isLlmUpstreamError(err), true);
+    assert.equal(err.message, LLM_UPSTREAM_ERROR);
+    assert.equal(err.status, 400);
+    assert.equal(err.upstreamType, 'invalid_request_error');
+    const dumped = logs.join('\n') + String(err.message) + String(err.stack || '');
+    assert.equal(dumped.includes('sk-ant-test-should-never-leak'), false);
+  } finally {
+    console.error = orig;
+  }
+});
+
