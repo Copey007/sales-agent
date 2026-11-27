@@ -28,11 +28,9 @@
 
   // The server-side edge gate (netlify/edge-functions/aisdr-gate.js) reads
   // this cookie; keep it in sync with the session so reloads stay signed in.
-  function cookieDomain() {
-    var h = location.hostname || '';
-    if (h.length > 9 && h.slice(-10) === '.a-gent.co') return '; Domain=.a-gent.co';
-    return '';
-  }
+  // Host-aware shared cookie Domain (mirror of gate-core sharedCookieDomain):
+  // *.a-gent.co → .a-gent.co, *.askarlen.com → .askarlen.com, else host-only.
+  function cookieDomain(){var h=(location.hostname||'').toLowerCase();var d=['.a-gent.co','.askarlen.com'];for(var i=0;i<d.length;i++){if(h.length>d[i].length&&h.slice(-d[i].length)===d[i])return '; Domain='+d[i];}return '';}
   function writeCookie(name, value, maxAge, withDomain) {
     document.cookie = name + '=' + encodeURIComponent(value || '') + '; Path=/; Max-Age=' + Math.max(0, maxAge | 0) + '; Secure; SameSite=Lax' + (withDomain ? cookieDomain() : '');
   }
@@ -177,14 +175,45 @@
     var a = document.createElement('a'); a.href = '#'; a.textContent = 'Sign out'; a.style.color = '#f0f0f2';
     a.addEventListener('click', function (e) {
       e.preventDefault();
-      nativeFetch(SB_URL + '/auth/v1/logout', { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + (session && session.access_token) } }).catch(function () {});
+      try { nativeFetch(SB_URL + '/auth/v1/logout?scope=local', { method: 'POST', keepalive: true, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + (session && session.access_token) } }).catch(function () {}); } catch (err) {}
       signOut();
+      // Two-domain sign-out: clear Mission Control's .askarlen.com cookies too,
+      // then come back here (the peer's /auth/logout never chains further).
+      location.href = SSO_LOGOUT_PEER + '?next=' + encodeURIComponent(location.origin + location.pathname);
     });
     b.appendChild(a); document.body.appendChild(b);
   }
   function whenBody(fn) { if (document.body) fn(); else document.addEventListener('DOMContentLoaded', fn); }
 
-  window.AGENT_AUTH = { ready: function () { return ready; }, token: validToken, signOut: signOut };
+  // ── Cross-domain SSO handoff (P1 rehome) ────────────────────────────────
+  // aisdr (.a-gent.co) ↔ Mission Control (.askarlen.com) can't share a cookie.
+  // Links marked data-sso-handoff pass the session "baton" (refresh token) in
+  // the URL FRAGMENT to the peer's /auth/handoff (never a query string, never
+  // sent to a server). This side then drops its own refresh token (keeps the
+  // access token until expiry) so both domains never redeem one rotating token.
+  var SSO_PEERS = ['aisdr.a-gent.co', 'missioncontrol.askarlen.com'];
+  var SSO_LOGOUT_PEER = 'https://missioncontrol.askarlen.com/auth/logout';
+  function ssoHandoffUrl(href) {
+    var u; try { u = new URL(href, location.href); } catch (e) { return href; }
+    if (u.protocol !== 'https:' || SSO_PEERS.indexOf(u.hostname) < 0 || u.hostname === location.hostname) return u.href;
+    var peerD = /\.askarlen\.com$/.test(u.hostname) ? '; Domain=.askarlen.com' : '; Domain=.a-gent.co';
+    if (cookieDomain() && cookieDomain() === peerD) return u.href;
+    var rt = readCookie('agent_rt') || (session && session.refresh_token) || '';
+    if (!rt) return u.href;
+    var nextPath = (u.pathname || '/') + (u.search || '');
+    if (session) { session = Object.assign({}, session, { refresh_token: '' }); try { localStorage.setItem(STORE, JSON.stringify(session)); } catch (e) {} }
+    writeCookie('agent_rt', '', 0, true); writeCookie('agent_rt', '', 0, false);
+    return u.origin + '/auth/handoff#rt=' + encodeURIComponent(rt) + '&next=' + encodeURIComponent(nextPath);
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[data-sso-handoff]') : null;
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    var url = ssoHandoffUrl(a.href);
+    if (a.target === '_blank') { var w = window.open(url, '_blank', 'noopener'); if (!w) location.href = url; } else location.href = url;
+  });
+
+  window.AGENT_AUTH = { ready: function () { return ready; }, token: validToken, signOut: signOut, ssoHandoffUrl: ssoHandoffUrl };
 
   // ── Boot ─────────────────────────────────────────────────────────────────
   if (!SB_URL || !SB_KEY) { console.error('[auth-gate] missing data-supabase-url / data-supabase-key'); }

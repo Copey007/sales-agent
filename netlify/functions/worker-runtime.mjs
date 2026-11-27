@@ -248,7 +248,7 @@ async function pipelineHealthSweep() {
 // repair, he escalates by email immediately (not just the daily report).
 const WATCHED_PROPERTIES = [
   ['Marketing site', 'https://a-gent.co/'],
-  ['Mission Control', 'https://missioncontrol.a-gent.co/'],
+  ['Mission Control', 'https://missioncontrol.askarlen.com/'],
   ['AI SDR', 'https://aisdr.a-gent.co/'],
   ['CRM', 'https://crm.a-gent.co/'],
   ['Live demo', 'https://aisdr.a-gent.co/a/demo']

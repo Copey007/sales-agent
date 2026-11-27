@@ -71,8 +71,8 @@ const __handler = async (req) => {
   }
   const PRICE = resolved.priceId;
 
-  const successUrl = b.success_url || 'https://missioncontrol.a-gent.co/?welcome=1';
-  const cancelUrl = b.cancel_url || 'https://missioncontrol.a-gent.co/?billing=cancelled';
+  const successUrl = b.success_url || 'https://missioncontrol.askarlen.com/?welcome=1';
+  const cancelUrl = b.cancel_url || 'https://missioncontrol.askarlen.com/?billing=cancelled';
   const trialDays = Math.min(60, Math.max(0, parseInt(b.trial_days, 10) || DEFAULT_TRIAL_DAYS));
 
   try {

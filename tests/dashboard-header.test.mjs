@@ -10,5 +10,5 @@ test('dashboard logo <img> points at an existing absolute asset', () => {
 });
 test('header .nav-btn links share the pill base style and point at missioncontrol', () => {
   assert.match(s, /\.pill,\.button,\.sig-btn,\.nav-btn\{/);
-  assert.match(s, /<a class="nav-btn" href="https:\/\/missioncontrol\.a-gent\.co"/);
+  assert.match(s, /<a class="nav-btn" href="https:\/\/missioncontrol\.askarlen\.com\/"/);
 });

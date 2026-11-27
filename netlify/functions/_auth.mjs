@@ -29,6 +29,7 @@ export function env(key, fallback = '') {
 const DEFAULT_ORIGINS = [
   'https://aisdr.a-gent.co',
   'https://missioncontrol.a-gent.co',
+  'https://missioncontrol.askarlen.com',
   'https://fleet.a-gent.co',
   'https://a-gent.co',
   'https://www.a-gent.co',

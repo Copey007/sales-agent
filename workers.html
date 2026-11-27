@@ -428,7 +428,7 @@
           btn.disabled = false; btn.textContent = 'Create workspace & hire →';
           msg.style.color = 'var(--red)';
           msg.innerHTML = /already registered/i.test(data.error || '')
-            ? 'That email already has a workspace — <a href="https://missioncontrol.a-gent.co" style="color:var(--accent-strong)">log in to Mission Control</a> to manage your team.'
+            ? 'That email already has a workspace — <a href="https://missioncontrol.askarlen.com" style="color:var(--accent-strong)">log in to Mission Control</a> to manage your team.'
             : esc(data.error || 'Could not create workspace.');
           return;
         }
@@ -448,7 +448,7 @@
           try {
             const co = await fetch(window.location.origin + '/api/billing-checkout', {
               method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-              body: JSON.stringify({ success_url: 'https://missioncontrol.a-gent.co/?welcome=1', cancel_url: 'https://missioncontrol.a-gent.co/?billing=cancelled' }),
+              body: JSON.stringify({ success_url: 'https://missioncontrol.askarlen.com/?welcome=1', cancel_url: 'https://missioncontrol.askarlen.com/?billing=cancelled' }),
             });
             const cod = await co.json();
             if (cod.url) { window.location.href = cod.url; return; } // → Stripe card capture
@@ -462,7 +462,7 @@
             <p>Your workspace <strong>${esc(hireState.company)}</strong> is live with a 15-day free trial. Manage ${esc(hiredWorker.name.split(' ')[0])} in Mission Control.</p>
           </div>
           <div class="btn-row" style="margin-top:16px">
-            <a href="https://missioncontrol.a-gent.co/?welcome=1" style="flex:1"><button class="btn-primary">Go to Mission Control →</button></a>
+            <a href="https://missioncontrol.askarlen.com/?welcome=1" style="flex:1"><button class="btn-primary">Go to Mission Control →</button></a>
           </div>`;
       } catch (e) {
         btn.disabled = false; btn.textContent = 'Create workspace & hire →';

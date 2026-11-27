@@ -67,7 +67,7 @@
       <div class="check">🎉</div>
       <h2>Your workspace is live!</h2>
       <p>Your 15-day free trial has started. Set up your AI agent, persona, and branding anytime — manage everything in Mission Control.</p>
-      <a class="go" id="goBtn" href="https://missioncontrol.a-gent.co/?welcome=1">▶ Go to Mission Control</a>
+      <a class="go" id="goBtn" href="https://missioncontrol.askarlen.com/?welcome=1">▶ Go to Mission Control</a>
     </div>
   </div>
 
@@ -139,8 +139,8 @@
               method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
               body: JSON.stringify({
                 trial_days: TRIAL_DAYS, plan: planKey || null,
-                success_url: 'https://missioncontrol.a-gent.co/?welcome=1',
-                cancel_url: 'https://missioncontrol.a-gent.co/?billing=cancelled',
+                success_url: 'https://missioncontrol.askarlen.com/?welcome=1',
+                cancel_url: 'https://missioncontrol.askarlen.com/?billing=cancelled',
               }),
             });
             const cod = await co.json();

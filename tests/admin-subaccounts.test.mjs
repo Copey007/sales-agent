@@ -210,7 +210,7 @@ test('loginShell script is valid (Function + node --check) and sets Domain=.a-ge
   const checked = spawnSync('node', ['--check', file], { encoding: 'utf8' });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(checked.status, 0, checked.stderr || checked.stdout);
-  assert.match(script, /Domain=\.a-gent\.co/);
+  assert.match(script, /\['\.a-gent\.co','\.askarlen\.com'\]/);
   assert.match(script, /writeCookie\(C\.cookie,'',0,true\)/);
   assert.match(script, /writeCookie\(C\.cookie,'',0,false\)/);
   assert.match(script, /writeCookie\('agent_rt','',0,true\)/);
