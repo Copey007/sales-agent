@@ -100,9 +100,12 @@ function llmBodiesFromCalls() {
     .map((c) => JSON.parse(c.body || '{}'));
 }
 
-test('PUBLIC_CONCIERGE_SLUGS defaults to a-gent and demo', () => {
+test('PUBLIC_CONCIERGE_SLUGS defaults to a-gent, demo, arlen, and askarlen', () => {
   assert.equal(isPublicConciergeSlug('a-gent'), true);
   assert.equal(isPublicConciergeSlug('demo'), true);
+  assert.equal(isPublicConciergeSlug('arlen'), true);
+  assert.equal(isPublicConciergeSlug('askarlen'), true);
+  assert.equal(isPublicConciergeSlug('Arlen'), true);
   assert.equal(isPublicConciergeSlug('acme-secret'), false);
 });
 

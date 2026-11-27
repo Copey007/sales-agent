@@ -2,10 +2,13 @@
  * Shared input guards for the public concierge (and avatar-chat when present).
  * Caps history and allows only user/assistant roles.
  *
- * Public slugs default to a-gent,demo via PUBLIC_CONCIERGE_SLUGS. Tenant
- * /a/<slug> widgets are not served to anonymous callers unless that slug is
- * added to the allowlist (or a future is_public flag is added).
+ * Public slugs default to a-gent,demo,arlen,askarlen via
+ * PUBLIC_CONCIERGE_SLUGS (see _concierge-personas.mjs). Tenant /a/<slug>
+ * widgets are not served to anonymous callers unless that slug is added
+ * to the allowlist (or a future is_public flag is added).
  */
+
+import { DEFAULT_PUBLIC_CONCIERGE_SLUGS } from './_concierge-personas.mjs';
 
 
 export const MAX_CHAT_MESSAGES = 12;
@@ -45,10 +48,10 @@ export function sanitizeChatMessages(input) {
 }
 
 export function publicConciergeSlugs(env = process.env) {
-  const raw = env.PUBLIC_CONCIERGE_SLUGS || 'a-gent,demo';
-  return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  const raw = env.PUBLIC_CONCIERGE_SLUGS || DEFAULT_PUBLIC_CONCIERGE_SLUGS;
+  return new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 }
 
 export function isPublicConciergeSlug(slug, env = process.env) {
-  return publicConciergeSlugs(env).has(String(slug || ''));
+  return publicConciergeSlugs(env).has(String(slug || '').trim().toLowerCase());
 }
