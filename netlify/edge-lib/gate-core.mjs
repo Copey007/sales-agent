@@ -131,7 +131,7 @@ function store(d,email){var s={access_token:d.access_token,refresh_token:d.refre
 function grant(type,body){return fetch(C.url+'/auth/v1/token?grant_type='+type,{method:'POST',headers:{apikey:C.key,'Content-Type':'application/json'},body:JSON.stringify(body)})
  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error_description||j.msg||'Invalid email or password.');return j;});});}
 function pick(h,q,k){return h.get(k)||q.get(k)||'';}
-function cb(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));var q=new URLSearchParams((location.search||'').replace(/^\?/,''));return{type:pick(h,q,'type'),access_token:pick(h,q,'access_token'),refresh_token:pick(h,q,'refresh_token'),expires_in:Number(pick(h,q,'expires_in')||0)||3600,error:pick(h,q,'error_description')||pick(h,q,'error')};}
+function cb(){var hs=location.hash||'';if(hs.charAt(0)==='#')hs=hs.slice(1);var h=new URLSearchParams(hs);var q=new URLSearchParams(location.search||'');return{type:pick(h,q,'type'),access_token:pick(h,q,'access_token'),refresh_token:pick(h,q,'refresh_token'),expires_in:Number(pick(h,q,'expires_in')||0)||3600,error:pick(h,q,'error_description')||pick(h,q,'error')};}
 function show(id){['f','forgotF','resetF'].forEach(function(x){var el=document.getElementById(x);if(el)el.style.display=x===id?'block':'none';});
  document.getElementById('forgotWrap').style.display=id==='f'?'block':'none';
  document.getElementById('backWrap').className=id==='f'?'alt hid':'alt';}

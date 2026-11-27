@@ -137,3 +137,16 @@ test('parseAuthCallback surfaces redirect errors from the query string', () => {
   const r = parseAuthCallback('?error=access_denied&error_description=Link%20expired', '');
   assert.match(r.error, /expired/i);
 });
+
+test('login shell inline script is syntactically valid after template emission', async () => {
+  const html = await (await handleGate(get(), deps())).text();
+  const m = /<script>([\s\S]*?)<\/script>/.exec(html);
+  assert.ok(m && m[1], 'login shell must include a script block');
+  const script = m[1];
+  // A /^\?/ regex inside the loginShell template literal was emitted as /^?/
+  // ("Nothing to repeat"), so the IIFE never parsed and no handlers bound.
+  assert.equal(script.includes('replace(/^?/,'), false);
+  assert.doesNotThrow(() => new Function(script));
+  assert.match(html, /Forgot password\?/);
+  assert.match(html, /auth\/v1\/recover\?redirect_to=/);
+});
