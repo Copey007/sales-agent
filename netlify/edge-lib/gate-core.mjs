@@ -19,17 +19,69 @@ export const COOKIE = 'agent_at';
 
 export const COOKIE_RT = 'agent_rt';
 export const SHARED_COOKIE_DOMAIN = '.a-gent.co';
+/** Umbrella cookie domains: each registrable parent gets its OWN shared cookie. */
+export const SSO_COOKIE_DOMAINS = ['.a-gent.co', '.askarlen.com'];
 
 /**
- * Shared cookie Domain for *.a-gent.co module hosts (aisdr, missioncontrol, fleet, …).
- * Host-only fallback for localhost, *.netlify.app previews, and the apex a-gent.co
- * marketing site (`"a-gent.co".endsWith(".a-gent.co")` is false).
+ * Shared cookie Domain for module subdomains:
+ *   *.a-gent.co    (aisdr, fleet, legacy missioncontrol) -> Domain=.a-gent.co
+ *   *.askarlen.com (missioncontrol)                      -> Domain=.askarlen.com
+ * Host-only ('') for localhost, *.netlify.app previews, and the apex marketing
+ * sites (`"a-gent.co".endsWith(".a-gent.co")` is false). Browsers can never set
+ * a cookie across the two registrable domains, so cross-domain SSO uses the
+ * fragment handoff (/auth/handoff) below.
  * document.cookie cannot set HttpOnly; server Set-Cookie helpers below do.
  */
 export function sharedCookieDomain(host) {
-  const h = String(host || '').split(':')[0].trim().toLowerCase();
-  if (h.endsWith('.a-gent.co') && h !== 'a-gent.co') return SHARED_COOKIE_DOMAIN;
+  const h = String(host || '').split(':')[0].trim().toLowerCase().replace(/\.$/, '');
+  for (const d of SSO_COOKIE_DOMAINS) {
+    if (h.length > d.length && h.endsWith(d)) return d;
+  }
   return '';
+}
+
+/** Hosts that serve /auth/handoff + /auth/logout (cross-domain SSO peers). */
+export const SSO_PEER_HOSTS = ['aisdr.a-gent.co', 'missioncontrol.askarlen.com'];
+/** Netlify sites whose *.netlify.app / deploy-preview hosts may be a logout `next`. */
+const NETLIFY_SITES = ['magenta-kleicha-c9a1e6', 'a-gent-ai-sdr'];
+
+/** True if `host` belongs to the AskArlen / A-Gent umbrella (safe redirect target). */
+export function isUmbrellaHost(host) {
+  const h = String(host || '').toLowerCase();
+  if (!h) return false;
+  if (h === 'a-gent.co' || h === 'askarlen.com') return true;
+  if (sharedCookieDomain(h)) return true;
+  return NETLIFY_SITES.some((s) => h === `${s}.netlify.app` || h.endsWith(`--${s}.netlify.app`));
+}
+
+/**
+ * Open-redirect-safe `next`: a same-origin path ("/x", never "//x" or "/\\x"),
+ * or an absolute https URL on an umbrella host. Anything else -> fallback.
+ */
+export function safeNext(next, fallback = '/') {
+  const n = String(next || '').trim();
+  if (!n) return fallback;
+  if (n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\')) return n;
+  try {
+    const u = new URL(n);
+    if (u.protocol === 'https:' && !u.username && !u.password && isUmbrellaHost(u.hostname)) return u.href;
+  } catch { /* fallthrough */ }
+  return fallback;
+}
+
+/**
+ * Canonical-host 301 (runs in the edge gate BEFORE auth, because Netlify edge
+ * functions run before netlify.toml redirects). Preserves path + query.
+ * Returns a Response or null.
+ */
+export function canonicalRedirect(request, map) {
+  if (!map) return null;
+  let u;
+  try { u = new URL(request.url); } catch { return null; }
+  const to = map[u.hostname.toLowerCase()];
+  if (!to) return null;
+  const status = (request.method === 'GET' || request.method === 'HEAD') ? 301 : 308;
+  return new Response(null, { status, headers: { Location: `https://${to}${u.pathname}${u.search}`, 'Cache-Control': 'no-store', ...SHELL_SECURITY } });
 }
 
 /** Attribute suffix for a Set-Cookie / document.cookie assignment. */
@@ -128,6 +180,79 @@ export function parseAuthCallback(search = '', hash = '') {
   };
 }
 
+/**
+ * Browser copy of sharedCookieDomain() (embedded in every login/handoff/logout
+ * page and mirrored in index.html / auth-gate.js; tests keep them in sync).
+ */
+export const CLIENT_COOKIE_DOMAIN_JS = "function cookieDomain(){var h=(location.hostname||'').toLowerCase();var d=['.a-gent.co','.askarlen.com'];for(var i=0;i<d.length;i++){if(h.length>d[i].length&&h.slice(-d[i].length)===d[i])return '; Domain='+d[i];}return '';}";
+const CLIENT_COOKIE_HELPERS_JS = CLIENT_COOKIE_DOMAIN_JS +
+  "function writeCookie(name,value,maxAge,withDomain){document.cookie=name+'='+encodeURIComponent(value||'')+'; Path=/; Max-Age='+Math.max(0,maxAge|0)+'; Secure; SameSite=Lax'+(withDomain?cookieDomain():'');}" +
+  "function clearAuthCookies(){writeCookie('agent_at','',0,true);writeCookie('agent_at','',0,false);writeCookie('agent_rt','',0,true);writeCookie('agent_rt','',0,false);}";
+
+/** localStorage keys that hold a copy of the session on umbrella hosts. */
+export const SESSION_STORAGE_KEYS = ['mc_session', 'agent_auth_session_v1'];
+
+const MINI_STYLE = '<style>:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;background:#10231d;color:#f3f4f0}main{text-align:center;padding:24px}a{color:#c8f04a}</style>';
+
+/**
+ * Cross-domain SSO handoff target (GET /auth/handoff#rt=<refresh>&next=<path>).
+ * The refresh token travels ONLY in the URL fragment (never sent to any server,
+ * never in logs or Referer). The page strips the fragment immediately with
+ * history.replaceState, redeems the token with Supabase (refresh grant — which
+ * also rotates it, so the URL value is single-use), writes this domain's own
+ * cookies + localStorage, and continues to a same-origin path.
+ */
+export function handoffPage({ supabaseUrl, publicKey, storageKey }) {
+  const cfg = JSON.stringify({ url: supabaseUrl.replace(/\/$/, ''), key: publicKey, storageKey })
+    .replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Signing you in · AskArlen</title>${MINI_STYLE}</head>
+<body><main><p id="msg" role="status">Signing you in…</p></main>
+<script>
+(function(){
+var C=${cfg};
+${CLIENT_COOKIE_HELPERS_JS}
+function parseHandoff(hash){var hs=String(hash||'');if(hs.charAt(0)==='#')hs=hs.slice(1);var p=new URLSearchParams(hs);return{rt:p.get('rt')||'',next:p.get('next')||'/'};}
+function samePath(n){n=String(n||'/');return(n.charAt(0)==='/'&&n.charAt(1)!=='/'&&n.charAt(1)!=='\\\\')?n:'/';}
+var h=parseHandoff(location.hash);
+try{history.replaceState(null,'',location.pathname);}catch(e){}
+var next=samePath(h.next);
+if(!h.rt){location.replace(next);return;}
+fetch(C.url+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:C.key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:h.rt})})
+ .then(function(r){return r.json().then(function(j){if(!r.ok||!j.access_token)throw new Error('handoff');return j;});})
+ .then(function(d){var exp=d.expires_at||Math.floor(Date.now()/1000)+(d.expires_in||3600);var age=exp-Math.floor(Date.now()/1000);
+  var s={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:exp,email:(d.user&&d.user.email)||''};
+  try{localStorage.setItem(C.storageKey,JSON.stringify(s));sessionStorage.removeItem('gate_refresh_tried');}catch(e){}
+  writeCookie('agent_at',s.access_token,age,true);writeCookie('agent_rt',s.refresh_token,age,true);location.replace(next);})
+ .catch(function(){clearAuthCookies();location.replace(next);});
+})();
+</script></body></html>`;
+}
+
+/**
+ * Sign-out leg on this domain (GET /auth/logout?next=<url>): clears this
+ * domain's auth cookies (shared Domain + host-only variants, also via
+ * Set-Cookie) and every local session copy, then continues to an
+ * umbrella-only `next` (open-redirect safe). It never chains further.
+ */
+export function logoutPage({ next }) {
+  const cfg = JSON.stringify({ next, keys: SESSION_STORAGE_KEYS }).replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Signing out · AskArlen</title>${MINI_STYLE}</head>
+<body><main><p role="status">Signing you out…</p></main>
+<script>
+(function(){
+var C=${cfg};
+${CLIENT_COOKIE_HELPERS_JS}
+clearAuthCookies();
+try{for(var i=0;i<C.keys.length;i++)localStorage.removeItem(C.keys[i]);sessionStorage.removeItem('gate_refresh_tried');}catch(e){}
+location.replace(C.next);
+})();
+</script></body></html>`;
+}
+
 export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey, allowSignup = false, signupUrl = '', message = '', manifest = '/site-aisdr.webmanifest', reviewUrl = '' }) {
   const cfg = JSON.stringify({ url: supabaseUrl.replace(/\/$/, ''), key: publicKey, storageKey, cookie: COOKIE })
     .replace(/</g, '\\u003c');
@@ -178,7 +303,7 @@ ${review}${allowSignup && signupUrl ? `<div class="alt">New here? <a href="${esc
 <script>
 (function(){
 var C=${cfg};
-function cookieDomain(){var h=location.hostname||'';if(h.length>9&&h.slice(-10)==='.a-gent.co')return '; Domain=.a-gent.co';return '';}
+${CLIENT_COOKIE_DOMAIN_JS}
 function writeCookie(name,value,maxAge,withDomain){document.cookie=name+'='+encodeURIComponent(value||'')+'; Path=/; Max-Age='+Math.max(0,maxAge|0)+'; Secure; SameSite=Lax'+(withDomain?cookieDomain():'');}
 function setAuthCookies(at,rt,maxAge){writeCookie(C.cookie,at||'',maxAge,true);writeCookie('agent_rt',rt||'',maxAge,true);}
 function clearAuthCookies(){writeCookie(C.cookie,'',0,true);writeCookie(C.cookie,'',0,false);writeCookie('agent_rt','',0,true);writeCookie('agent_rt','',0,false);}
@@ -245,11 +370,16 @@ const NO_STORE = { 'Cache-Control': 'no-store, private', Vary: 'Cookie, Authoriz
  * @param {Request} request
  * @param {{ env:(k:string)=>string|undefined, fetchImpl:Function, next:()=>Promise<Response>,
  *           title:string, subtitle:string, storageKey:string, requireOperator?:boolean,
- *           signupUrl?:string, manifest?:string, reviewUrl?:string }} deps
+ *           signupUrl?:string, manifest?:string, reviewUrl?:string,
+ *           canonicalHosts?:Record<string,string> }} deps
  */
 export async function handleGate(request, deps) {
   const { env, fetchImpl, next } = deps;
+  const moved = canonicalRedirect(request, deps.canonicalHosts);
+  if (moved) return moved;
   if (request.method !== 'GET' && request.method !== 'HEAD') return next();
+  let url;
+  try { url = new URL(request.url); } catch { url = new URL('https://invalid/'); }
 
   const supabaseUrl = env('SUPABASE_URL') || '';
   const publicKey = env('SUPABASE_PUBLISHABLE_KEY') || env('SUPABASE_ANON_KEY') || '';
@@ -265,6 +395,16 @@ export async function handleGate(request, deps) {
     allowSignup: String(env('ALLOW_SELF_SIGNUP') || '').toLowerCase() === 'true', signupUrl: deps.signupUrl || '', message,
     manifest: deps.manifest || '/site-aisdr.webmanifest', reviewUrl: deps.reviewUrl || '',
   }), { status, headers: shellHeaders });
+
+  const pageHeaders = { ...shellHeaders, 'Referrer-Policy': 'no-referrer' };
+  if (url.pathname === '/auth/handoff') {
+    return new Response(handoffPage({ supabaseUrl, publicKey, storageKey: deps.storageKey }), { status: 200, headers: pageHeaders });
+  }
+  if (url.pathname === '/auth/logout') {
+    const h = new Headers(pageHeaders);
+    for (const c of clearAuthCookieSetCookieValues(url.hostname, { httpOnly: false })) h.append('Set-Cookie', c);
+    return new Response(logoutPage({ next: safeNext(url.searchParams.get('next'), '/') }), { status: 200, headers: h });
+  }
 
   const token = readToken(request);
   if (!token) return shell('');

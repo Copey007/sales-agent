@@ -135,6 +135,6 @@ test('loginShell extracted <script> still passes node --check (exit 0)', async (
   const checked = spawnSync('node', ['--check', file], { encoding: 'utf8' });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(checked.status, 0, checked.stderr || checked.stdout);
-  assert.match(m[1], /Domain=\.a-gent\.co/);
+  assert.match(m[1], /\['\.a-gent\.co','\.askarlen\.com'\]/);
   assert.match(m[1], /clearAuthCookies/);
 });

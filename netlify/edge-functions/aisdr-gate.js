@@ -12,10 +12,12 @@ export default (request, context) => handleGate(request, {
   subtitle: 'Operator access only. Sign in to open the AI SDR dashboard.',
   storageKey: 'agent_auth_session_v1',
   requireOperator: true,
-  reviewUrl: 'https://missioncontrol.a-gent.co',
+  reviewUrl: 'https://missioncontrol.askarlen.com',
 });
 
 export const config = {
-  path: ['/', '/index.html', '/index', '/dashboard', '/dashboard/*'],
+  // /auth/handoff + /auth/logout: cross-domain SSO peer routes for
+  // missioncontrol.askarlen.com (see gate-core handoffPage/logoutPage).
+  path: ['/', '/index.html', '/index', '/dashboard', '/dashboard/*', '/auth/handoff', '/auth/logout'],
   cache: 'manual',
 };

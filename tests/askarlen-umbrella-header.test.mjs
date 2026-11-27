@@ -48,7 +48,7 @@ test('loginShell extracted <script> passes node --check (exit 0) and keeps SSO c
   const checked = spawnSync('node', ['--check', file], { encoding: 'utf8' });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(checked.status, 0, checked.stderr || checked.stdout);
-  assert.match(script, /Domain=\.a-gent\.co/);
+  assert.match(script, /\['\.a-gent\.co','\.askarlen\.com'\]/);
   assert.match(script, /writeCookie\('agent_rt'/);
   assert.match(script, /clearAuthCookies/);
   assert.match(script, /Forgot password|forgotF/);
@@ -90,6 +90,6 @@ test('aligned AISDR header/topbar and auth-gate retire gold/violet/Orbitron/Rajd
     }
   }
   // Module switcher between AISDR and Mission Control is intact.
-  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.a-gent\.co"/);
-  assert.match(r('dashboard/index.html'), /<a class="nav-btn" href="https:\/\/missioncontrol\.a-gent\.co"/);
+  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/" data-sso-handoff/);
+  assert.match(r('dashboard/index.html'), /<a class="nav-btn" href="https:\/\/missioncontrol\.askarlen\.com\/"/);
 });
