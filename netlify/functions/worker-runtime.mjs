@@ -19,7 +19,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
-import { callLLM } from './_llm.mjs';
+import { callLLM, isLlmConfigIncompleteError } from './_llm.mjs';
 import { userFromToken, tenantFromRequest } from './_tenant.mjs';
 import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect, putEmailSend, logActivity } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
@@ -137,7 +137,7 @@ async function sdrStep(hire) {
 Write a short, genuinely personalized cold outreach email to ${prospect.name}${prospect.title ? ` (${prospect.title})` : ''} at ${prospect.company}. 2–3 sentences, specific to their role/company, no fluff, one clear low-friction CTA.
 Return ONLY JSON: {"subject":"<6-9 words>","body":"<the email>"}`;
   let email = null;
-  try { const out = await callLLM([{ role: 'system', content: sys }, { role: 'user', content: 'Write the email as JSON.' }], { temperature: 0.6, maxTokens: 420 }); const m = (out || '').match(/\{[\s\S]*\}/); email = m ? JSON.parse(m[0]) : null; } catch { /* ignore */ }
+  try { const out = await callLLM([{ role: 'system', content: sys }, { role: 'user', content: 'Write the email as JSON.' }], { temperature: 0.6, maxTokens: 420 }); const m = (out || '').match(/\{[\s\S]*\}/); email = m ? JSON.parse(m[0]) : null; } catch (e) { if (isLlmConfigIncompleteError(e)) throw e; }
   if (!email?.subject) return { action: `Sourced ${prospect.name} @ ${prospect.company}`, detail: `${prospect.name} (${prospect.title}) <${prospect.email}>; personalizing the opener next cycle.` };
   // The worker's own identity on the verified sending domain.
   const fromEmail = `${(hire.name.split(' ')[0] || 'worker').toLowerCase().replace(/[^a-z0-9]/g, '')}@a-gent.co`;
@@ -168,7 +168,7 @@ Return ONLY JSON: {"action":"<past-tense summary, max 9 words>","detail":"<2-4 s
     const m = (out || '').match(/\{[\s\S]*\}/);
     const parsed = m ? JSON.parse(m[0]) : null;
     if (parsed?.action) return { action: String(parsed.action).slice(0, 80), detail: String(parsed.detail || '').slice(0, 600) };
-  } catch { /* fall through */ }
+  } catch (e) { if (isLlmConfigIncompleteError(e)) throw e; /* fall through */ }
   return { action: 'Advanced the goal', detail: 'Completed the next step of work this cycle.' };
 }
 
@@ -205,7 +205,7 @@ Build on it; don't repeat. Return ONLY JSON: {"action":"<past-tense, <=9 words>"
     const out = await callLLM([{ role: 'system', content: system }, { role: 'user', content: 'Do the next piece of work and report it as JSON.' }], { temperature: 0.6, maxTokens: 500 });
     const m = (out || '').match(/\{[\s\S]*\}/); const p = m ? JSON.parse(m[0]) : null;
     if (p?.action) return { action: String(p.action).slice(0, 80), detail: String(p.detail || '').slice(0, 600) };
-  } catch { /* fall through */ }
+  } catch (e) { if (isLlmConfigIncompleteError(e)) throw e; /* fall through */ }
   return { action: 'Advanced the goal', detail: 'Completed the next step this cycle.' };
 }
 
@@ -364,8 +364,15 @@ const __handler = async (req) => {
     const hire = hr.ok ? (await hr.json())[0] : null;
     if (!hire) return json({ error: 'not found' }, 404);
     if (hire.status !== 'active') return json({ error: 'worker is paused' }, 409);
-    const entry = await runCycle(hire);
-    return json({ ok: true, entry });
+    try {
+      const entry = await runCycle(hire);
+      return json({ ok: true, entry });
+    } catch (err) {
+      if (isLlmConfigIncompleteError(err)) {
+        return json({ error: 'llm_config_incomplete' }, 502);
+      }
+      throw err;
+    }
   }
 
   return json({ error: 'unauthorized' }, 401);   // HTTP endpoint is manual-only; cron uses runDueWorkers()
@@ -383,7 +390,13 @@ export async function runDueWorkers({ rolesOnly = null } = {}) {
   let ran = 0;
   for (const hire of due) {
     if (isTest(hire)) continue;
-    try { await runCycle(hire); ran++; } catch (e) { console.warn('[worker-runtime]', hire.id, e.message); }
+    try { await runCycle(hire); ran++; } catch (e) {
+      if (isLlmConfigIncompleteError(e)) {
+        console.warn('[worker-runtime] llm_config_incomplete');
+        break;
+      }
+      console.warn('[worker-runtime]', hire.id, e.message);
+    }
   }
   return { ran, considered: due.length };
 }

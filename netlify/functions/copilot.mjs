@@ -17,6 +17,7 @@
 import { initConnectors, invoke, env } from './_mcp-connectors.mjs';
 import { remember, recall } from './_supabase-memory.mjs';
 import { withCors } from './_auth.mjs';
+import { isLlmConfigIncompleteError } from './_llm.mjs';
 
 const __handler = async (req, context) => {
   const corsHeaders = {
@@ -61,6 +62,11 @@ const __handler = async (req, context) => {
         });
     }
   } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return new Response(JSON.stringify({ error: 'llm_config_incomplete' }), {
+        status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
     console.error('[copilot] Error:', err.message, err.stack);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }

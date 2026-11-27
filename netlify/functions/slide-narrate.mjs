@@ -10,7 +10,7 @@
  * Returns spoken-English narration in the agent's voice.
  */
 
-import { callLLM } from './_llm.mjs';
+import { callLLM, isLlmConfigIncompleteError } from './_llm.mjs';
 import { userFromToken } from './_tenant.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
@@ -59,6 +59,9 @@ const __handler = async (req) => {
     if (!narration) throw new Error('empty narration');
     return json({ narration });
   } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return json({ error: 'llm_config_incomplete' }, 502);
+    }
     // Vision/model failure → fall back to a text-only attempt.
     try {
       const fallback = await callLLM(
@@ -67,6 +70,9 @@ const __handler = async (req) => {
       );
       return json({ narration: (fallback || '').trim().replace(/^["']|["']$/g, '') });
     } catch (e2) {
+      if (isLlmConfigIncompleteError(e2)) {
+        return json({ error: 'llm_config_incomplete' }, 502);
+      }
       console.error('[slide-narrate]', err.message, e2.message);
       return json({ error: 'Could not generate narration. Try again.' }, 502);
     }

@@ -14,7 +14,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
-import { callLLM } from './_llm.mjs';
+import { callLLM, isLlmConfigIncompleteError } from './_llm.mjs';
 import { tenantFromRequest } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -88,7 +88,13 @@ export async function runDailyReports() {
   for (const h of hires) {
     if (/test|stripeok|trial\d|vfy|sample/i.test(`${h.company || ''} ${h.name || ''}`)) continue;
     const to = await ownerEmail(h.tenant_id);
-    try { const res = await sendReport(h, to); if (res.sent) sent++; } catch (e) { console.warn('[daily-report]', h.id, e.message); }
+    try { const res = await sendReport(h, to); if (res.sent) sent++; } catch (e) {
+      if (isLlmConfigIncompleteError(e)) {
+        console.warn('[daily-report] llm_config_incomplete');
+        break;
+      }
+      console.warn('[daily-report]', h.id, e.message);
+    }
   }
   return { sent, considered: hires.length };
 }
@@ -102,8 +108,15 @@ const __handler = async (req) => {
   const hr = await rest(`workforce_hires?id=eq.${b.hire_id}&tenant_id=eq.${ctx.tenant.id}&select=*&limit=1`);
   const hire = hr.ok ? (await hr.json())[0] : null;
   if (!hire) return json({ error: 'not found' }, 404);
-  const res = await sendReport(hire, ctx.user?.email);   // test: email the report to the caller
-  return json({ ok: res.sent, to: ctx.user?.email, ...res });
+  try {
+    const res = await sendReport(hire, ctx.user?.email);   // test: email the report to the caller
+    return json({ ok: res.sent, to: ctx.user?.email, ...res });
+  } catch (err) {
+    if (isLlmConfigIncompleteError(err)) {
+      return json({ error: 'llm_config_incomplete' }, 502);
+    }
+    throw err;
+  }
 };
 
 export const config = { path: '/api/worker-daily-report' };
