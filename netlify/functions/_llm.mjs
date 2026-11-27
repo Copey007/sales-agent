@@ -155,22 +155,114 @@ export function getLLMConfig(options = {}) {
   return { apiKey, apiBase, model };
 }
 
+/** Current first-party Claude API version for raw (non-SDK) HTTP calls. */
+export const ANTHROPIC_API_VERSION = '2026-10-21';
+
+/** True when the LLM base URL is Anthropic's first-party API. */
+export function isAnthropicApiBase(apiBase) {
+  const raw = normalizeLlmApiBase(apiBase);
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === 'api.anthropic.com' || host.endsWith('.anthropic.com');
+  } catch {
+    return /(?:^https?:\/\/)?(?:[\w-]+\.)?anthropic\.com(?:[\/:?]|$)/i.test(raw);
+  }
+}
+
 /**
  * Headers for an OpenAI-compatible chat/completions call.
- * Authorization: Bearer is required. If ANTHROPIC_WORKSPACE_ID is set, also
- * send anthropic-workspace-id (needed for some unscoped Anthropic keys).
+ * Authorization: Bearer is required (Anthropic's OpenAI-compat layer supports it).
+ * When the resolved base is api.anthropic.com, also send anthropic-version
+ * (required on raw Claude API HTTP calls; official SDKs add it automatically).
+ * If ANTHROPIC_WORKSPACE_ID is set, also send anthropic-workspace-id
+ * (required for personal/service keys that are not scoped to a workspace).
  * Never log the returned headers; they can contain the key.
+ *
+ * @param {string} apiKey
+ * @param {object} [envSource]
+ * @param {{ apiBase?: string }} [options]  Pass the resolved base when known.
  */
-export function llmAuthHeaders(apiKey, envSource = process.env) {
+export function llmAuthHeaders(apiKey, envSource = process.env, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${apiKey}`,
   };
+  const apiBase = options.apiBase
+    || readNetlifyOrProcessEnv('LLM_API_BASE', envSource)
+    || readNetlifyOrProcessEnv('OPENAI_API_BASE', envSource);
+  if (isAnthropicApiBase(apiBase)) {
+    headers['anthropic-version'] = ANTHROPIC_API_VERSION;
+  }
   const workspace = (typeof Netlify !== 'undefined' && Netlify.env?.get?.('ANTHROPIC_WORKSPACE_ID'))
     ? Netlify.env.get('ANTHROPIC_WORKSPACE_ID')
     : (envSource?.ANTHROPIC_WORKSPACE_ID || '');
   if (workspace) headers['anthropic-workspace-id'] = String(workspace);
   return headers;
+}
+
+export const LLM_UPSTREAM_ERROR = 'llm_upstream_error';
+
+/**
+ * Allowlisted, secret-free view of an upstream LLM error.
+ * Keeps only HTTP status and short error type/code tokens. Drops message,
+ * request ids, headers, and any body text that might contain key material.
+ */
+export function parseLlmUpstreamError(status, bodyText) {
+  let type = null;
+  let code = null;
+  try {
+    const parsed = JSON.parse(String(bodyText || ''));
+    const err = (parsed && typeof parsed === 'object' && parsed.error && typeof parsed.error === 'object')
+      ? parsed.error
+      : parsed;
+    const t = err && typeof err === 'object' ? err.type : null;
+    const c = err && typeof err === 'object' ? err.code : null;
+    if (typeof t === 'string' && /^[a-z0-9_.-]{1,80}$/i.test(t)) type = t;
+    if (typeof c === 'string' && /^[a-z0-9_.-]{1,80}$/i.test(c)) code = c;
+  } catch {
+    // Non-JSON bodies are ignored; never return raw text.
+  }
+  const statusNum = Number(status);
+  return {
+    status: Number.isFinite(statusNum) ? statusNum : 0,
+    type,
+    code,
+  };
+}
+
+export class LlmUpstreamError extends Error {
+  constructor({ status, type, code } = {}) {
+    super(LLM_UPSTREAM_ERROR);
+    this.name = 'LlmUpstreamError';
+    this.code = LLM_UPSTREAM_ERROR;
+    this.status = status ?? 0;
+    this.upstreamType = type ?? null;
+    this.upstreamCode = code ?? null;
+  }
+}
+
+export function isLlmUpstreamError(err) {
+  return Boolean(err && (
+    err.code === LLM_UPSTREAM_ERROR
+    || err.name === 'LlmUpstreamError'
+    || err.message === LLM_UPSTREAM_ERROR
+  ));
+}
+
+/** Log only allowlisted fields. Never pass the raw upstream body here. */
+export function logLlmUpstreamError(label, info) {
+  console.error(`[${label}] ${LLM_UPSTREAM_ERROR}`, {
+    status: info?.status ?? 0,
+    type: info?.type ?? null,
+    code: info?.code ?? null,
+  });
+}
+
+export async function throwIfLlmResponseNotOk(res, label = 'llm') {
+  if (res.ok) return;
+  const info = parseLlmUpstreamError(res.status, await res.text());
+  logLlmUpstreamError(label, info);
+  throw new LlmUpstreamError(info);
 }
 
 /** Allowlisted, redacted view of an OpenAI-compatible chat completion body. No content, keys, or headers. */
@@ -234,14 +326,11 @@ export async function callLLM(messages, options = {}) {
 
   const response = await fetch(`${apiBase}/chat/completions`, {
     method: 'POST',
-    headers: llmAuthHeaders(apiKey),
+    headers: llmAuthHeaders(apiKey, process.env, { apiBase }),
     body: JSON.stringify(chatCompletionBody({ model, messages, temperature, maxTokens })),
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`LLM API error ${response.status}: ${errText}`);
-  }
+  await throwIfLlmResponseNotOk(response, 'llm');
 
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';

@@ -499,6 +499,7 @@ test('OPENAI_API_BASE trailing slash is normalized and optional ANTHROPIC_WORKSP
     assert.ok(llmCall, 'expected a chat/completions call');
     assert.equal(llmCall.url, 'https://api.anthropic.com/v1/chat/completions');
     assert.equal(llmCall.headers.get('Authorization'), 'Bearer test-llm-key');
+    assert.equal(llmCall.headers.get('anthropic-version'), '2026-10-21');
     assert.equal(llmCall.headers.get('anthropic-workspace-id'), 'ws-test-id');
   } finally {
     if (prevBase === undefined) delete process.env.OPENAI_API_BASE;
@@ -540,5 +541,48 @@ test('a demo chat uses LLM_API_KEY while speak uses only OPENAI_API_KEY', async 
     delete process.env.LLM_API_BASE;
     if (prevOpen === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = prevOpen;
+  }
+});
+
+test('a non-OK Anthropic chat response returns 502 llm_upstream_error without leaking the body', async () => {
+  const prevKey = process.env.LLM_API_KEY;
+  const prevBase = process.env.LLM_API_BASE;
+  process.env.LLM_API_KEY = 'llm-only-test-key';
+  process.env.LLM_API_BASE = 'https://api.anthropic.com/v1';
+  route(`${SB}/rest/v1/avatar_agents`, () => ({ body: [DEMO_AGENT] }));
+  route('/chat/completions', () => ({
+    status: 400,
+    body: {
+      error: {
+        type: 'invalid_request_error',
+        message: 'sk-ant-test-should-never-leak missing required header',
+      },
+    },
+  }));
+  const logs = [];
+  const orig = console.error;
+  console.error = (...args) => { logs.push(args.map((a) => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')); };
+  try {
+    const res = await post({
+      action: 'chat',
+      slug: 'demo',
+      messages: [{ role: 'user', content: 'What does A-Gent do?' }],
+      speak: false,
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json();
+    assert.equal(body.error, 'llm_upstream_error');
+    assert.equal(body.status, 400);
+    assert.equal(body.type, 'invalid_request_error');
+    assert.equal(body.message, undefined);
+    const dumped = JSON.stringify(body) + '\n' + logs.join('\n');
+    assert.equal(dumped.includes('sk-ant-test-should-never-leak'), false);
+    assert.equal(dumped.includes('missing required header'), false);
+  } finally {
+    console.error = orig;
+    if (prevKey === undefined) delete process.env.LLM_API_KEY;
+    else process.env.LLM_API_KEY = prevKey;
+    if (prevBase === undefined) delete process.env.LLM_API_BASE;
+    else process.env.LLM_API_BASE = prevBase;
   }
 });
