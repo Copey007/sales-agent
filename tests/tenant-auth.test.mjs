@@ -116,7 +116,7 @@ test('safeEqual / secretMatches fail closed', () => {
 });
 
 // Guarded endpoints reject anonymous callers before doing any work.
-const TENANT_FNS = ['campaign-orchestrator', 'enqueue-send', 'gtm-brain', 'researcher-find', 'researcher-scan', 'slide-narrate', 'slide-upload', 'worker-daily-report', 'worker-outreach', 'worker-runtime', 'workforce-hires', 'billing-checkout', 'campaign-admin'];
+const TENANT_FNS = ['campaign-orchestrator', 'enqueue-send', 'gtm-brain', 'hunter-find-email', 'researcher-find', 'researcher-scan', 'slide-narrate', 'slide-upload', 'worker-daily-report', 'worker-outreach', 'worker-runtime', 'workforce-hires', 'billing-checkout', 'campaign-admin'];
 const OPERATOR_FNS = ['avatar-list', 'avatar-speak', 'tts', 'social-post', 'social-stats', 'gap-email-pipeline', 'gather-signals', 'generate-gap-email', 'gen-impl-video', 'billing-reconcile'];
 for (const name of TENANT_FNS) {
   test(`tenant guard: ${name} → 401 anonymous, 403 no-membership`, async () => {
