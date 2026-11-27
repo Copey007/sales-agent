@@ -44,7 +44,7 @@ test('danger notices/badges carry their own opaque background (never sit on sunk
 test('nits: gate font shorthand valid, popup dot on palette, no off-scale #fff/#d6d9e4 in daylight block', () => {
   const g = r('netlify/edge-lib/gate-core.mjs');
   assert.doesNotMatch(g, /font:600 \.95rem inherit/);
-  assert.match(g, /font:600 \.95rem\/1\.2 Inter,/);
+  assert.match(g, /font:600 \.95rem\/1\.2 "Plus Jakarta Sans",/);
   assert.doesNotMatch(r('extension/popup.html'), /#6366f1/i);
   const s = r('index.html');
   assert.doesNotMatch(s, /\.topbar \.title\{color:#fff;/);
@@ -53,7 +53,7 @@ test('nits: gate font shorthand valid, popup dot on palette, no off-scale #fff/#
 test('auth-gate: Inter + focus-visible ring', () => {
   const s = r('auth-gate.js');
   assert.doesNotMatch(s, /font-family:system-ui|font:12px system-ui/);
-  assert.match(s, /#agent-auth-gate :focus-visible\{outline:2px solid #c8b48c;outline-offset:2px\}/);
+  assert.match(s, /#agent-auth-gate :focus-visible\{outline:2px solid #c8f04a;outline-offset:2px\}/);
   assert.match(s, /#agent-auth-gate input:hover\{border-color:#8a8a90 !important\}/);
   assert.match(r('netlify/edge-lib/gate-core.mjs'), /input:hover\{border-color:#8a8a90\}/);
 });

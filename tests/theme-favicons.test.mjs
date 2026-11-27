@@ -34,7 +34,7 @@ test('app shells use Operator Dark tokens and the favicon/manifest head tags', (
     assert.match(s, /<link rel="icon" href="\/icon\.svg" type="image\/svg\+xml"/, f);
     assert.match(s, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png"/, f);
     assert.ok(s.includes(`<link rel="manifest" href="/${MANIFEST}"`), f);
-    assert.match(s, /<meta name="theme-color" content="#0a0a0c"/, f);
+    assert.match(s, /<meta name="theme-color" content="#10231d"/, f);
     assert.match(s, /<meta name="robots" content="noindex, nofollow"/, f);
   }
 });
@@ -62,5 +62,5 @@ test('gate-core login shell <head> carries the favicon + manifest tags', async (
   assert.match(head, /<link rel="icon" href="\/icon\.svg" type="image\/svg\+xml">/);
   assert.match(head, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png" sizes="180x180">/);
   assert.ok(head.includes(`<link rel="manifest" href="/${MANIFEST}">`));
-  assert.match(head, /<meta name="theme-color" content="#0a0a0c">/);
+  assert.match(head, /<meta name="theme-color" content="#10231d">/);
 });
