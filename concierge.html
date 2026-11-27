@@ -21,7 +21,8 @@
     
     .header{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);background:rgba(5,5,8,.6);backdrop-filter:blur(12px)}
     .header-logo{max-height:32px;height:32px;width:auto}
-    .header-avatar{width:38px;height:38px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;background:radial-gradient(circle,rgba(200,180,140,.2),rgba(5,5,8,.6));font-size:1rem}
+    .header-avatar{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;background:radial-gradient(circle,rgba(200,180,140,.2),rgba(5,5,8,.6));font-size:1rem;overflow:hidden;flex-shrink:0}
+    .header-avatar img{width:100%;height:100%;object-fit:cover;display:block}
     .header-info{flex:1}
     .header-name{font-weight:700;font-size:.95rem;color:var(--accent-strong)}
     .header-status{font-size:.72rem;color:var(--green);display:flex;align-items:center;gap:5px}
@@ -66,10 +67,10 @@
 </head>
 <body>
   <div class="header">
-    <img src="assets/agent-logo.svg" alt="A-Gent" class="header-logo" />
-    <div class="header-avatar">🤖</div>
+    <img src="assets/agent-logo.svg" alt="A-Gent" class="header-logo" id="headerLogo" />
+    <div class="header-avatar" id="headerAvatar">🤖</div>
     <div class="header-info">
-      <div class="header-name">A-Gent Concierge</div>
+      <div class="header-name" id="headerName">A-Gent Concierge</div>
       <div class="header-status">Online · Autonomous Sales Assistant</div>
     </div>
     <button class="voice-toggle" id="voiceToggle" onclick="toggleVoice()">🔇 Voice Off</button>
@@ -86,6 +87,16 @@
   <script>
     const API_BASE = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
     const API_URL = `${API_BASE}/api/concierge`;
+    const slug = (new URLSearchParams(location.search).get('slug') || '').trim().toLowerCase();
+    const isArlen = slug === 'arlen' || slug === 'askarlen';
+    if (isArlen) {
+      const logo = document.getElementById('headerLogo');
+      logo.src = 'assets/arlen-mark.svg';
+      logo.alt = 'AskArlen';
+      document.getElementById('headerAvatar').innerHTML = '<img src="assets/arlen-avatar.webp" width="38" height="38" alt="Arlen">';
+      document.getElementById('headerName').textContent = 'Arlen';
+      document.title = 'Arlen · AskArlen';
+    }
     
     let sessionId = null;
     let voiceEnabled = false;
@@ -151,7 +162,8 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            action: 'start', 
+            action: 'start',
+            slug: slug || undefined,
             visitorInfo: { 
               referrer: document.referrer,
               page: window.location.pathname
@@ -192,6 +204,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'chat',
+            slug: slug || undefined,
             messages: messages,
             sessionId,
             speak: voiceEnabled,

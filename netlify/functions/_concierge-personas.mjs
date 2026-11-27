@@ -44,11 +44,23 @@ Rules:
 - If they are ready to start, point them to https://app.askarlen.com and capture email + company
 - Match the visitor's energy — casual if they are casual, formal if formal`;
 
+// Official Arlen LiveAvatar / HeyGen identity (locked by Mark, 2026-11-27).
+// These are look/voice identifiers, not API secrets. Do not call HeyGen or
+// live avatar session endpoints from unit tests or from this module.
+export const ARLEN_HEYGEN_GROUP_ID = '7d452e5eac68c6fa8652ac11f117df14';
+export const ARLEN_HEYGEN_LOOK_ID = 'b6e37cc7fa161f33efacf7f4d387977a';
+export const ARLEN_HEYGEN_VOICE_ID = 'ea494dd978f84a7abcd1e7ec5b45b025';
+export const ARLEN_AVATAR_IMAGE = '/assets/arlen-avatar.webp';
+
 const ARLEN_PERSONA = Object.freeze({
   name: 'Arlen',
   brand: 'AskArlen',
   systemPrompt: ARLEN_SYSTEM_PROMPT,
   greetingHint: 'Greet them naturally as Arlen and ask what they want to get done in GTM today. Remember: AskArlen just gets GTM done for you.',
+  heygenGroupId: ARLEN_HEYGEN_GROUP_ID,
+  heygenLookId: ARLEN_HEYGEN_LOOK_ID,
+  heygenVoiceId: ARLEN_HEYGEN_VOICE_ID,
+  avatarImage: ARLEN_AVATAR_IMAGE,
 });
 
 /** Built-in public personas keyed by lowercase slug. */
