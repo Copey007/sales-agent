@@ -1,12 +1,12 @@
 {
-  "name": "A-Gent AI SDR",
+  "name": "AskArlen AI SDR",
   "short_name": "AI SDR",
-  "description": "A-Gent AI SDR operator console.",
+  "description": "AskArlen AI SDR operator console.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#0a0a0c",
-  "background_color": "#0a0a0c",
+  "theme_color": "#10231d",
+  "background_color": "#10231d",
   "icons": [
     {
       "src": "/icon-192.png",

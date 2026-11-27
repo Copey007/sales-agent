@@ -117,7 +117,7 @@
 <body>
   <div class="stage" id="stage"><video id="avatar" autoplay playsinline onclick="interruptAvatar()" title="Tap to interrupt" style="cursor:pointer"></video></div>
   <div class="vignette"></div>
-  <div class="brand-bg"><img id="brandBg" src="assets/agent-logo.svg" alt=""/></div>
+  <div class="brand-bg"><img id="brandBg" src="assets/arlen-mark.svg" alt=""/></div>
   <div class="slide-panel" id="slidePanel"><button class="slide-close" onclick="hideSlide()" title="Hide slide">✕</button><img id="slideImg" alt=""/><iframe id="slideFrame" style="display:none" title="slide" allow="autoplay; fullscreen; picture-in-picture"></iframe><video id="slideVideo" style="display:none" playsinline controls></video></div>
 
   <!-- Framing tuner (only shows with ?tune=1) -->
@@ -130,7 +130,7 @@
     <div style="margin-top:8px;color:var(--text-tertiary)">Tell me these two numbers and I'll lock it in.</div>
   </div>
   <div class="topbar">
-    <img src="assets/agent-logo.svg" alt="" id="logo"/>
+    <img src="assets/arlen-mark.svg" alt="AskArlen" id="logo" width="32" height="32"/>
     <div class="spacer"></div>
     <div class="status" id="status"><span class="dot"></span><span id="statusLabel">Live</span></div>
   </div>
@@ -208,7 +208,7 @@
         if (t.headline) { $('headline').textContent = t.headline; document.title = `${t.headline} — ${cfg.name}`; }
         if (t.subcopy) $('subcopy').textContent = t.subcopy;
         if (t.logo_url) $('logo').src = t.logo_url; else $('logo').style.display = 'none';
-        $('brandBg').src = t.logo_url || 'assets/agent-logo.svg';
+        $('brandBg').src = t.logo_url || 'assets/arlen-mark.svg';
       } catch (e) {
         cfg = { slug: SLUG, name: 'AI Agent', greeting: "Hi! Ask me anything.", chips: [], theme: {} };
         $('err').textContent = '';

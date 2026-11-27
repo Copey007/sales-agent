@@ -133,25 +133,29 @@ export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey
     .replace(/</g, '\\u003c');
   const review = reviewUrl ? `<div class="alt"><a href="${esc(reviewUrl)}">Review outreach in Mission Control</a></div>` : '';
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="${esc(manifest)}"><meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="${esc(manifest)}"><meta name="theme-color" content="#10231d">
 <title>Sign in · ${esc(title)}</title>
 <style>
-:root{color-scheme:light dark}*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:Inter,system-ui,-apple-system,sans-serif;background:#0a0a0c;color:#f0f0f2}
-main{width:min(380px,calc(100% - 32px));background:#131316;border:1px solid #2a2a30;border-radius:16px;padding:28px}
-h1{margin:0 0 6px;font-size:1.3rem}p{margin:0 0 18px;color:#a1a1a6;font-size:.9rem}
-label{display:block;font-size:.8rem;color:#a1a1a6;margin:0 0 4px}
-input{width:100%;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid #6b6b70;background:#0a0a0c;color:#f0f0f2;font:inherit}
+:root{color-scheme:dark;--forest:#10231d;--green:#0e6b54;--lime:#c8f04a;--paper:#f3f4f0;--font-sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:var(--font-sans);background:#10231d;color:#f3f4f0}
+main{width:min(380px,calc(100% - 32px));background:#16302a;border:1px solid rgb(255 255 255 / .14);border-radius:16px;padding:28px}
+.mark{display:flex;align-items:center;gap:10px;margin:0 0 18px}
+.mark svg{width:32px;height:32px;display:block;flex-shrink:0;border-radius:8px}
+.mark span{font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#c8f04a}
+h1{margin:0 0 6px;font-size:1.3rem;font-weight:700;color:#f3f4f0}p{margin:0 0 18px;color:#c5d5ce;font-size:.9rem}
+label{display:block;font-size:.8rem;color:#c5d5ce;margin:0 0 4px}
+input{width:100%;margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid #729184;background:#0b1813;color:#f3f4f0;font:inherit}
 input:hover{border-color:#8a8a90}
-input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #c8b48c;outline-offset:2px}
-button{width:100%;padding:11px;border:0;border-radius:10px;background:#c8b48c;color:#0a0a0c;font:600 .95rem/1.2 Inter,system-ui,-apple-system,sans-serif;cursor:pointer}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #c8f04a;outline-offset:2px}
+button{width:100%;padding:11px;border:0;border-radius:10px;background:#c8f04a;color:#10231d;font:600 .95rem/1.2 "Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;cursor:pointer}
 button[disabled]{opacity:.6;cursor:wait}#msg{min-height:1.2em;margin:12px 0 0;color:#d4625a;font-size:.85rem}
-a{color:#c8b48c}.alt{margin-top:14px;text-align:center;font-size:.85rem}
+a{color:#c8f04a}.alt{margin-top:14px;text-align:center;font-size:.85rem}
 .hid{display:none}#msg.ok{color:#8fd9a8}
 </style></head>
-<body><main aria-labelledby="t"><h1 id="t">${esc(title)}</h1><p>${esc(subtitle)}</p>
+<body><main aria-labelledby="t"><div class="mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="AskArlen"><title>AskArlen</title><rect width="32" height="32" rx="8" fill="#c8f04a"/><path d="M9 23L23 9M23 9h-9M23 9v9" stroke="#10231d" stroke-width="3" fill="none" stroke-linecap="round"/></svg><span>AskArlen</span></div><h1 id="t">${esc(title)}</h1><p>${esc(subtitle)}</p>
 <form id="f" novalidate>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>

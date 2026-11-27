@@ -26,7 +26,7 @@
 
     .hero{padding:64px 20px 40px;text-align:center}
     .hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:-.02em;color:var(--text);margin-bottom:14px}
-    .hero .logo{display:block;margin:0 auto 22px;max-width:240px;width:55%}
+    .hero .brand-home{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 auto 22px;text-decoration:none;color:#f3f4f0;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif}.hero .logo{display:block;width:32px;height:32px;max-width:32px;margin:0;border-radius:8px}.hero .wordmark{font-weight:800;font-size:1.1rem;letter-spacing:-.02em}
     .hero p{font-size:1.05rem;color:var(--muted);max-width:600px;margin:0 auto;line-height:1.6}
     .hero .stats{display:flex;justify-content:center;gap:48px;margin-top:32px}
     .hero .stat{text-align:center}
@@ -131,7 +131,7 @@
 </head>
 <body>
   <div class="hero">
-    <a href="https://a-gent.co" aria-label="A-Gent home"><img src="assets/agent-logo.svg" alt="A-Gent" class="logo" /></a>
+    <a class="brand-home" href="https://a-gent.co" aria-label="AskArlen home"><img src="assets/arlen-mark.svg" alt="AskArlen" class="logo" width="32" height="32" /><span class="wordmark">AskArlen</span></a>
     <h1>Hire outcomes, not headcount.</h1>
     <p>Every team has work that never ends — leads to research, prospects to chase, reports no one has time to write. Put an A-Gent worker on it: you set the goal, it figures out the <em>how</em> and gets it done. 24/7, no scripting, no chasing.</p>
     <div class="stats">
