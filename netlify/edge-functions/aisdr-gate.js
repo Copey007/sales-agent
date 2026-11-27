@@ -12,6 +12,7 @@ export default (request, context) => handleGate(request, {
   subtitle: 'Operator access only. Sign in to open the SDR dashboard.',
   storageKey: 'agent_auth_session_v1',
   requireOperator: true,
+  reviewUrl: 'https://missioncontrol.a-gent.co',
 });
 
 export const config = {

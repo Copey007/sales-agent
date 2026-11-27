@@ -126,6 +126,37 @@ export async function tenantFromRequest(req, { tenantSlug = null } = {}) {
   return { user, role: row.role, tenant: row.tenants };
 }
 
+/** Optional workspace disambiguator: ?tenant= / ?tenant_slug= or X-Tenant-Slug. */
+export function readTenantSlug(req) {
+  try {
+    const u = new URL(req.url, 'http://localhost');
+    const q = (u.searchParams.get('tenant') || u.searchParams.get('tenant_slug') || '').trim().toLowerCase();
+    if (q) return q;
+  } catch { /* ignore */ }
+  return String(req.headers?.get('x-tenant-slug') || '').trim().toLowerCase() || null;
+}
+
+/**
+ * All of the caller's tenant memberships (stable, no implicit rows[0] pick).
+ * Returns null if unauthenticated; { user, memberships: [] } if authenticated
+ * with no memberships.
+ */
+export async function membershipsFromRequest(req) {
+  const auth = req.headers.get('authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  const user = await userFromToken(token);
+  if (!user?.id) return null;
+
+  const q = `memberships?user_id=eq.${user.id}&select=role,tenant_id,tenants(id,slug,name,plan,status,stripe_customer_id)&order=created_at.asc`;
+  const res = await rest(q);
+  if (!res.ok) return null;
+  const rows = await res.json();
+  const memberships = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r.tenants?.id)
+    .map((r) => ({ role: r.role, tenant: r.tenants }));
+  return { user, memberships };
+}
+
 /**
  * Per-request tenant resolution for the campaign engine.
  *

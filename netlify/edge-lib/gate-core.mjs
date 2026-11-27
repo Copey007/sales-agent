@@ -65,13 +65,28 @@ export async function verifyUser(token, { supabaseUrl, publicKey, fetchImpl }) {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey, allowSignup = false, signupUrl = '', message = '' }) {
+/** Parse Supabase auth callback params from a query string and/or hash. */
+export function parseAuthCallback(search = '', hash = '') {
+  const q = new URLSearchParams(String(search || '').replace(/^\?/, ''));
+  const h = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+  const pick = (k) => h.get(k) || q.get(k) || '';
+  return {
+    type: pick('type'),
+    access_token: pick('access_token'),
+    refresh_token: pick('refresh_token'),
+    expires_in: Number(pick('expires_in') || 0) || 3600,
+    error: pick('error_description') || pick('error'),
+  };
+}
+
+export function loginShell({ title, subtitle, supabaseUrl, publicKey, storageKey, allowSignup = false, signupUrl = '', message = '', manifest = '/site-aisdr.webmanifest', reviewUrl = '' }) {
   const cfg = JSON.stringify({ url: supabaseUrl.replace(/\/$/, ''), key: publicKey, storageKey, cookie: COOKIE })
     .replace(/</g, '\\u003c');
+  const review = reviewUrl ? `<div class="alt"><a href="${esc(reviewUrl)}">Review outreach in Mission Control</a></div>` : '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="/site-aisdr.webmanifest"><meta name="theme-color" content="#0a0a0c">
+<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="${esc(manifest)}"><meta name="theme-color" content="#0a0a0c">
 <title>Sign in · ${esc(title)}</title>
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}
@@ -85,14 +100,27 @@ input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #c8b4
 button{width:100%;padding:11px;border:0;border-radius:10px;background:#c8b48c;color:#0a0a0c;font:600 .95rem/1.2 Inter,system-ui,-apple-system,sans-serif;cursor:pointer}
 button[disabled]{opacity:.6;cursor:wait}#msg{min-height:1.2em;margin:12px 0 0;color:#d4625a;font-size:.85rem}
 a{color:#c8b48c}.alt{margin-top:14px;text-align:center;font-size:.85rem}
+.hid{display:none}#msg.ok{color:#8fd9a8}
 </style></head>
 <body><main aria-labelledby="t"><h1 id="t">${esc(title)}</h1><p>${esc(subtitle)}</p>
 <form id="f" novalidate>
 <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
 <button id="b" type="submit">Sign in</button>
+</form>
+<form id="forgotF" class="hid" novalidate>
+<label for="remail">Email</label><input id="remail" name="email" type="email" autocomplete="username" required>
+<button id="rb" type="submit">Send reset link</button>
+</form>
+<form id="resetF" class="hid" novalidate>
+<label for="npw">New password</label><input id="npw" name="password" type="password" autocomplete="new-password" minlength="8" required>
+<label for="npw2">Confirm password</label><input id="npw2" name="password2" type="password" autocomplete="new-password" minlength="8" required>
+<button id="sb" type="submit">Set new password</button>
+</form>
 <div id="msg" role="alert" aria-live="polite">${esc(message)}</div>
-</form>${allowSignup && signupUrl ? `<div class="alt">New here? <a href="${esc(signupUrl)}">Create an account</a></div>` : ''}
+<p class="alt" id="forgotWrap"><a href="#forgot" id="forgot">Forgot password?</a></p>
+<p class="alt hid" id="backWrap"><a href="#signin" id="back">Back to sign in</a></p>
+${review}${allowSignup && signupUrl ? `<div class="alt">New here? <a href="${esc(signupUrl)}">Create an account</a></div>` : ''}
 </main>
 <script>
 (function(){
@@ -102,17 +130,45 @@ function store(d,email){var s={access_token:d.access_token,refresh_token:d.refre
  try{localStorage.setItem(C.storageKey,JSON.stringify(s));}catch(e){} setCookie(s.access_token,s.expires_at-Math.floor(Date.now()/1000));}
 function grant(type,body){return fetch(C.url+'/auth/v1/token?grant_type='+type,{method:'POST',headers:{apikey:C.key,'Content-Type':'application/json'},body:JSON.stringify(body)})
  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error_description||j.msg||'Invalid email or password.');return j;});});}
-// Seamless renewal: an existing local session with a refresh token re-issues the cookie.
-try{var s=JSON.parse(localStorage.getItem(C.storageKey)||'null');
- if(s&&s.refresh_token&&!sessionStorage.getItem('gate_refresh_tried')){sessionStorage.setItem('gate_refresh_tried','1');
-  grant('refresh_token',{refresh_token:s.refresh_token}).then(function(d){store(d,s.email);location.reload();},function(){try{localStorage.removeItem(C.storageKey);}catch(e){}});}}catch(e){}
+function pick(h,q,k){return h.get(k)||q.get(k)||'';}
+function cb(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));var q=new URLSearchParams((location.search||'').replace(/^\?/,''));return{type:pick(h,q,'type'),access_token:pick(h,q,'access_token'),refresh_token:pick(h,q,'refresh_token'),expires_in:Number(pick(h,q,'expires_in')||0)||3600,error:pick(h,q,'error_description')||pick(h,q,'error')};}
+function show(id){['f','forgotF','resetF'].forEach(function(x){var el=document.getElementById(x);if(el)el.style.display=x===id?'block':'none';});
+ document.getElementById('forgotWrap').style.display=id==='f'?'block':'none';
+ document.getElementById('backWrap').className=id==='f'?'alt hid':'alt';}
 var f=document.getElementById('f'),b=document.getElementById('b'),m=document.getElementById('msg');
-f.addEventListener('submit',function(e){e.preventDefault();m.textContent='';var email=f.email.value.trim(),pw=f.password.value;
+var rec=cb();
+if(rec.error){m.textContent=rec.error;try{history.replaceState({},'',location.pathname);}catch(e){}}
+if(rec.type==='recovery'&&rec.access_token){show('resetF');m.textContent='Choose a new password.';m.className='ok';}
+else if((location.hash||'')==='#forgot'){show('forgotF');}
+else {
+  // Seamless renewal: an existing local session with a refresh token re-issues the cookie.
+  try{var s=JSON.parse(localStorage.getItem(C.storageKey)||'null');
+   if(s&&s.refresh_token&&!sessionStorage.getItem('gate_refresh_tried')){sessionStorage.setItem('gate_refresh_tried','1');
+    grant('refresh_token',{refresh_token:s.refresh_token}).then(function(d){store(d,s.email);location.reload();},function(){try{localStorage.removeItem(C.storageKey);}catch(e){}});}}catch(e){}
+}
+document.getElementById('forgot').addEventListener('click',function(e){e.preventDefault();show('forgotF');m.textContent='';m.className='';});
+document.getElementById('back').addEventListener('click',function(e){e.preventDefault();show('f');m.textContent='';m.className='';});
+f.addEventListener('submit',function(e){e.preventDefault();m.className='';m.textContent='';var email=f.email.value.trim(),pw=f.password.value;
  if(!email||!pw){m.textContent='Enter your email and password.';return;}
  b.disabled=true;b.textContent='Signing in…';
  grant('password',{email:email,password:pw}).then(function(d){store(d,email);sessionStorage.removeItem('gate_refresh_tried');location.reload();},
  function(err){m.textContent=err.message;b.disabled=false;b.textContent='Sign in';});});
-document.getElementById('email').focus();
+document.getElementById('forgotF').addEventListener('submit',function(e){e.preventDefault();m.className='';m.textContent='';
+ var email=document.getElementById('remail').value.trim(); if(!email){m.textContent='Enter your email.';return;}
+ var rb=document.getElementById('rb'); rb.disabled=true; rb.textContent='Sending…';
+ var dest=encodeURIComponent(location.origin+location.pathname);
+ fetch(C.url+'/auth/v1/recover?redirect_to='+dest,{method:'POST',headers:{apikey:C.key,'Content-Type':'application/json'},body:JSON.stringify({email:email})})
+  .then(function(){m.className='ok';m.textContent='If an account exists for that email, a reset link is on its way.';rb.disabled=false;rb.textContent='Send reset link';})
+  .catch(function(){m.textContent='Could not send a reset link. Try again.';rb.disabled=false;rb.textContent='Send reset link';});});
+document.getElementById('resetF').addEventListener('submit',function(e){e.preventDefault();m.className='';m.textContent='';
+ var p1=document.getElementById('npw').value,p2=document.getElementById('npw2').value;
+ if(p1.length<8){m.textContent='Use at least 8 characters.';return;} if(p1!==p2){m.textContent='Passwords do not match.';return;}
+ var sb=document.getElementById('sb'); sb.disabled=true; sb.textContent='Saving…';
+ fetch(C.url+'/auth/v1/user',{method:'PUT',headers:{apikey:C.key,'Content-Type':'application/json',Authorization:'Bearer '+rec.access_token},body:JSON.stringify({password:p1})})
+  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.msg||j.error_description||'Could not update password.');return j;});})
+  .then(function(){store({access_token:rec.access_token,refresh_token:rec.refresh_token,expires_in:rec.expires_in});try{history.replaceState({},'',location.pathname);}catch(e){} sessionStorage.removeItem('gate_refresh_tried');location.reload();})
+  .catch(function(err){m.textContent=err.message;sb.disabled=false;sb.textContent='Set new password';});});
+if(document.getElementById('email')) document.getElementById('email').focus();
 })();
 </script></body></html>`;
 }
@@ -131,7 +187,7 @@ const NO_STORE = { 'Cache-Control': 'no-store, private', Vary: 'Cookie, Authoriz
  * @param {Request} request
  * @param {{ env:(k:string)=>string|undefined, fetchImpl:Function, next:()=>Promise<Response>,
  *           title:string, subtitle:string, storageKey:string, requireOperator?:boolean,
- *           signupUrl?:string }} deps
+ *           signupUrl?:string, manifest?:string, reviewUrl?:string }} deps
  */
 export async function handleGate(request, deps) {
   const { env, fetchImpl, next } = deps;
@@ -149,6 +205,7 @@ export async function handleGate(request, deps) {
   const shell = (message, status = 401) => new Response(loginShell({
     title: deps.title, subtitle: deps.subtitle, supabaseUrl, publicKey, storageKey: deps.storageKey,
     allowSignup: String(env('ALLOW_SELF_SIGNUP') || '').toLowerCase() === 'true', signupUrl: deps.signupUrl || '', message,
+    manifest: deps.manifest || '/site-aisdr.webmanifest', reviewUrl: deps.reviewUrl || '',
   }), { status, headers: shellHeaders });
 
   const token = readToken(request);
@@ -160,7 +217,9 @@ export async function handleGate(request, deps) {
     const ops = operatorSet(env('OPERATOR_EMAILS'));
     const email = String(user.email || '').toLowerCase();
     const confirmed = !!(user.email_confirmed_at || user.confirmed_at);
-    if (!confirmed || !ops.has(email)) return shell('This account does not have operator access.', 403);
+    if (!confirmed || !ops.has(email)) {
+      return shell('This account does not have operator access. Tenant owners can review outreach at Mission Control.', 403);
+    }
   }
 
   const res = await next();

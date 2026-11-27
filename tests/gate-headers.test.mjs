@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { handleGate } from '../netlify/edge-lib/gate-core.mjs';
+import { handleGate, parseAuthCallback } from '../netlify/edge-lib/gate-core.mjs';
 
 const ADMIN = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const ENV = { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_dummy', OPERATOR_EMAILS: 'ops@example.com' };
@@ -95,4 +95,45 @@ test('login shell carries anti-framing / nosniff headers (edge responses skip ne
   assert.match(r.headers.get('content-security-policy') || '', /frame-ancestors 'none'/);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('x-robots-tag'), 'noindex, nofollow');
+});
+
+
+test('anonymous login shell includes Forgot password and recovery handler', async () => {
+  const html = await (await handleGate(get(), deps())).text();
+  assert.match(html, /Forgot password\?/);
+  assert.match(html, /\/auth\/v1\/recover\?redirect_to=/);
+  assert.match(html, /type==='recovery'/);
+  assert.match(html, /Set new password/);
+  assert.match(html, /auth\/v1\/user/);
+});
+
+test('aisdr operator 403 names Mission Control as the tenant-owner path', async () => {
+  const r = await handleGate(get({ Cookie: 'agent_at=cust' }), deps({ ...ENV }));
+  const html = await r.text();
+  assert.equal(r.status, 403);
+  assert.match(html, /does not have operator access/);
+  assert.match(html, /Mission Control/);
+});
+
+test('reviewUrl is rendered as a Mission Control link on the operator shell', async () => {
+  const html = await (await handleGate(get(), {
+    ...deps(),
+    reviewUrl: 'https://missioncontrol.a-gent.co',
+  })).text();
+  assert.match(html, /href="https:\/\/missioncontrol\.a-gent\.co"/);
+  assert.match(html, /Review outreach in Mission Control/);
+});
+
+test('parseAuthCallback reads recovery tokens from the hash', () => {
+  const r = parseAuthCallback('', '#access_token=tok&refresh_token=r&type=recovery&expires_in=3600');
+  assert.equal(r.type, 'recovery');
+  assert.equal(r.access_token, 'tok');
+  assert.equal(r.refresh_token, 'r');
+  assert.equal(r.expires_in, 3600);
+  assert.equal(r.error, '');
+});
+
+test('parseAuthCallback surfaces redirect errors from the query string', () => {
+  const r = parseAuthCallback('?error=access_denied&error_description=Link%20expired', '');
+  assert.match(r.error, /expired/i);
 });
