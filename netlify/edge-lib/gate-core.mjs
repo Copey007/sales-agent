@@ -17,6 +17,55 @@
 
 export const COOKIE = 'agent_at';
 
+export const COOKIE_RT = 'agent_rt';
+export const SHARED_COOKIE_DOMAIN = '.a-gent.co';
+
+/**
+ * Shared cookie Domain for *.a-gent.co module hosts (aisdr, missioncontrol, fleet, …).
+ * Host-only fallback for localhost, *.netlify.app previews, and the apex a-gent.co
+ * marketing site (`"a-gent.co".endsWith(".a-gent.co")` is false).
+ * document.cookie cannot set HttpOnly; server Set-Cookie helpers below do.
+ */
+export function sharedCookieDomain(host) {
+  const h = String(host || '').split(':')[0].trim().toLowerCase();
+  if (h.endsWith('.a-gent.co') && h !== 'a-gent.co') return SHARED_COOKIE_DOMAIN;
+  return '';
+}
+
+/** Attribute suffix for a Set-Cookie / document.cookie assignment. */
+export function cookieAttributeSuffix({ maxAge = 0, domain = '', httpOnly = false } = {}) {
+  let s = `Path=/; Max-Age=${Math.max(0, maxAge | 0)}; Secure; SameSite=Lax`;
+  if (domain) s += `; Domain=${domain}`;
+  if (httpOnly) s += '; HttpOnly';
+  return s;
+}
+
+/**
+ * Two Set-Cookie values that expire a cookie: the shared Domain=.a-gent.co
+ * variant (when applicable) AND the host-only legacy variant, so a stale
+ * host-only cookie can never shadow the shared one after sign-out.
+ */
+export function clearCookieSetCookieValues(name, host, { httpOnly = true } = {}) {
+  const n = String(name || '').trim();
+  if (!n) return [];
+  const domain = sharedCookieDomain(host);
+  const out = [`${n}=; ${cookieAttributeSuffix({ maxAge: 0, domain: '', httpOnly })}`];
+  if (domain) out.unshift(`${n}=; ${cookieAttributeSuffix({ maxAge: 0, domain, httpOnly })}`);
+  return out;
+}
+
+export function setCookieValue(name, value, host, { maxAge = 0, httpOnly = true } = {}) {
+  const domain = sharedCookieDomain(host);
+  return `${name}=${encodeURIComponent(value || '')}; ${cookieAttributeSuffix({ maxAge, domain, httpOnly })}`;
+}
+
+export function clearAuthCookieSetCookieValues(host, { httpOnly = true } = {}) {
+  return [
+    ...clearCookieSetCookieValues(COOKIE, host, { httpOnly }),
+    ...clearCookieSetCookieValues(COOKIE_RT, host, { httpOnly }),
+  ];
+}
+
 export function readToken(request) {
   const auth = request.headers.get('authorization') || '';
   const m = /^Bearer\s+(.+)$/i.exec(auth);
@@ -125,9 +174,13 @@ ${review}${allowSignup && signupUrl ? `<div class="alt">New here? <a href="${esc
 <script>
 (function(){
 var C=${cfg};
-function setCookie(t,maxAge){document.cookie=C.cookie+'='+encodeURIComponent(t)+'; Path=/; Max-Age='+Math.max(0,maxAge|0)+'; Secure; SameSite=Lax';}
+function cookieDomain(){var h=location.hostname||'';if(h.length>9&&h.slice(-10)==='.a-gent.co')return '; Domain=.a-gent.co';return '';}
+function writeCookie(name,value,maxAge,withDomain){document.cookie=name+'='+encodeURIComponent(value||'')+'; Path=/; Max-Age='+Math.max(0,maxAge|0)+'; Secure; SameSite=Lax'+(withDomain?cookieDomain():'');}
+function setAuthCookies(at,rt,maxAge){writeCookie(C.cookie,at||'',maxAge,true);writeCookie('agent_rt',rt||'',maxAge,true);}
+function clearAuthCookies(){writeCookie(C.cookie,'',0,true);writeCookie(C.cookie,'',0,false);writeCookie('agent_rt','',0,true);writeCookie('agent_rt','',0,false);}
+function readCookie(name){var all=document.cookie?document.cookie.split(';'):[];for(var i=0;i<all.length;i++){var p=all[i];var j=p.indexOf('=');if(j<0)continue;if(p.slice(0,j).trim()===name){try{return decodeURIComponent(p.slice(j+1).trim());}catch(e){return '';}}}return '';}
 function store(d,email){var s={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at||Math.floor(Date.now()/1000)+(d.expires_in||3600),email:email||(d.user&&d.user.email)||''};
- try{localStorage.setItem(C.storageKey,JSON.stringify(s));}catch(e){} setCookie(s.access_token,s.expires_at-Math.floor(Date.now()/1000));}
+ try{localStorage.setItem(C.storageKey,JSON.stringify(s));}catch(e){} setAuthCookies(s.access_token,s.refresh_token,s.expires_at-Math.floor(Date.now()/1000));}
 function grant(type,body){return fetch(C.url+'/auth/v1/token?grant_type='+type,{method:'POST',headers:{apikey:C.key,'Content-Type':'application/json'},body:JSON.stringify(body)})
  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error_description||j.msg||'Invalid email or password.');return j;});});}
 function pick(h,q,k){return h.get(k)||q.get(k)||'';}
@@ -143,8 +196,9 @@ else if((location.hash||'')==='#forgot'){show('forgotF');}
 else {
   // Seamless renewal: an existing local session with a refresh token re-issues the cookie.
   try{var s=JSON.parse(localStorage.getItem(C.storageKey)||'null');
+   if(!(s&&s.refresh_token)){var rt=readCookie('agent_rt');if(rt)s={refresh_token:rt,email:(s&&s.email)||''};}
    if(s&&s.refresh_token&&!sessionStorage.getItem('gate_refresh_tried')){sessionStorage.setItem('gate_refresh_tried','1');
-    grant('refresh_token',{refresh_token:s.refresh_token}).then(function(d){store(d,s.email);location.reload();},function(){try{localStorage.removeItem(C.storageKey);}catch(e){}});}}catch(e){}
+    grant('refresh_token',{refresh_token:s.refresh_token}).then(function(d){store(d,s.email);location.reload();},function(){try{localStorage.removeItem(C.storageKey);}catch(e){} clearAuthCookies();});}}catch(e){}
 }
 document.getElementById('forgot').addEventListener('click',function(e){e.preventDefault();show('forgotF');m.textContent='';m.className='';});
 document.getElementById('back').addEventListener('click',function(e){e.preventDefault();show('f');m.textContent='';m.className='';});
