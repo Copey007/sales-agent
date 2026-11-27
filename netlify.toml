@@ -33,6 +33,12 @@
   to = "/signup.html"
   status = 200
 
+# Workspace pricing (Starter / Growth / Custom Build)
+[[redirects]]
+  from = "/pricing"
+  to = "/pricing.html"
+  status = 200
+
 # ── Security: never serve source, data or tooling files ───────────────────
 # publish = "." deploys the whole repo as static files. These forced 404s stop
 # Netlify from serving function source (netlify/functions/*.mjs), agent memory
@@ -263,6 +269,16 @@
     Content-Security-Policy = "frame-ancestors 'none'"
 [[headers]]
   for = "/offers-demo.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/pricing"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+[[headers]]
+  for = "/pricing.html"
   [headers.values]
     X-Frame-Options = "DENY"
     Content-Security-Policy = "frame-ancestors 'none'"

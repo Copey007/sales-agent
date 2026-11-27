@@ -1,20 +1,19 @@
-# A-Gent — Your Personal AI Butler 🎩
+# A-Gent Fleet — AI SDR platform with human-approved outbound
 
-> "A-Gent: A gentleman who never rests."
-
-A-Gent is an AI-powered sales agent that tracks your workflows, learns your patterns, and executes automations — all with the precision of a gentleman's personal assistant.
-
-**The metaphor:** Think English butler. Proper. Precise. Always at attention. Your work is tracked, categorized, and reported back to you with aristocratic calm.
+A-Gent Fleet researches accounts, explains *why now* with source-linked signals (Signal Engine), drafts outreach, and sends **only after a human approves it** in the Review Queue. This repository powers the operator app (currently `aisdr.a-gent.co`).
 
 ---
 
-## The Tiers
+## Plans
 
-| Member | Price | Role |
-|--------|-------|------|
-| **Associate** | $0/mo | Entry-level — tracks your day, reports back |
-| **Butler** | $29/mo | Full service — all automations, CRM sync, email sequences |
-| **Estate Manager** | $99/mo | Complete autonomy — AI works while you sleep |
+Pricing is published at **https://a-gent.co/pricing/** (source of truth). This README intentionally does not repeat prices.
+
+| Plan | For | Summary |
+|------|-----|---------|
+| **Trial** | New workspaces | 15-day free trial with Starter features; every send requires human approval |
+| **Starter** | Founder-led / small teams | Included prospecting volume + mailbox, Review Queue, Signal Engine |
+| **Growth** | SDR/AE teams | Higher limits, Loop Engine, CRM sync, Mission Control |
+| **Custom Build** | Revenue leaders | Consulting-led build on top of Fleet (GTM Brain, integrations, managed ops) |
 
 ---
 
@@ -29,7 +28,7 @@ A-Gent is an AI-powered sales agent that tracks your workflows, learns your patt
 - Counts repetitive actions per week
 - "You send 40 follow-ups manually" → that's an automation candidate
 
-**Automations (Butler tier)**
+**Automations (Starter and Growth)**
 - CRM Auto-Sync (Salesforce/HubSpot)
 - Email Sequences (multi-step outreach)
 - Contact Enrichment (Hunter.io)
@@ -58,7 +57,7 @@ The `index.html` at the root deploys to Netlify. Already configured with `netlif
 
 ```
 sales-agent/
-├── index.html           # Marketing site (butler theme)
+├── index.html           # Legacy marketing page (superseded by a-gent.co)
 ├── netlify.toml         # Netlify deploy config
 ├── package.json
 ├── cli.js               # Agent command line
@@ -70,7 +69,7 @@ sales-agent/
 ├── extension/           # Chrome extension
 │   ├── manifest.json
 │   ├── background.js    # Service worker — tracking logic
-│   ├── popup.html       # Butler-themed popup UI
+│   ├── popup.html       # Extension popup UI
 │   ├── popup.js
 │   ├── privacy.html     # Privacy policy
 │   └── icons/
@@ -106,8 +105,8 @@ node cli.js "check acme corp"
 - ✅ Account research (Serper API)
 - ✅ Email enrichment (Hunter.io)
 - ✅ Signal detection (cron job)
-- ✅ Chrome extension (butler-themed UI)
-- ✅ Marketing site (butler-themed)
+- ✅ Chrome extension
+- ✅ Legacy marketing page (superseded by a-gent.co)
 
 **Waiting on:**
 - ⏳ Chrome Web Store account (appealing suspension)

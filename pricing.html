@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A-Gent Fleet plans — Start a 15-day free trial</title>
+  <meta name="description" content="A-Gent Fleet workspace plans: Starter $499/month, Growth $999/month, and Custom Build. 15-day free trial. Every send is human-approved.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       A-GENT — Grey Classy Design System (matches a-gent.co)
+       ═══════════════════════════════════════════════════════════════ */
+    :root{
+      --bg:#0a0a0c;--bg-2:#08080a;--surface:#131316;--surface-2:#1a1a1f;--surface-3:#232328;
+      --line:rgba(255,255,255,.06);--line-strong:rgba(255,255,255,.10);--line-accent:rgba(200,180,140,.16);
+      --accent:#c8b48c;--accent-soft:rgba(200,180,140,.10);--accent-mid:rgba(200,180,140,.20);--accent-bright:#d4c9a8;
+      --green:#7eb88a;--green-soft:rgba(126,184,138,.10);
+      --text:#f0f0f2;--muted:#a1a1a6;--dim:#8a8a90;
+      --radius:12px;--radius-sm:8px;
+      --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.25);
+      --shadow-lift:0 1px 3px rgba(0,0,0,.2),0 12px 40px rgba(0,0,0,.35);
+      --transition:.2s cubic-bezier(.4,0,.2,1);
+      --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      --max:1140px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+    body{
+      background:radial-gradient(900px 500px at 50% -10%,rgba(200,180,140,.05),transparent 60%),var(--bg);
+      color:var(--text);font-family:var(--font);line-height:1.5;min-height:100vh;
+    }
+    :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .skip-link{position:absolute;left:12px;top:-48px;z-index:100;padding:.6rem .9rem;border-radius:8px;background:#f5f5f7;color:#0a0a0c;font:600 .85rem/1 var(--font);text-decoration:none}
+    .skip-link:focus,.skip-link:focus-visible{top:12px;left:12px;outline:2px solid var(--accent);outline-offset:2px}
+    .nav{display:flex;align-items:center;justify-content:space-between;max-width:var(--max);margin:0 auto;padding:18px 24px;border-bottom:1px solid var(--line)}
+    .nav img{height:30px;width:auto;opacity:.95}
+    .nav nav{display:flex;gap:1.25rem;align-items:center}
+    .nav a{color:var(--muted);font-size:.84rem;font-weight:500;text-decoration:none;transition:color var(--transition);white-space:nowrap;display:inline-flex;align-items:center;min-height:44px}
+    .nav a:hover,.nav a:focus-visible{color:var(--text)}
+    .hero{text-align:center;padding:64px 20px 36px;max-width:720px;margin:0 auto}
+    .eyebrow{display:inline-block;font-size:.72rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border:1px solid var(--line-accent);border-radius:999px;padding:5px 14px;margin-bottom:20px}
+    .hero h1{font-size:clamp(1.9rem,4.5vw,2.9rem);font-weight:600;letter-spacing:-.02em;line-height:1.08;margin-bottom:16px}
+    .hero h1 .accent{color:var(--accent-bright)}
+    .hero p{font-size:1.05rem;color:var(--muted);max-width:540px;margin:0 auto;line-height:1.6}
+    .public-pricing-link{margin-top:14px;font-size:.82rem;white-space:nowrap}
+    .public-pricing-link a{color:var(--accent)}
+    .pricing{max-width:var(--max);margin:0 auto;padding:24px 20px 32px}
+    .pricing-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:stretch}
+    .price-card{
+      padding:34px 28px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+      text-align:left;position:relative;transition:transform var(--transition),border-color var(--transition),box-shadow var(--transition);
+      display:grid;grid-row:span 4;grid-template-rows:subgrid;gap:.9rem;
+    }
+    .price-card:hover{transform:translateY(-3px);border-color:var(--line-strong);box-shadow:var(--shadow-lift)}
+    .price-card.featured{border-color:var(--line-accent);background:linear-gradient(180deg,var(--accent-soft),var(--surface) 55%);box-shadow:var(--shadow)}
+    .badge{position:absolute;top:-11px;left:28px;background:var(--accent);color:#0a0a0c;font-size:.75rem;font-weight:700;padding:5px 13px;border-radius:999px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+    .plan-head h2{font-size:1.05rem;font-weight:600;letter-spacing:-.01em;margin:0}
+    .price-card .sub{font-size:.82rem;color:var(--muted);margin-top:.35rem}
+    .price-card .amount{font-size:2.6rem;font-weight:700;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
+    .price-card .amount.custom{font-size:2rem}
+    .price-card .period{font-size:.85rem;font-weight:500;color:var(--muted);margin-left:3px}
+    .price-card .features{list-style:none;margin:0 0 24px;padding:0;color:var(--text)}
+    .price-card .features li{font-size:.84rem;color:var(--text);padding:9px 0 9px 26px;border-bottom:1px solid var(--line);display:block;position:relative}
+    .price-card .features li:last-child{border-bottom:0}
+    .price-card .features li::before{content:'';width:16px;height:16px;position:absolute;left:0;top:12px;border-radius:50%;background:var(--green-soft);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237eb88a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");background-size:11px;background-repeat:no-repeat;background-position:center}
+    .btn{display:flex;align-items:center;justify-content:center;gap:.4rem;width:100%;min-height:44px;padding:.7rem 1rem;border-radius:var(--radius-sm);border:1px solid transparent;font-family:var(--font);font-weight:600;font-size:.9rem;letter-spacing:-.005em;cursor:pointer;text-decoration:none;transition:transform var(--transition),box-shadow var(--transition),background var(--transition),border-color var(--transition)}
+    .btn:hover{transform:translateY(-1px)}
+    .btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+    .btn-primary{background:#f5f5f7;color:#0a0a0c;border-color:rgba(255,255,255,.8)}
+    .btn-primary:hover{background:#fff;box-shadow:0 2px 8px rgba(255,255,255,.12)}
+    .btn-secondary{color:var(--text);border-color:var(--line-strong);background:rgba(255,255,255,.03)}
+    .btn-secondary:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16)}
+    .card-cta{margin-top:auto;align-self:end}
+    .trial-note{max-width:var(--max);margin:0 auto 24px;padding:1rem 1.25rem;border:1px dashed rgba(200,180,140,.35);border-radius:14px;color:var(--muted);font-size:.9rem}
+    .trial-note strong{color:var(--text)}
+    .trust{padding:48px 20px;text-align:center;border-top:1px solid var(--line);max-width:var(--max);margin:0 auto}
+    .trust h2{font-size:.74rem;color:var(--dim);text-transform:uppercase;letter-spacing:.14em;font-weight:600;margin-bottom:20px}
+    .trust-logos{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
+    .trust-logos span{font-size:.82rem;color:var(--muted);font-weight:500}
+    .footer{padding:28px 24px;text-align:center;border-top:1px solid var(--line);font-size:.76rem;color:var(--dim);max-width:var(--max);margin:0 auto}
+    .footer a{color:var(--muted);text-decoration:none;margin:0 8px;transition:color var(--transition)}
+    .footer a:hover,.footer a:focus-visible{color:var(--text)}
+    @media (max-width:920px) and (min-width:640px){
+      .pricing-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .price-card[data-plan="enterprise"]{grid-column:1/-1}
+    }
+    @media (max-width:639px){
+      .pricing-cards{grid-template-columns:1fr;max-width:560px;margin-inline:auto}
+      .hero{padding-top:48px}
+      .public-pricing-link{white-space:normal}
+    }
+    @media (max-width:360px){
+      .nav{padding:14px 16px}
+      .nav nav{gap:.75rem}
+      .nav img{height:24px}
+    }
+    @media (prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      .btn:hover,.price-card:hover{transform:none}
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="nav">
+    <a href="https://a-gent.co" aria-label="A-Gent home"><img src="assets/agent-logo.svg" alt="A-Gent" width="160" height="42" /></a>
+    <nav aria-label="Primary">
+      <a href="/pricing.html">Pricing</a>
+      <a href="https://aisdr.a-gent.co/workers.html">Browse Workers →</a>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+  <div class="hero">
+    <div class="eyebrow">A-Gent Fleet</div>
+    <h1>Simple plans for an AI SDR that <span class="accent">asks before it sends</span>.</h1>
+    <p>Start with a 15-day free trial. Pick a workspace plan when you are ready, or have A-Gent Consulting build a custom GTM system on top of Fleet.</p>
+    <p class="public-pricing-link">Public pricing is also published at <a href="https://a-gent.co/pricing/">a-gent.co/pricing</a>.</p>
+  </div>
+
+  <div class="pricing" id="plans">
+    <div class="pricing-cards">
+      <article class="price-card" data-plan="starter" data-price-cents="49900" data-interval="month" aria-labelledby="plan-starter">
+        <div class="plan-head">
+          <h2 id="plan-starter">Starter</h2>
+          <div class="sub">For founder-led sales and small teams running their first always-on outbound.</div>
+        </div>
+        <div class="amount">$499<span class="period">/month</span></div>
+        <ul class="features">
+          <li>15-day free trial; card required, no charge until the trial ends</li>
+          <li>Human-approval Review Queue</li>
+          <li>Signal Engine with source-linked reasons</li>
+          <li>Included prospecting volume and a connected sending mailbox</li>
+          <li>Deliverability guardrails (SPF/DKIM/DMARC checks, daily send caps)</li>
+          <li>Email support</li>
+        </ul>
+        <a class="btn btn-secondary card-cta" href="/signup.html?plan=starter">Start 15-day trial</a>
+      </article>
+
+      <article class="price-card featured" data-plan="growth" data-price-cents="99900" data-interval="month" data-featured="true" aria-labelledby="plan-growth">
+        <span class="badge">Recommended</span>
+        <div class="plan-head">
+          <h2 id="plan-growth">Growth</h2>
+          <div class="sub">For SDR and AE teams that want a supervised AI SDR running every day.</div>
+        </div>
+        <div class="amount">$999<span class="period">/month</span></div>
+        <ul class="features">
+          <li>Everything in Starter</li>
+          <li>Higher included prospecting volume, seats, and mailboxes</li>
+          <li>Loop Engine</li>
+          <li>CRM sync (A-Gent CRM, HubSpot, and Salesforce)</li>
+          <li>Mission Control dashboard</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="btn btn-primary card-cta" href="/signup.html?plan=growth">Start 15-day trial</a>
+      </article>
+
+      <article class="price-card" data-plan="enterprise" data-custom="true" aria-labelledby="plan-enterprise">
+        <div class="plan-head">
+          <h2 id="plan-enterprise">Custom Build</h2>
+          <div class="sub">For revenue leaders who want a bespoke AI GTM system designed and run with A-Gent Consulting.</div>
+        </div>
+        <div class="amount custom">Talk to us</div>
+        <ul class="features">
+          <li>CRO diagnostic and GTM Brain setup</li>
+          <li>Custom integrations and workflow design</li>
+          <li>Managed operations on A-Gent Fleet</li>
+          <li>Built on The GTM REVolution methodology</li>
+        </ul>
+        <a class="btn btn-secondary card-cta" href="https://a-gent.co/#book-demo">Book a Demo</a>
+      </article>
+    </div>
+  </div>
+
+  <div class="pricing">
+    <p class="trial-note"><strong>15-day free trial.</strong> Starter and Growth include a card-required trial — you are not charged until it ends, and you can cancel during the trial. Every outbound message is sent only after a person on your team approves it. Included contact, seat, and mailbox allowances are confirmed at checkout.</p>
+  </div>
+
+  <div class="trust">
+    <h2>Built for modern revenue teams</h2>
+    <div class="trust-logos">
+      <span>B2B SaaS</span>
+      <span>Series A–B</span>
+      <span>Mid-Market</span>
+      <span>Enterprise</span>
+    </div>
+  </div>
+  </main>
+
+  <footer class="footer">
+    © 2026 A-Gent · <a href="https://a-gent.co">a-gent.co</a> · <a href="https://a-gent.co/pricing/">Pricing</a> · <a href="mailto:mark@a-gent.co">Contact</a> · <a href="https://missioncontrol.a-gent.co">Mission Control</a>
+  </footer>
+</body>
+</html>

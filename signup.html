@@ -77,10 +77,13 @@
     const SB_ANON = 'sb_publishable_sQAEX9fp8QuAOwIjPLG1cQ_Um-j1Yi2';
     const TRIAL_DAYS = 15;
 
-    // Selected plan (from offers page ?plan=...)
+    // Selected plan (from offers / pricing ?plan=...). Must stay in sync with
+    // netlify/functions/_plans.mjs — tests/plans-pricing.test.mjs enforces this.
     const PLANS = {
-      'live-agent': { label: 'Live Agent', price: '$499/month' },
-      'starter':    { label: 'Live Agent Starter', price: '$99/month' },
+      starter:      { label: 'Starter',      price: '$499/month', checkout: true },
+      growth:       { label: 'Growth',       price: '$999/month', checkout: true },
+      enterprise:   { label: 'Custom Build', price: 'Talk to us',  checkout: false },
+      'live-agent': { label: 'Starter',      price: '$499/month', checkout: true },
     };
     const planKey = new URLSearchParams(location.search).get('plan');
     const selectedPlan = PLANS[planKey] || null;
@@ -129,7 +132,8 @@
           token = (await gr.json())?.access_token || null;
         } catch {}
 
-        if (token) {
+        const wantsCheckout = !selectedPlan || selectedPlan.checkout !== false;
+        if (token && wantsCheckout) {
           try {
             const co = await fetch('/api/billing-checkout', {
               method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
