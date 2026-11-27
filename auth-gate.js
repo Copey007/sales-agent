@@ -28,9 +28,40 @@
 
   // The server-side edge gate (netlify/edge-functions/aisdr-gate.js) reads
   // this cookie; keep it in sync with the session so reloads stay signed in.
-  function setCookie(s) {
+  function cookieDomain() {
+    var h = location.hostname || '';
+    if (h.length > 9 && h.slice(-10) === '.a-gent.co') return '; Domain=.a-gent.co';
+    return '';
+  }
+  function writeCookie(name, value, maxAge, withDomain) {
+    document.cookie = name + '=' + encodeURIComponent(value || '') + '; Path=/; Max-Age=' + Math.max(0, maxAge | 0) + '; Secure; SameSite=Lax' + (withDomain ? cookieDomain() : '');
+  }
+  function setAuthCookies(s) {
     var maxAge = s ? Math.max(0, (s.expires_at | 0) - Math.floor(Date.now() / 1000)) : 0;
-    document.cookie = 'agent_at=' + (s ? encodeURIComponent(s.access_token) : '') + '; Path=/; Max-Age=' + maxAge + '; Secure; SameSite=Lax';
+    writeCookie('agent_at', s && s.access_token, maxAge, true);
+    writeCookie('agent_rt', s && s.refresh_token, maxAge, true);
+  }
+  function clearAuthCookies() {
+    writeCookie('agent_at', '', 0, true);
+    writeCookie('agent_at', '', 0, false);
+    writeCookie('agent_rt', '', 0, true);
+    writeCookie('agent_rt', '', 0, false);
+  }
+  function readCookie(name) {
+    var all = document.cookie ? document.cookie.split(';') : [];
+    for (var i = 0; i < all.length; i++) {
+      var part = all[i];
+      var j = part.indexOf('=');
+      if (j < 0) continue;
+      if (part.slice(0, j).trim() === name) {
+        try { return decodeURIComponent(part.slice(j + 1).trim()); } catch (e) { return ''; }
+      }
+    }
+    return '';
+  }
+  function setCookie(s) {
+    if (s && s.access_token) setAuthCookies(s);
+    else clearAuthCookies();
   }
   function save(s) {
     session = s;
@@ -158,6 +189,10 @@
   // ── Boot ─────────────────────────────────────────────────────────────────
   if (!SB_URL || !SB_KEY) { console.error('[auth-gate] missing data-supabase-url / data-supabase-key'); }
   session = load();
+  if (!(session && session.refresh_token)) {
+    var rt = readCookie('agent_rt');
+    if (rt) session = { refresh_token: rt, email: (session && session.email) || '', access_token: (session && session.access_token) || '', expires_at: 0 };
+  }
   if (session && session.expires_at - 60 > Date.now() / 1000) { readyResolve(); whenBody(badge); }
   else if (session && session.refresh_token) {
     refresh().then(function () { readyResolve(); whenBody(badge); }, function () { signOut(); });
