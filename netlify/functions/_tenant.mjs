@@ -292,13 +292,19 @@ export async function scopedTenantFromRequest(req, respond) {
   const requested = readRequestedTenantId(req);
   if (!requested.id && !requested.invalid) {
     const legacy = await tenantFromRequest(req);
-    return legacy?.tenant?.id ? { ctx: legacy } : { response: respond({ error: 'unauthorized' }, 401) };
+    if (!legacy?.tenant?.id) return { response: respond({ error: 'unauthorized' }, 401) };
+    const denied = await denyStealthMutation(req, { tenant: legacy.tenant, tenantId: legacy.tenant.id }, respond);
+    if (denied) return { response: denied };
+    return { ctx: legacy };
   }
   const c = await resolveTenantContext(req);
   if (c.internal) return { response: respond({ error: 'forbidden' }, 403) };
   if (c.invalid) return { response: respond({ error: errorName(c.status), reason: c.reason }, c.status || 401) };
   const tenant = c.tenant || { id: c.tenantId };
-  return { ctx: { user: c.user, role: c.role, tenant, operator: !!c.operator, scoped: true, home: !!c.home } };
+  const ctx = { user: c.user, role: c.role, tenant, operator: !!c.operator, scoped: true, home: !!c.home, tenantId: tenant.id };
+  const denied = await denyStealthMutation(req, ctx, respond);
+  if (denied) return { response: denied };
+  return { ctx };
 }
 
 /**
@@ -317,31 +323,134 @@ function errorName(status) {
   return status === 403 ? 'forbidden' : status === 400 ? 'bad_request' : status === 404 ? 'not_found' : 'unauthorized';
 }
 
+// ─── Stealth lock (RefoundGTM) ──────────────────────────────────────────────
+// Tenant 293f61ad… is a stealth workspace. Reads are allowed. Every mutation
+// (and every send/approve of its outreach) is 403 for every role, including
+// operators and internal/service-token callers. New HTTP endpoints inherit
+// this via requireTenant / requireOperator / scopedTenantFromRequest.
+// Background send/approve paths call stealthWriteBlocked() with the row's
+// tenant_id — the same gate, no HTTP role check required.
+
+export const STEALTH_TENANT_IDS = Object.freeze(['293f61ad-0d46-460e-b0f2-e69c9462001a']);
+
+export function isStealthTenant(id) {
+  return STEALTH_TENANT_IDS.includes(String(id || '').toLowerCase());
+}
+
+/** True when a write, send, or approve against this tenant must not happen. */
+export function stealthWriteBlocked(tenantId) {
+  return isStealthTenant(tenantId);
+}
+
+/** POST actions that only read (same contract as Mission Control workspaces). */
+export const STEALTH_READ_POST_ACTIONS = Object.freeze({
+  '/api/campaign-orchestrator': Object.freeze(['status', 'detail', 'funnel', 'replies', 'loop', 'prospects', 'sends']),
+  '/api/campaign-admin': Object.freeze(['status', 'campaigns_overview', 'get_campaign', 'list_campaigns', 'get_flags', 'list_pending']),
+  '/api/workforce': Object.freeze(['list', 'tasks', 'connectors']),
+});
+
+function pathOf(req) {
+  try { return new URL(req.url, 'http://localhost').pathname; } catch { return ''; }
+}
+
+/** Action from ?action= or (cloned) JSON body. Never consumes the original body. */
+export async function requestAction(req) {
+  try {
+    const q = (new URL(req.url, 'http://localhost').searchParams.get('action') || '').trim();
+    if (q) return q;
+  } catch { /* ignore */ }
+  if (Object.prototype.hasOwnProperty.call(req, '_stealthAction')) return req._stealthAction;
+  try {
+    const b = await req.clone().json();
+    req._stealthAction = (b && b.action) || '';
+  } catch { req._stealthAction = ''; }
+  return req._stealthAction;
+}
+
+/** GET/HEAD/OPTIONS and known read-only POSTs are not mutations. Unknown POSTs are. */
+export async function isMutatingHttpRequest(req, actionOverride) {
+  if (!req) return true;
+  const method = String(req.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return false;
+  if (method !== 'POST') return true;
+  const allowed = STEALTH_READ_POST_ACTIONS[pathOf(req)];
+  if (!allowed) return true;
+  const action = (actionOverride != null && String(actionOverride) !== '')
+    ? String(actionOverride)
+    : await requestAction(req);
+  return !allowed.includes(action);
+}
+
+export function stealthDeniedBody() {
+  return { error: 'forbidden', reason: 'stealth_readonly' };
+}
+
+/**
+ * 403 if this HTTP request would mutate a stealth tenant (from ctx, a row id,
+ * or ?tenant_id= / X-Tenant-Id). `respond` is the endpoint's json(body, status)
+ * if it doesn't take `req` as the first arg.
+ */
+export async function denyStealthMutation(req, ctxOrId, respond, actionOverride) {
+  const ids = [];
+  if (typeof ctxOrId === 'string' && ctxOrId) ids.push(ctxOrId);
+  else if (ctxOrId && typeof ctxOrId === 'object') {
+    if (ctxOrId.tenantId) ids.push(ctxOrId.tenantId);
+    if (ctxOrId.tenant?.id) ids.push(ctxOrId.tenant.id);
+  }
+  try {
+    const r = readRequestedTenantId(req);
+    if (r.id) ids.push(r.id);
+  } catch { /* no req */ }
+  if (!ids.some(isStealthTenant)) return null;
+  if (req && actionOverride != null) req._stealthAction = String(actionOverride);
+  if (req && !(await isMutatingHttpRequest(req, actionOverride))) return null;
+  const body = stealthDeniedBody();
+  if (typeof respond === 'function') return respond(body, 403);
+  if (req) return json(req, body, 403);
+  return new Response(JSON.stringify(body), { status: 403, headers: { 'Content-Type': 'application/json' } });
+}
+
 /**
  * Guard: verified tenant member (or operator). Internal calls are allowed only
  * when allowInternal is set. Returns { ctx } or { response }.
+ * Stealth tenants: mutations are 403 even for operators and internal callers.
  */
 export async function requireTenant(req, { allowInternal = false } = {}) {
   const ctx = await resolveTenantContext(req);
   if (ctx.internal) {
+    // Name the stealth lock even when internal callers are otherwise forbidden,
+    // so a service-token mutation against a stealth tenant is 403 stealth_readonly.
+    const denied = await denyStealthMutation(req, ctx);
+    if (denied) return { response: denied };
     return allowInternal ? { ctx } : { response: json(req, { error: 'forbidden' }, 403) };
   }
   if (ctx.invalid) {
     return { response: json(req, { error: errorName(ctx.status), reason: ctx.reason }, ctx.status || 401) };
   }
+  const denied = await denyStealthMutation(req, ctx);
+  if (denied) return { response: denied };
   return { ctx };
 }
 
 /** Guard: platform operator JWT (allowlist) or, if allowed, the internal token. */
 export async function requireOperator(req, { allowInternal = true } = {}) {
-  if (allowInternal && isInternalCall(req)) return { ctx: { internal: true, tenantId: null } };
+  // Stealth lock first: a mutating request named at a stealth tenant is 403
+  // for every role (including non-operators), before the allowlist check.
+  const locked = await denyStealthMutation(req, null);
+  if (locked) return { response: locked };
+  if (allowInternal && isInternalCall(req)) {
+    return { ctx: { internal: true, tenantId: null } };
+  }
   const token = bearer(req);
   if (!token) return { response: json(req, { error: 'unauthorized' }, 401) };
   const user = await userFromToken(token);
   if (!user?.id) return { response: json(req, { error: 'unauthorized' }, 401) };
   if (!operatorEmails().size) return { response: json(req, { error: 'operators_not_configured' }, 503) };
   if (!isOperatorUser(user)) return { response: json(req, { error: 'forbidden' }, 403) };
-  return { ctx: { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true } };
+  const ctx = { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true };
+  const denied = await denyStealthMutation(req, ctx);
+  if (denied) return { response: denied };
+  return { ctx };
 }
 
 /** True if the ctx may act on a row owned by tenantId. */

@@ -19,7 +19,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
-import { membershipsFromRequest, readTenantSlug, readRequestedTenantId, resolveTenantContext } from './_tenant.mjs';
+import { membershipsFromRequest, readTenantSlug, readRequestedTenantId, resolveTenantContext, stealthWriteBlocked, stealthDeniedBody } from './_tenant.mjs';
 import { putProspect, findProspectByEmail, isEmailSuppressed, DEFAULTS } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -101,6 +101,9 @@ const __handler = async (req) => {
     if (draft && !byId.has(draft.tenant_id)) return json({ error: 'not found' }, 404);
     if (draft && scopedTenant && draft.tenant_id !== scopedTenant.id) return json({ error: 'not found' }, 404);
     if (!draft) return json({ error: 'not found' }, 404);
+    // Stealth lock: never approve or reject (or send) a draft for this tenant,
+    // even when the request itself is unscoped. Operators included.
+    if (stealthWriteBlocked(draft.tenant_id)) return json(stealthDeniedBody(), 403);
     if (draft.status !== 'pending') return json({ error: `already ${draft.status}` }, 409);
 
     if (b.action === 'reject') {

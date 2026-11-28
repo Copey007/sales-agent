@@ -16,6 +16,7 @@
  * Keeps batches small (≤10) to stay inside the Netlify timeout.
  */
 
+import { stealthWriteBlocked } from './_tenant.mjs';
 import {
   getCampaign, getCampaignPersona, getCampaignSignalConfig,
   getCampaignSequence, getProspect, getEmailSend, putEmailSend,
@@ -259,6 +260,9 @@ async function sendViaResend(emailData, prospect, campaign) {
     return { sent: false, reason: "Prospect has no email address", simulated: true };
   }
   const sendTenantId = prospect.tenant_id || campaign?.tenant_id || DEFAULTS.TENANT_ID;
+  if (stealthWriteBlocked(sendTenantId)) {
+    return { sent: false, reason: 'stealth_readonly', blocked: true };
+  }
   if (await isEmailSuppressed(sendTenantId, toEmail)) {
     return { sent: false, reason: "email_on_suppression_list", suppressed: true };
   }
@@ -369,6 +373,9 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence, { 
 
   // Last-moment suppression re-check (the list can change after queueing).
   const tenantId = send.tenant_id || campaign.tenant_id || DEFAULTS.TENANT_ID;
+  if (stealthWriteBlocked(tenantId) || stealthWriteBlocked(prospect.tenant_id)) {
+    return { send_id: sendId, skipped: true, reason: 'stealth_readonly', blocked: true };
+  }
   if (prospect.email && await isEmailSuppressed(tenantId, prospect.email)) {
     send.status = "suppressed";
     send.suppressed_at = new Date().toISOString();
