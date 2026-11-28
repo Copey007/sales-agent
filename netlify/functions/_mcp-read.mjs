@@ -96,10 +96,12 @@ export async function accountStatus(req, ctx) {
       items: active.map((c) => ({
         id: c.id, name: c.name, status: c.status, created_at: c.created_at || null,
         launched_at: c.launched_at || null, daily_send_limit: c.daily_send_limit ?? null,
-        metrics: c.metrics || {
-          prospects_enrolled: c.agent_status?.researcher?.prospects_found || 0,
-          queued_sends: c.agent_status?.ops?.sends_queued || 0,
-          sent_today: 0,
+        // Allowlisted metrics only — never pass through the raw campaign record
+        // (it may carry provider ids such as resend_id).
+        metrics: {
+          prospects_enrolled: Number(c.metrics?.prospects_enrolled ?? c.agent_status?.researcher?.prospects_found ?? 0) || 0,
+          queued_sends: Number(c.metrics?.queued_sends ?? c.agent_status?.ops?.sends_queued ?? 0) || 0,
+          sent_today: Number(c.metrics?.sent_today ?? 0) || 0,
         },
       })),
     },

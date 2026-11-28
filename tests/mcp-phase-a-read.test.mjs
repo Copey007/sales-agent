@@ -23,10 +23,10 @@ const USERS = {
   homeuser: { id: 'u-home', email: 'mark@home.test', email_confirmed_at: ok },
 };
 const TEN = {
-  [R]: { id: R, slug: 'refoundgtm', name: 'RefoundGTM', plan: 'starter', status: 'active' },
-  [A]: { id: A, slug: 'tenant-a', name: 'Tenant A', plan: 'starter', status: 'active' },
-  [B]: { id: B, slug: 'tenant-b', name: 'Tenant B', plan: 'starter', status: 'active' },
-  [HOME]: { id: HOME, slug: 'a-gent', name: 'A-Gent', plan: 'pro', status: 'active' },
+  [R]: { id: R, slug: 'refoundgtm', name: 'RefoundGTM', plan: 'starter', status: 'active', stripe_customer_id: 'SECRET' },
+  [A]: { id: A, slug: 'tenant-a', name: 'Tenant A', plan: 'starter', status: 'active', stripe_customer_id: 'SECRET' },
+  [B]: { id: B, slug: 'tenant-b', name: 'Tenant B', plan: 'starter', status: 'active', stripe_customer_id: 'SECRET' },
+  [HOME]: { id: HOME, slug: 'a-gent', name: 'A-Gent', plan: 'pro', status: 'active', stripe_customer_id: 'SECRET' },
 };
 const MEM = {
   'u-alice': [{ role: 'owner', tenant_id: A, tenants: TEN[A] }],
@@ -36,13 +36,13 @@ const MEM = {
 };
 const DRAFTS = [
   { id: 'd-r', tenant_id: R, status: 'pending', subject: 'Touch 1', body: 'Hi', prospect_email: 'p@x.test', prospect_name: 'P', prospect_company: 'X', from_email: 'info@refoundgtm.com', worker_id: 'sdr', worker_name: 'W', hire_id: 'h-r', created_at: '2026-11-27T19:09:49Z', resend_id: 'SECRET' },
-  { id: 'd-a', tenant_id: A, status: 'pending', subject: 'A draft', body: 'Yo', prospect_email: 'a@a.test', from_email: 'a@a.test', created_at: '2026-11-27T10:00:00Z' },
+  { id: 'd-a', tenant_id: A, status: 'pending', subject: 'A draft', body: 'Yo', prospect_email: 'a@a.test', from_email: 'a@a.test', created_at: '2026-11-27T10:00:00Z', resend_id: 'SECRET' },
   { id: 'd-b', tenant_id: B, status: 'pending', subject: 'B draft', body: 'B', prospect_email: 'b@b.test', from_email: 'b@b.test', created_at: '2026-11-27T10:00:00Z' },
 ];
 const HIRES = [
-  { id: 'h-a', tenant_id: A, worker_id: 'sdr', name: 'A SDR', title: 'SDR', status: 'active', goal: 'secret goal', context: 'secret ctx', created_at: ok },
+  { id: 'h-a', tenant_id: A, worker_id: 'sdr', name: 'A SDR', title: 'SDR', status: 'active', goal: 'secret goal', context: 'secret ctx', created_at: ok, resend_id: 'SECRET', stripe_customer_id: 'SECRET', hunter_id: 'SECRET' },
   { id: 'h-b', tenant_id: B, worker_id: 'sdr', name: 'B SDR', title: 'SDR', status: 'active', created_at: ok },
-  { id: 'h-r', tenant_id: R, worker_id: 'sdr', name: 'R SDR', title: 'SDR', status: 'active', created_at: ok },
+  { id: 'h-r', tenant_id: R, worker_id: 'sdr', name: 'R SDR', title: 'SDR', status: 'active', created_at: ok, resend_id: 'SECRET' },
 ];
 const eqv = (u, col) => (new RegExp(`[?&]${col}=eq\\.([^&]+)`).exec(u) || [])[1];
 
@@ -65,6 +65,21 @@ const NOWRITE = () => {
   const bad = calls.filter((c) => c.method !== 'GET' && c.method !== 'HEAD' && !/auth\/v1\/user/.test(c.url));
   assert.deepEqual(bad.map((c) => `${c.method} ${c.url}`), [], 'no non-GET calls');
   assert.ok(!calls.some((c) => /api\.resend\.com|api\.hunter\.io/.test(c.url)), 'no Resend/Hunter');
+};
+/** Provider ids and the fixture sentinel must never appear in a read response. */
+const NO_PROVIDER_IDS = (body, label = '') => {
+  const raw = typeof body === 'string' ? body : JSON.stringify(body);
+  const keys = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === 'object') {
+      for (const k of Object.keys(v)) { keys.push(k); walk(v[k]); }
+    }
+  };
+  if (typeof body !== 'string') walk(body);
+  assert.ok(!raw.includes('SECRET'), `${label} must not contain SECRET`);
+  assert.ok(!keys.some((k) => /resend_id|stripe_|hunter_|svix_|liveavatar|heygen|api_key/i.test(k)), `${label} leaked provider key: ${keys.filter((k) => /resend_id|stripe_|hunter_|svix_|liveavatar|heygen|api_key/i.test(k))}`);
+  assert.ok(!/resend_id/.test(raw), `${label} must not contain resend_id`);
 };
 
 test('401 without a token or with a bad token, on both endpoints', async () => {
@@ -124,8 +139,8 @@ test('lookup_drafts: member sees only own tenant drafts, stable shape, no secret
   assert.deepEqual(b.drafts.map((d) => d.id), ['d-a']);
   assert.equal(b.stealth_readonly, false);
   assert.deepEqual(Object.keys(b.drafts[0]).sort(), ['body', 'campaign_id', 'created_at', 'from', 'id', 'kind', 'reviewed_at', 'sent_at', 'status', 'step_number', 'subject', 'to', 'worker'].sort());
-  assert.ok(!JSON.stringify(b).includes('SECRET'));
   assert.ok(!/(approve|reject)/i.test(Object.keys(b).join(',')));
+  NO_PROVIDER_IDS(b, 'lookup_drafts tenant-a');
   NOWRITE();
 });
 
@@ -133,13 +148,14 @@ test('lookup_drafts: campaign-engine pending drafts are tenant-only and use the 
   await setup();
   await S.putCampaign({ id: 'c-a', tenant_id: A, name: 'CA', status: 'active' });
   await S.putCampaign({ id: 'c-b', tenant_id: B, name: 'CB', status: 'active' });
-  await S.putEmailSend({ id: 's-a', campaign_id: 'c-a', tenant_id: A, status: 'pending_approval', email_subject: 'SA', email_body: 'ba', prospect_id: 'p1', step_number: 1, drafted_at: '2026-11-27T11:00:00Z' });
-  await S.putEmailSend({ id: 's-b', campaign_id: 'c-b', tenant_id: B, status: 'pending_approval', email_subject: 'SB', email_body: 'bb', prospect_id: 'p2', step_number: 1, drafted_at: '2026-11-27T11:00:00Z' });
+  await S.putEmailSend({ id: 's-a', campaign_id: 'c-a', tenant_id: A, status: 'pending_approval', email_subject: 'SA', email_body: 'ba', prospect_id: 'p1', step_number: 1, drafted_at: '2026-11-27T11:00:00Z', resend_id: 'SECRET' });
+  await S.putEmailSend({ id: 's-b', campaign_id: 'c-b', tenant_id: B, status: 'pending_approval', email_subject: 'SB', email_body: 'bb', prospect_id: 'p2', step_number: 1, drafted_at: '2026-11-27T11:00:00Z', resend_id: 'SECRET' });
   const r = await drafts(req(U('/api/mcp/lookup-drafts', 'tenant=tenant-a&source=campaign_sends'), { headers: H('alice') }), {});
   const b = await r.json();
   assert.deepEqual(b.drafts.map((d) => d.id), ['s-a']);
   assert.equal(b.drafts[0].kind, 'campaign_send');
   assert.equal(b.counts.campaign_sends, 1);
+  NO_PROVIDER_IDS(b, 'lookup_drafts campaign_sends');
   NOWRITE();
 });
 
@@ -159,9 +175,11 @@ test('stealth tenant: member READS drafts and status (21-style rows), flagged re
   assert.equal(db.stealth_readonly, true);
   assert.deepEqual(db.drafts.map((x) => x.id), ['d-r']);
   assert.equal(db.tenant.id, R);
+  NO_PROVIDER_IDS(db, 'lookup_drafts stealth');
   const s = await status(req(U('/api/mcp/account-status', 'tenant=refoundgtm'), { headers: H('rgtm') }), {});
   const sb = await s.json();
   assert.equal(s.status, 200);
+  NO_PROVIDER_IDS(sb, 'account_status stealth');
   assert.equal(sb.stealth_readonly, true);
   assert.equal(sb.tenant.id, R);
   assert.ok(sb.workforce.hires.every((h) => h.id === 'h-r'));
@@ -206,7 +224,7 @@ test('MCP_READ_ALLOW_OPERATOR=1 lets an operator read a non-member tenant by uui
 
 test('account_status: own tenant only, aggregates campaigns + hires + draft counts, hides goal/context', async () => {
   await setup();
-  await S.putCampaign({ id: 'c-a', tenant_id: A, name: 'CA', status: 'active', daily_send_limit: 10 });
+  await S.putCampaign({ id: 'c-a', tenant_id: A, name: 'CA', status: 'active', daily_send_limit: 10, metrics: { prospects_enrolled: 3, queued_sends: 1, sent_today: 0, resend_id: 'SECRET' } });
   await S.putCampaign({ id: 'c-b', tenant_id: B, name: 'CB', status: 'active' });
   await S.putCampaign({ id: 'c-a-paused', tenant_id: A, name: 'CP', status: 'paused' });
   await S.putEmailSend({ id: 's-a', campaign_id: 'c-a', tenant_id: A, status: 'pending_approval', prospect_id: 'p1' });
@@ -224,6 +242,8 @@ test('account_status: own tenant only, aggregates campaigns + hires + draft coun
   assert.ok(!JSON.stringify(b).includes('secret ctx'));
   assert.ok(!JSON.stringify(b).includes('c-b'));
   assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(b.campaigns.items[0].metrics, { prospects_enrolled: 3, queued_sends: 1, sent_today: 0 });
+  NO_PROVIDER_IDS(b, 'account_status tenant-a');
   NOWRITE();
 });
 
