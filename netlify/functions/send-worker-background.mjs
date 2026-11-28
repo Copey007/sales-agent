@@ -499,6 +499,12 @@ export default async (req, context) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+    if (stealthWriteBlocked(campaign.tenant_id)) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'stealth_readonly', campaign_id }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     const persona = await getCampaignPersona(campaign_id);
     const signalConfig = await getCampaignSignalConfig(campaign_id);

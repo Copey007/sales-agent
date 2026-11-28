@@ -342,6 +342,15 @@ export function stealthWriteBlocked(tenantId) {
   return isStealthTenant(tenantId);
 }
 
+/**
+ * Drop rows belonging to a stealth tenant. Cron and background cycles must
+ * use this at the iteration source so that tenant is skipped entirely
+ * (no inserts, no LLM, no email, no Hunter).
+ */
+export function withoutStealthTenants(rows, getId = (r) => r?.tenant_id) {
+  return (Array.isArray(rows) ? rows : []).filter((r) => !isStealthTenant(getId(r)));
+}
+
 /** POST actions that only read (same contract as Mission Control workspaces). */
 export const STEALTH_READ_POST_ACTIONS = Object.freeze({
   '/api/campaign-orchestrator': Object.freeze(['status', 'detail', 'funnel', 'replies', 'loop', 'prospects', 'sends']),

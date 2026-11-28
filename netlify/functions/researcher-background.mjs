@@ -28,6 +28,7 @@ import {
 } from "./_campaign-store.mjs";
 import { env } from './_mcp-connectors.mjs';
 import { resolveTenantContext } from './_tenant.mjs';
+import { stealthWriteBlocked, withoutStealthTenants } from './_tenant.mjs';
 import { isInternalCall } from './_auth.mjs';
 import { requireOperator } from './_tenant.mjs';
 import { callLLM, parseLLMJson } from './_llm.mjs';
@@ -47,6 +48,7 @@ const BULK_TIME_BUDGET_MS = 12 * 60 * 1000;
 const BULK_ORGS_PER_PASS = 10;
 
 async function runBulkFind({ icp, role, target, tenantId }) {
+  if (stealthWriteBlocked(tenantId)) return { skipped: true, reason: 'stealth_readonly' };
   // Tenant isolation: until contact_pool has tenant_id, only the master
   // account may fill the (shared) pool.
   const { poolWritableFor } = await import('./_supabase-rest.mjs');
@@ -236,6 +238,7 @@ async function runResearcher(campaignId, parsedICP, targetRole) {
   }
   // No JWT here (background/cron) — the campaign record carries the tenant.
   const tenantId = campaign.tenant_id || DEFAULTS.TENANT_ID;
+  if (stealthWriteBlocked(tenantId)) return { skipped: true, reason: 'stealth_readonly' };
 
   const now = new Date().toISOString();
   let rawProspects = [];
@@ -518,11 +521,11 @@ function generateDemoProspects(parsedICP, targetRole, count) {
 const TOPUP_MIN_QUEUE_DEFAULT = 5;
 const TOPUP_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
-async function runTopUpSweep() {
+export async function runTopUpSweep() {
   const summary = { campaigns_checked: 0, campaigns_topped_up: 0, skipped: [] };
   // Sweep every tenant's active campaigns — runResearcher scopes each run to
   // the campaign's own tenant_id.
-  const campaigns = (await listAllActiveCampaigns()).filter(c => c.auto_source === true);
+  const campaigns = withoutStealthTenants(await listAllActiveCampaigns()).filter(c => c.auto_source === true);
   summary.campaigns_checked = campaigns.length;
 
   for (const campaign of campaigns) {
