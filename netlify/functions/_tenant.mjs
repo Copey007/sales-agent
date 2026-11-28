@@ -441,6 +441,52 @@ export async function requireTenant(req, { allowInternal = false } = {}) {
   return { ctx };
 }
 
+/**
+ * MCP Phase-A read scope (server-to-server from the AskArlen MCP server).
+ *
+ * Contract: an A-Gent (byospm) Supabase user JWT + an EXPLICIT tenant selector
+ * (X-Tenant-Slug / ?tenant= slug, or X-Tenant-Id / ?tenant_id= uuid). Never
+ * defaults to the first membership. The internal service token is refused.
+ * Access is membership-only; an operator JWT is accepted only when
+ * MCP_READ_ALLOW_OPERATOR=1 (off by default) and only with a tenant uuid.
+ * No aliasing: the tenant id returned is exactly the one the caller named and
+ * is a member of, so the stealth tenant is only ever itself (reads only).
+ * Returns { ctx: { user, role, tenant, stealth } } or { status, body }.
+ */
+export async function resolveMcpReadScope(req) {
+  if (isInternalCall(req)) return { status: 403, body: { error: 'forbidden', reason: 'internal_token_not_accepted' } };
+  const token = bearer(req);
+  if (!token) return { status: 401, body: { error: 'unauthorized', reason: 'missing_token' } };
+  const user = await userFromToken(token);
+  if (!user?.id) return { status: 401, body: { error: 'unauthorized', reason: 'invalid_token' } };
+
+  const byId = readRequestedTenantId(req);
+  if (byId.invalid) return { status: 400, body: { error: 'bad_request', reason: 'invalid_tenant_id' } };
+  const slug = readTenantSlug(req);
+  if (!byId.id && !slug) return { status: 400, body: { error: 'bad_request', reason: 'tenant_required' } };
+
+  const done = (tenant, role) => ({ ctx: { user, role: role || null, tenant, stealth: isStealthTenant(tenant.id) } });
+
+  if (byId.id) {
+    const m = await membershipFor(user.id, byId.id);
+    if (m) {
+      if (slug && m.tenants.slug !== slug) return { status: 403, body: { error: 'forbidden', reason: 'tenant_mismatch' } };
+      return done(m.tenants, m.role);
+    }
+    if (env('MCP_READ_ALLOW_OPERATOR') === '1' && isOperatorUser(user)) {
+      const t = await getTenant(byId.id).catch(() => null);
+      if (!t?.id || t.id !== byId.id) return { status: 404, body: { error: 'not_found', reason: 'tenant_not_found' } };
+      return done(t, 'operator');
+    }
+    return { status: 403, body: { error: 'forbidden', reason: 'not_a_member' } };
+  }
+
+  const bag = await membershipsFromRequest(req);
+  const hit = bag?.memberships?.find((m) => m.tenant.slug === slug);
+  if (!hit) return { status: 403, body: { error: 'forbidden', reason: 'not_a_member' } };
+  return done(hit.tenant, hit.role);
+}
+
 /** Guard: platform operator JWT (allowlist) or, if allowed, the internal token. */
 export async function requireOperator(req, { allowInternal = true } = {}) {
   // Stealth lock first: a mutating request named at a stealth tenant is 403
