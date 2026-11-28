@@ -247,11 +247,11 @@ async function pipelineHealthSweep() {
 // Marcus runs this each cycle — if a property is down or the pipeline needed
 // repair, he escalates by email immediately (not just the daily report).
 const WATCHED_PROPERTIES = [
-  ['Marketing site', 'https://a-gent.co/'],
+  ['Marketing site', 'https://askarlen.com/'],
   ['Mission Control', 'https://missioncontrol.askarlen.com/'],
-  ['AI SDR', 'https://aisdr.a-gent.co/'],
-  ['CRM', 'https://crm.a-gent.co/'],
-  ['Live demo', 'https://aisdr.a-gent.co/a/demo']
+  ['AI SDR', 'https://aisdr.askarlen.com/'],
+  ['CRM', 'https://crm.askarlen.com/'],
+  ['Live demo', 'https://aisdr.askarlen.com/a/demo']
 ];
 
 async function propertyHealth() {

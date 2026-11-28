@@ -248,7 +248,7 @@ const __handler = async (req) => {
         docs,
         analyses,
         plan,
-        assessment_url: 'https://a-gent.co/assessment#assessment-flow'
+        assessment_url: 'https://app.askarlen.com/start'
       });
     }
 
