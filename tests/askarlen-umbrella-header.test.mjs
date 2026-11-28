@@ -90,6 +90,6 @@ test('aligned AISDR header/topbar and auth-gate retire gold/violet/Orbitron/Rajd
     }
   }
   // Module switcher between AISDR and Mission Control is intact.
-  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/" data-sso-handoff/);
+  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/">Mission Control</);
   assert.match(r('dashboard/index.html'), /<a class="nav-btn" href="https:\/\/missioncontrol\.askarlen\.com\/"/);
 });

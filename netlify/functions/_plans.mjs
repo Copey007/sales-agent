@@ -73,7 +73,7 @@ export const PLANS = Object.freeze({
     priceEnv: null,
     priceLabel: 'Talk to us',
     ctaLabel: 'Book a demo',
-    ctaHref: 'https://a-gent.co/#book-demo',
+    ctaHref: 'https://askarlen.com/demo',
     features: Object.freeze([
       'CRO diagnostic and GTM Brain setup',
       'Custom integrations and workflow design',

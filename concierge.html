@@ -85,7 +85,7 @@
   </div>
   
   <script>
-    const API_BASE = window.location.origin.includes('localhost') ? 'https://aisdr.a-gent.co' : window.location.origin;
+    const API_BASE = window.location.origin.includes('localhost') ? 'https://aisdr.askarlen.com' : window.location.origin;
     const API_URL = `${API_BASE}/api/concierge`;
     const slug = (new URLSearchParams(location.search).get('slug') || '').trim().toLowerCase();
     const isArlen = slug === 'arlen' || slug === 'askarlen';

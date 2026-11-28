@@ -21,6 +21,47 @@
 [functions."avatar-reaper"]
   schedule = "* * * * *"
 
+# ── AskArlen rehome: legacy aisdr.a-gent.co public PAGES → aisdr.askarlen.com ──
+# Only these marketing pages (plus the gated dashboards, 301'd by the aisdr-gate
+# edge function) move. NEVER add /api/*, /.netlify/*, /a/*, concierge/demo
+# widgets, or webhook/unsubscribe paths here: a 301 drops POST bodies and
+# external callers/embeds can't be repointed instantly. Query strings pass through.
+[[redirects]]
+  from = "https://aisdr.a-gent.co/signup"
+  to = "https://aisdr.askarlen.com/signup"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://aisdr.a-gent.co/signup.html"
+  to = "https://aisdr.askarlen.com/signup.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://aisdr.a-gent.co/pricing"
+  to = "https://aisdr.askarlen.com/pricing"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://aisdr.a-gent.co/pricing.html"
+  to = "https://aisdr.askarlen.com/pricing.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://aisdr.a-gent.co/workers.html"
+  to = "https://aisdr.askarlen.com/workers.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://aisdr.a-gent.co/offers-demo.html"
+  to = "https://aisdr.askarlen.com/offers-demo.html"
+  status = 301
+  force = true
+
 # Hosted per-tenant avatar pages: /a/<slug> -> agent.html?slug=<slug>
 [[redirects]]
   from = "/a/:slug"

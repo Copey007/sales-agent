@@ -13,6 +13,12 @@ export default (request, context) => handleGate(request, {
   storageKey: 'agent_auth_session_v1',
   requireOperator: true,
   reviewUrl: 'https://missioncontrol.askarlen.com',
+  // AskArlen rehome: legacy host 301s gated page GETs to aisdr.askarlen.com
+  // (path + query preserved). /auth/* stays on both hosts (cross-domain SSO).
+  // Non-gated paths (/api/*, functions, webhooks, /a/<slug>, concierge) are
+  // never redirected — see netlify.toml for the public marketing pages.
+  canonicalHosts: { 'aisdr.a-gent.co': 'aisdr.askarlen.com' },
+  canonicalExcept: ['/auth/*'],
 });
 
 export const config = {

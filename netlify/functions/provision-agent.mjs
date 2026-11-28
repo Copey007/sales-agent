@@ -80,7 +80,7 @@ const __handler = async (req) => {
       ok: true,
       tenant_id: tenant.id,
       slug: b.slug,
-      agent_url: `https://aisdr.a-gent.co/a/${b.slug}`,
+      agent_url: `https://aisdr.askarlen.com/a/${b.slug}`,
       agent_id: agent.id,
     });
   } catch (err) {

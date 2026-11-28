@@ -70,17 +70,21 @@ export function safeNext(next, fallback = '/') {
 }
 
 /**
- * Canonical-host 301 (runs in the edge gate BEFORE auth, because Netlify edge
- * functions run before netlify.toml redirects). Preserves path + query.
+ * Canonical-host 301 for page GET/HEAD (runs in the edge gate BEFORE auth,
+ * because Netlify edge functions run before netlify.toml redirects). Preserves
+ * path + query. Non-GET and `exceptPaths` (exact or prefix/*) are never moved.
  * Returns a Response or null.
  */
-export function canonicalRedirect(request, map) {
+export function canonicalRedirect(request, map, exceptPaths = []) {
   if (!map) return null;
+  // Page GET/HEAD only: a 301 would drop POST bodies from API/webhook callers.
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
   let u;
   try { u = new URL(request.url); } catch { return null; }
   const to = map[u.hostname.toLowerCase()];
   if (!to) return null;
-  const status = (request.method === 'GET' || request.method === 'HEAD') ? 301 : 308;
+  if (exceptPaths.some((p) => (p.endsWith('/*') ? u.pathname.startsWith(p.slice(0, -1)) : u.pathname === p))) return null;
+  const status = 301;
   return new Response(null, { status, headers: { Location: `https://${to}${u.pathname}${u.search}`, 'Cache-Control': 'no-store', ...SHELL_SECURITY } });
 }
 
@@ -231,6 +235,40 @@ fetch(C.url+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{ap
 }
 
 /**
+ * app.askarlen.com → MC one-click handoff page (GET /auth/askarlen-handoff#token=<jwt>).
+ * Strips the fragment with history.replaceState SYNCHRONOUSLY before the POST,
+ * so the token never stays in the URL bar or session history, then POSTs it
+ * (same-origin, JSON body — never a URL) to /api/askarlen-handoff, which
+ * verifies the HS256 handoff token and returns an MC session.
+ */
+export function askarlenHandoffPage({ storageKey }) {
+  const cfg = JSON.stringify({ storageKey, api: '/api/askarlen-handoff' }).replace(/</g, '\\u003c');
+  return `<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>Opening Mission Control · AskArlen</title>${MINI_STYLE}</head>
+<body><main><p id="msg" role="status">Opening Mission Control…</p><p><a href="/">Go to sign in</a></p></main>
+<script>
+(function(){
+var C=${cfg};
+${CLIENT_COOKIE_HELPERS_JS}
+var hs=String(location.hash||'');if(hs.charAt(0)==='#')hs=hs.slice(1);
+var token=new URLSearchParams(hs).get('token')||'';
+try{history.replaceState(null,'',location.pathname);}catch(e){}
+hs='';
+var msg=document.getElementById('msg');
+function fail(t){clearAuthCookies();if(msg)msg.textContent=t||'This link has expired. Please sign in.';}
+if(!token){fail('Missing sign-in link. Please sign in.');return;}
+fetch(C.api,{method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})})
+ .then(function(r){token='';return r.json().then(function(j){if(!r.ok||!j.access_token)throw new Error(j&&j.error||'handoff');return j;});})
+ .then(function(d){var age=(d.expires_at|0)-Math.floor(Date.now()/1000);
+  try{localStorage.setItem(C.storageKey,JSON.stringify({access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at,email:d.email||''}));sessionStorage.removeItem('gate_refresh_tried');}catch(e){}
+  writeCookie('agent_at',d.access_token,age,true);writeCookie('agent_rt',d.refresh_token,age,true);location.replace('/');})
+ .catch(function(err){token='';fail(String(err&&err.message)==='not_an_operator'?'This account does not have Mission Control access.':'');});
+})();
+</script></body></html>`;
+}
+
+/**
  * Sign-out leg on this domain (GET /auth/logout?next=<url>): clears this
  * domain's auth cookies (shared Domain + host-only variants, also via
  * Set-Cookie) and every local session copy, then continues to an
@@ -325,7 +363,7 @@ else if((location.hash||'')==='#forgot'){show('forgotF');}
 else {
   // Seamless renewal: an existing local session with a refresh token re-issues the cookie.
   try{var s=JSON.parse(localStorage.getItem(C.storageKey)||'null');
-   if(!(s&&s.refresh_token)){var rt=readCookie('agent_rt');if(rt)s={refresh_token:rt,email:(s&&s.email)||''};}
+   var rt=readCookie('agent_rt');if(rt&&!(s&&s.refresh_token===rt))s={refresh_token:rt,email:(s&&s.email)||''};
    if(s&&s.refresh_token&&!sessionStorage.getItem('gate_refresh_tried')){sessionStorage.setItem('gate_refresh_tried','1');
     grant('refresh_token',{refresh_token:s.refresh_token}).then(function(d){store(d,s.email);location.reload();},function(){try{localStorage.removeItem(C.storageKey);}catch(e){} clearAuthCookies();});}}catch(e){}
 }
@@ -375,7 +413,7 @@ const NO_STORE = { 'Cache-Control': 'no-store, private', Vary: 'Cookie, Authoriz
  */
 export async function handleGate(request, deps) {
   const { env, fetchImpl, next } = deps;
-  const moved = canonicalRedirect(request, deps.canonicalHosts);
+  const moved = canonicalRedirect(request, deps.canonicalHosts, deps.canonicalExcept || []);
   if (moved) return moved;
   if (request.method !== 'GET' && request.method !== 'HEAD') return next();
   let url;
@@ -399,6 +437,9 @@ export async function handleGate(request, deps) {
   const pageHeaders = { ...shellHeaders, 'Referrer-Policy': 'no-referrer' };
   if (url.pathname === '/auth/handoff') {
     return new Response(handoffPage({ supabaseUrl, publicKey, storageKey: deps.storageKey }), { status: 200, headers: pageHeaders });
+  }
+  if (url.pathname === '/auth/askarlen-handoff' && deps.askarlenHandoff) {
+    return new Response(askarlenHandoffPage({ storageKey: deps.storageKey }), { status: 200, headers: pageHeaders });
   }
   if (url.pathname === '/auth/logout') {
     const h = new Headers(pageHeaders);
