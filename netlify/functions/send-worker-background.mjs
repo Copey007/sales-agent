@@ -24,6 +24,12 @@ import {
 import { callLLM, parseLLMJson, getLLMConfig } from "./_llm.mjs";
 import { requireInternal, internalHeaders, siteUrl, env as authEnv } from "./_auth.mjs";
 import { complianceOrBlock } from "./_email-compliance.mjs";
+import { isHomeTenant } from "./_tenant.mjs";
+
+/** RefoundGTM stealth tenant — never append A-Gent or AskArlen brand copy. */
+export const REFOUND_GTM_TENANT_ID = '293f61ad-0d46-460e-b0f2-e69c9462001a';
+export const ASKARLEN_OUTBOUND_CTA = 'Get GTM done with AskArlen: https://askarlen.com';
+
 
 // ─── Signal Gathering (campaign-aware) ──────────────────────────────────────
 
@@ -128,16 +134,24 @@ function validateSignals(signals, prospect) {
 }
 
 // ─── Signature Enforcement ──────────────────────────────────────────────────
-// The A-Gent Fleet signature is a locked guardrail — never trust the LLM to
-// remember it. Appended deterministically to every outbound body.
+// The brand CTA is a locked guardrail — never trust the LLM to remember it.
+// Appended only for A-Gent/AskArlen tenants (isHomeTenant). RefoundGTM and
+// every other tenant are left unchanged: we never invent a stealth signature
+// and we never append AskArlen or A-Gent copy onto their bodies.
 
-function ensureFleetSignature(body, senderName) {
+export function ensureFleetSignature(body, senderName, tenantId) {
   let out = String(body || '').trimEnd();
+  const tid = String(tenantId || '').toLowerCase();
+  if (tid === REFOUND_GTM_TENANT_ID || !isHomeTenant(tid)) {
+    return out;
+  }
   if (!/A-Gent Fleet/i.test(out)) {
     out += `\n\n${senderName} | A-Gent Fleet`;
   }
-  if (!out.includes('https://a-gent.co')) {
-    out += `\nDeploy your A-Gent Fleet: https://a-gent.co`;
+  if (/Deploy your A-Gent Fleet: https:\/\/a-gent\.co/.test(out)) {
+    out = out.replace(/Deploy your A-Gent Fleet: https:\/\/a-gent\.co/g, ASKARLEN_OUTBOUND_CTA);
+  } else if (!out.includes('https://askarlen.com')) {
+    out += `\n${ASKARLEN_OUTBOUND_CTA}`;
   }
   return out;
 }
@@ -374,7 +388,7 @@ async function processSend(sendId, campaign, persona, signalConfig, sequence, { 
     const rawSignals = await gatherSignalsForProspect(prospect, signalConfig);
     const signals = validateSignals(rawSignals, prospect);
     const emailData = await generateEmail(prospect, signals, persona, campaign, Number(send.step_number) || 1);
-    emailData.body = ensureFleetSignature(emailData.body, campaign?.sender_name || 'Mark');
+    emailData.body = ensureFleetSignature(emailData.body, campaign?.sender_name || 'Mark', tenantId);
     send.status = "pending_approval";
     send.drafted_at = new Date().toISOString();
     send.email_subject = emailData.subject;
