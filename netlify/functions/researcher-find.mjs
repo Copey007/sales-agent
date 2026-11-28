@@ -16,7 +16,7 @@
 
 import { icpDiscoverCompanies } from './_icp-agent.mjs';
 import { isEmailSuppressed, logActivity, DEFAULTS } from './_campaign-store.mjs';
-import { sb, poolTenantReady, poolTenantFilter } from './_supabase-rest.mjs';
+import { sb, poolTenantReady, poolTenantFilter, poolWritableFor } from './_supabase-rest.mjs';
 import { resolveTenantContext } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -99,9 +99,12 @@ export async function setBulkLock(fields) {
  * Returns { inserted, companies, market_size, exhausted }.
  */
 export async function findAndPoolContacts({ icp, role, orgCount, tenantId }) {
+  tenantId = tenantId || DEFAULTS.TENANT_ID;
+  // Pre-tenancy pool belongs to the master account: never insert another
+  // tenant's finds into it (and never spend Hunter credits on its behalf).
+  if (!(await poolWritableFor(tenantId))) return { error: 'tenant_pool_unavailable', reason: 'contact_pool has no tenant_id column yet' };
   const key = hunterKey();
   if (!key) return { error: 'HUNTER_API_KEY not configured' };
-  tenantId = tenantId || DEFAULTS.TENANT_ID;
   const tenantColReady = await poolTenantReady();
 
   const offset = await getIcpCursor(icp, tenantId);

@@ -11,7 +11,7 @@
  */
 
 import { callLLM } from './_llm.mjs';
-import { userFromToken } from './_tenant.mjs';
+import { userFromToken, resolveTenantContext, canAccessTenant, scopedTenantMatches } from './_tenant.mjs';
 import { getAgentBySlug } from './_avatar-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -32,6 +32,13 @@ const __handler = async (req) => {
   if (!url) return json({ error: 'slide_url required' }, 400);
 
   const agent = slug ? await getAgentBySlug(slug) : null;
+  // Tenant isolation: never narrate with (and so never reveal) another
+  // tenant's private persona/knowledge.
+  if (agent) {
+    const ctx = await resolveTenantContext(req);
+    if (ctx.invalid) return json({ error: 'forbidden' }, ctx.status || 403);
+    if (!canAccessTenant(ctx, agent.tenant_id) || !scopedTenantMatches(ctx, agent.tenant_id)) return json({ error: 'forbidden' }, 403);
+  }
   const name = agent?.name || 'the company';
   const isImage = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
 

@@ -20,7 +20,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
 import { callLLM } from './_llm.mjs';
-import { userFromToken, tenantFromRequest } from './_tenant.mjs';
+import { userFromToken, scopedTenantFromRequest } from './_tenant.mjs';
 import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect, putEmailSend, logActivity } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -356,7 +356,9 @@ const __handler = async (req) => {
 
   // ── Manual "Run now" — one cycle for one of the caller's workers ──
   if (user?.id) {
-    const ctx = await tenantFromRequest(req);
+    const scoped = await scopedTenantFromRequest(req, json);
+    if (scoped.response) return scoped.response;
+    const ctx = scoped.ctx;
     if (!ctx?.tenant?.id) return json({ error: 'unauthorized' }, 401);
     let b = {}; try { b = await req.json(); } catch {}
     if (!b.hire_id) return json({ error: 'hire_id required' }, 400);

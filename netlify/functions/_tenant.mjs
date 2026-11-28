@@ -204,6 +204,14 @@ export async function resolveTenantContext(req) {
   const user = await userFromToken(token);
   if (!user?.id) return { tenantId: null, user: null, invalid: true, status: 401, reason: 'invalid_token' };
 
+  // Mission Control per-account workspaces pass ?tenant_id=<uuid> (or
+  // X-Tenant-Id). When present the request is SCOPED: an operator may act for
+  // any existing tenant; anyone else must hold a membership in exactly that
+  // tenant (403 otherwise). Absent → legacy behaviour below, unchanged.
+  const requested = readRequestedTenantId(req);
+  if (requested.invalid) return { tenantId: null, user, invalid: true, status: 400, reason: 'invalid_tenant_id' };
+  if (requested.id) return scopedContext(user, requested.id);
+
   if (isOperatorUser(user)) {
     return { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true, invalid: false };
   }
@@ -213,6 +221,100 @@ export async function resolveTenantContext(req) {
     return { tenantId: ctx.tenant.id, user: ctx.user, role: ctx.role, tenant: ctx.tenant, invalid: false };
   }
   return { tenantId: null, user, invalid: true, status: 403, reason: 'no_membership' };
+}
+
+// ─── Requested-tenant scoping (Mission Control per-account workspaces) ──────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The operator's own account. Its Supabase rows (memberships, hires, avatar
+ * agents) live under the real `a-gent` tenant, while the operator's campaign
+ * engine data (Blobs campaigns, GTM Brain, the pre-tenancy contact pool) has
+ * always lived under MASTER_TENANT_ID. Scoping an operator to either id
+ * resolves to the same single account, so "Mark's campaigns" stay one account.
+ */
+export function homeTenantId() {
+  const v = String(env('OPERATOR_HOME_TENANT_ID') || '').trim().toLowerCase();
+  return UUID_RE.test(v) ? v : '1169f77c-a42e-4825-8bb3-f6a698cf3b45';
+}
+export function isHomeTenant(id) {
+  const v = String(id || '').toLowerCase();
+  return v === MASTER_TENANT_ID || v === homeTenantId();
+}
+
+/**
+ * Read the requested tenant: ?tenant_id= (preferred; no CORS preflight
+ * change) or the X-Tenant-Id header. Returns { id: null } when absent,
+ * { id } for a well-formed uuid, { invalid: true } for anything else.
+ */
+export function readRequestedTenantId(req) {
+  let raw = '';
+  try { raw = new URL(req.url, 'http://localhost').searchParams.get('tenant_id') || ''; } catch { /* ignore */ }
+  if (!raw) raw = req.headers?.get?.('x-tenant-id') || '';
+  raw = String(raw).trim().toLowerCase();
+  if (!raw) return { id: null };
+  return UUID_RE.test(raw) ? { id: raw } : { invalid: true };
+}
+
+async function membershipFor(userId, tenantId) {
+  const res = await rest(`memberships?user_id=eq.${encodeURIComponent(userId)}&tenant_id=eq.${tenantId}&select=role,tenant_id,tenants(id,slug,name,plan,status,stripe_customer_id)&limit=5`);
+  if (!res.ok) return null;
+  const rows = await res.json();
+  // Filter again client-side: never trust that the filter was applied.
+  return (Array.isArray(rows) ? rows : []).find((r) => (r.tenant_id || r.tenants?.id) === tenantId && r.tenants?.id === tenantId) || null;
+}
+
+async function scopedContext(user, tenantId) {
+  if (isOperatorUser(user)) {
+    if (isHomeTenant(tenantId)) {
+      const home = await getTenant(homeTenantId()).catch(() => null);
+      // Campaign-engine data for the operator's own account lives under MASTER.
+      return { tenantId: MASTER_TENANT_ID, user, role: 'owner', operator: true, scoped: true, home: true,
+        tenant: home || { id: homeTenantId(), slug: 'a-gent', name: 'A-Gent' }, invalid: false };
+    }
+    const t = await getTenant(tenantId).catch(() => null);
+    if (!t?.id || t.id !== tenantId) return { tenantId: null, user, invalid: true, status: 404, reason: 'tenant_not_found' };
+    return { tenantId: t.id, user, role: 'owner', operator: true, scoped: true, home: false, tenant: t, invalid: false };
+  }
+  const m = await membershipFor(user.id, tenantId);
+  if (!m) return { tenantId: null, user, invalid: true, status: 403, reason: 'not_a_member' };
+  return { tenantId: m.tenants.id, user, role: m.role, tenant: m.tenants, scoped: true, home: false, invalid: false };
+}
+
+/**
+ * For endpoints keyed on real Supabase tenant rows (workforce_hires,
+ * worker_outreach, …). Returns { ctx: { user, role, tenant, operator } } or
+ * { response }. Without a requested tenant it falls back to the legacy
+ * membership lookup (tenantFromRequest) so existing callers are unchanged.
+ */
+export async function scopedTenantFromRequest(req, respond) {
+  const requested = readRequestedTenantId(req);
+  if (!requested.id && !requested.invalid) {
+    const legacy = await tenantFromRequest(req);
+    return legacy?.tenant?.id ? { ctx: legacy } : { response: respond({ error: 'unauthorized' }, 401) };
+  }
+  const c = await resolveTenantContext(req);
+  if (c.internal) return { response: respond({ error: 'forbidden' }, 403) };
+  if (c.invalid) return { response: respond({ error: errorName(c.status), reason: c.reason }, c.status || 401) };
+  const tenant = c.tenant || { id: c.tenantId };
+  return { ctx: { user: c.user, role: c.role, tenant, operator: !!c.operator, scoped: true, home: !!c.home } };
+}
+
+/**
+ * For a SCOPED ctx, true only when the row belongs to the scoped tenant
+ * (operator home account: either the a-gent row or MASTER). Unscoped ctx → true
+ * (callers still apply canAccessTenant).
+ */
+export function scopedTenantMatches(ctx, rowTenantId) {
+  if (!ctx?.scoped) return true;
+  if (!rowTenantId) return false;
+  if (ctx.home) return isHomeTenant(rowTenantId);
+  return rowTenantId === (ctx.tenant?.id || ctx.tenantId);
+}
+
+function errorName(status) {
+  return status === 403 ? 'forbidden' : status === 400 ? 'bad_request' : status === 404 ? 'not_found' : 'unauthorized';
 }
 
 /**
@@ -225,7 +327,7 @@ export async function requireTenant(req, { allowInternal = false } = {}) {
     return allowInternal ? { ctx } : { response: json(req, { error: 'forbidden' }, 403) };
   }
   if (ctx.invalid) {
-    return { response: json(req, { error: ctx.status === 403 ? 'forbidden' : 'unauthorized', reason: ctx.reason }, ctx.status || 401) };
+    return { response: json(req, { error: errorName(ctx.status), reason: ctx.reason }, ctx.status || 401) };
   }
   return { ctx };
 }

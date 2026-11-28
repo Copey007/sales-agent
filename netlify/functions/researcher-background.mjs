@@ -47,6 +47,10 @@ const BULK_TIME_BUDGET_MS = 12 * 60 * 1000;
 const BULK_ORGS_PER_PASS = 10;
 
 async function runBulkFind({ icp, role, target, tenantId }) {
+  // Tenant isolation: until contact_pool has tenant_id, only the master
+  // account may fill the (shared) pool.
+  const { poolWritableFor } = await import('./_supabase-rest.mjs');
+  if (!(await poolWritableFor(tenantId))) return { error: 'tenant_pool_unavailable' };
   // Single-flight: a second bulk job started while one is running would only
   // burn Hunter credits re-finding the first job's contacts.
   const existing = await getBulkLock();
