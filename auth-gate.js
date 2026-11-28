@@ -79,8 +79,11 @@
     }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error_description || j.msg || j.error || 'Sign-in failed'); return j; }); });
   }
   function refresh() {
-    if (!session || !session.refresh_token) return Promise.reject(new Error('no session'));
-    return tokenGrant('refresh_token', { refresh_token: session.refresh_token }).then(function (t) {
+    // The shared cookie holds the freshest rotated refresh token across
+    // .askarlen.com apps (MC may have refreshed); prefer it over a stale copy.
+    var rtok = readCookie('agent_rt') || (session && session.refresh_token) || '';
+    if (!rtok) return Promise.reject(new Error('no session'));
+    return tokenGrant('refresh_token', { refresh_token: rtok }).then(function (t) {
       var s = withExpiry(t); if (s && !s.email) s.email = session.email; save(s); return s;
     });
   }
@@ -177,9 +180,10 @@
       e.preventDefault();
       try { nativeFetch(SB_URL + '/auth/v1/logout?scope=local', { method: 'POST', keepalive: true, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + (session && session.access_token) } }).catch(function () {}); } catch (err) {}
       signOut();
-      // Two-domain sign-out: clear Mission Control's .askarlen.com cookies too,
-      // then come back here (the peer's /auth/logout never chains further).
-      location.href = SSO_LOGOUT_PEER + '?next=' + encodeURIComponent(location.origin + location.pathname);
+      // On *.askarlen.com the cookies cleared above are shared with Mission
+      // Control. Only from a legacy *.a-gent.co host: bounce through MC's
+      // /auth/logout to clear .askarlen.com too (it never chains further).
+      if (cookieDomain() !== '; Domain=.askarlen.com') location.href = SSO_LOGOUT_PEER + '?next=' + encodeURIComponent(location.origin + location.pathname);
     });
     b.appendChild(a); document.body.appendChild(b);
   }
@@ -218,10 +222,8 @@
   // ── Boot ─────────────────────────────────────────────────────────────────
   if (!SB_URL || !SB_KEY) { console.error('[auth-gate] missing data-supabase-url / data-supabase-key'); }
   session = load();
-  if (!(session && session.refresh_token)) {
-    var rt = readCookie('agent_rt');
-    if (rt) session = { refresh_token: rt, email: (session && session.email) || '', access_token: (session && session.access_token) || '', expires_at: 0 };
-  }
+  var rt = readCookie('agent_rt');
+  if (rt && !(session && session.refresh_token === rt)) session = { refresh_token: rt, email: (session && session.email) || '', access_token: (session && session.access_token) || '', expires_at: 0 };
   if (session && session.expires_at - 60 > Date.now() / 1000) { readyResolve(); whenBody(badge); }
   else if (session && session.refresh_token) {
     refresh().then(function () { readyResolve(); whenBody(badge); }, function () { signOut(); });

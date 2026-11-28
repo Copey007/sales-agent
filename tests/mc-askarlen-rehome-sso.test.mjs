@@ -85,9 +85,9 @@ test('auth-gate.js: host-aware cookie Domain + two-domain sign-out via MC /auth/
   assert.doesNotMatch(s, /auth\/handoff\?/);
 });
 
-test('MC links point at https://missioncontrol.askarlen.com (gated headers use SSO handoff)', () => {
-  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/" data-sso-handoff/);
-  assert.match(r('dashboard/index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/" target="_blank" rel="noopener" data-sso-handoff/);
+test('MC links point at https://missioncontrol.askarlen.com (same .askarlen.com cookie domain: plain links)', () => {
+  assert.match(r('index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/">Mission Control</);
+  assert.match(r('dashboard/index.html'), /href="https:\/\/missioncontrol\.askarlen\.com\/" target="_blank" rel="noopener"/);
   for (const f of ['signup.html', 'workers.html', 'pricing.html', 'offers-demo.html', 'netlify/functions/billing-checkout.mjs', 'netlify/functions/worker-runtime.mjs', 'index.html', 'dashboard/index.html']) {
     assert.doesNotMatch(r(f), /missioncontrol\.a-gent\.co/, f);
   }

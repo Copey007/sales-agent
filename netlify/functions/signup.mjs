@@ -156,7 +156,7 @@ const __handler = async (req) => {
       } catch (e) { console.warn('[signup] hire persist:', e.message); }
     }
 
-    return json({ ok: true, slug, agent_url: `https://aisdr.a-gent.co/a/${slug}`, trial_ends_at: trialEnds, hired: !!hired });
+    return json({ ok: true, slug, agent_url: `https://aisdr.askarlen.com/a/${slug}`, trial_ends_at: trialEnds, hired: !!hired });
   } catch (err) {
     console.error('[signup]', err.message);
     return json({ error: 'Something went wrong creating your account. Please try again.' }, 500);

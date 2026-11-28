@@ -460,7 +460,7 @@ for (const page of ['offers-demo.html', 'pricing.html']) {
     assert.match(html, /Talk to us/);
     assert.match(html, /href="\/signup.html\?plan=starter"/);
     assert.match(html, /href="\/signup.html\?plan=growth"/);
-    assert.match(html, /href="https:\/\/a-gent\.co\/#book-demo"/);
+    assert.match(html, /href="https:\/\/askarlen\.com\/demo"/);
     assert.match(html, /Recommended/);
     for (const feature of starter.features) assert.ok(html.includes(feature), feature);
     for (const feature of growth.features) assert.ok(html.includes(feature), feature);
@@ -502,7 +502,7 @@ for (const page of ['offers-demo.html', 'pricing.html']) {
     assert.equal(/<a class="card-cta"[^>]*>\s*<span class="btn/.test(html), false);
     assert.match(html, /<a class="btn btn-secondary card-cta" href="\/signup.html\?plan=starter">Start 15-day trial</);
     assert.match(html, /<a class="btn btn-primary card-cta" href="\/signup.html\?plan=growth">Start 15-day trial</);
-    assert.match(html, /<a class="btn btn-secondary card-cta" href="https:\/\/a-gent\.co\/#book-demo">Book a Demo</);
+    assert.match(html, /<a class="btn btn-secondary card-cta" href="https:\/\/askarlen\.com\/demo">Book a Demo</);
     assert.match(html, /\.badge\{[^}]*font-size:\.75rem/);
     assert.match(html, /\.nav nav\{display:flex;gap:1\.25rem;align-items:center\}/);
     assert.match(html, /\.nav a\{[^}]*white-space:nowrap[^}]*min-height:44px/);
