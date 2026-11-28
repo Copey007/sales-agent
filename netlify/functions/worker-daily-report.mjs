@@ -15,7 +15,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
 import { callLLM } from './_llm.mjs';
-import { tenantFromRequest } from './_tenant.mjs';
+import { scopedTenantFromRequest } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
 
@@ -95,7 +95,9 @@ export async function runDailyReports() {
 
 const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-  const ctx = await tenantFromRequest(req);
+  const scoped = await scopedTenantFromRequest(req, json);
+  if (scoped.response) return scoped.response;
+  const ctx = scoped.ctx;
   if (!ctx?.tenant?.id) return json({ error: 'unauthorized' }, 401);
   let b = {}; try { b = await req.json(); } catch {}
   if (!b.hire_id) return json({ error: 'hire_id required' }, 400);

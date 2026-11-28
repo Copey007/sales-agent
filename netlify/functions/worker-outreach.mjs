@@ -19,7 +19,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
-import { membershipsFromRequest, readTenantSlug } from './_tenant.mjs';
+import { membershipsFromRequest, readTenantSlug, readRequestedTenantId, resolveTenantContext } from './_tenant.mjs';
 import { putProspect, findProspectByEmail, isEmailSuppressed, DEFAULTS } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -37,6 +37,31 @@ async function rest(path, init = {}) {
 
 const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+
+  // Mission Control per-account workspace: ?tenant_id=<uuid> scopes the queue
+  // to exactly that tenant. Reads: operator (any tenant) or a member of it.
+  // Approve/reject stays membership-only AND must match the scoped tenant.
+  const requested = readRequestedTenantId(req);
+  let scopedTenant = null;
+  if (requested.id || requested.invalid) {
+    const c = await resolveTenantContext(req);
+    if (c.internal) return json({ error: 'forbidden' }, 403);
+    if (c.invalid) {
+      const name = c.status === 403 ? 'forbidden' : c.status === 400 ? 'bad_request' : c.status === 404 ? 'not_found' : 'unauthorized';
+      return json({ error: name, reason: c.reason }, c.status || 401);
+    }
+    scopedTenant = c.tenant && c.tenant.id ? c.tenant : null;
+    if (!scopedTenant) return json({ error: 'not_found', reason: 'tenant_not_found' }, 404);
+    if (req.method === 'GET') {
+      const status = new URL(req.url).searchParams.get('status') || 'pending';
+      const r = await rest(`worker_outreach?tenant_id=eq.${scopedTenant.id}&status=eq.${encodeURIComponent(status)}&order=created_at.desc&select=*&limit=100`);
+      const rows = r.ok ? await r.json() : [];
+      const drafts = (Array.isArray(rows) ? rows : [])
+        .filter((d) => d.tenant_id === scopedTenant.id)   // defence in depth
+        .map((d) => ({ ...d, tenant_slug: scopedTenant.slug || null, tenant_name: scopedTenant.name || null }));
+      return json({ drafts, tenants: [{ id: scopedTenant.id, slug: scopedTenant.slug || null, name: scopedTenant.name || null, role: c.role || null }], scoped_tenant_id: scopedTenant.id });
+    }
+  }
 
   const bag = await membershipsFromRequest(req);
   if (!bag?.user?.id) return json({ error: 'unauthorized' }, 401);
@@ -74,6 +99,7 @@ const __handler = async (req) => {
     const dr = await rest(`worker_outreach?id=eq.${b.id}&select=*&limit=1`);
     const draft = dr.ok ? (await dr.json())[0] : null;
     if (draft && !byId.has(draft.tenant_id)) return json({ error: 'not found' }, 404);
+    if (draft && scopedTenant && draft.tenant_id !== scopedTenant.id) return json({ error: 'not found' }, 404);
     if (!draft) return json({ error: 'not found' }, 404);
     if (draft.status !== 'pending') return json({ error: `already ${draft.status}` }, 409);
 

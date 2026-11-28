@@ -12,7 +12,7 @@
 import { env } from './_mcp-connectors.mjs';
 import { userFromToken } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
-import { tenantGuard, resolveTenantContext, canAccessTenant } from './_tenant.mjs';
+import { tenantGuard, resolveTenantContext, canAccessTenant, scopedTenantMatches } from './_tenant.mjs';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: cors });
@@ -52,6 +52,8 @@ const __handler = async (req) => {
     const r = await fetch(`${url}/rest/v1/avatar_agents?slug=eq.${encodeURIComponent(slug)}&select=tenant_id&limit=1`, { headers: sHead });
     const rows = r.ok ? await r.json() : [];
     if (rows.length && !canAccessTenant(ctx, rows[0].tenant_id)) return json({ error: 'forbidden' }, 403);
+    // Workspace scoped via ?tenant_id=: the agent must belong to that tenant.
+    if (rows.length && !scopedTenantMatches(ctx, rows[0].tenant_id)) return json({ error: 'forbidden' }, 403);
   }
 
   try {

@@ -100,8 +100,22 @@ export async function poolTenantReady() {
   return _poolTenantReady;
 }
 
-/** Query-string fragment scoping a contact_pool query to a tenant ('' pre-migration). */
+// The pre-tenancy pool is the operator's own (master) pool. Until the
+// tenant_id column exists, every OTHER tenant gets a filter that matches no
+// row (id is the primary key, never null), so reads come back empty and
+// PATCHes touch nothing — one tenant can never see or enroll another's pool.
+export const POOL_MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+export const POOL_NO_ROWS = '&id=is.null';
+
+/** Query-string fragment scoping a contact_pool query to a tenant. */
 export async function poolTenantFilter(tenantId) {
   if (!tenantId) return '';
-  return (await poolTenantReady()) ? `&tenant_id=eq.${tenantId}` : '';
+  if (await poolTenantReady()) return `&tenant_id=eq.${tenantId}`;
+  return tenantId === POOL_MASTER_TENANT_ID ? '' : POOL_NO_ROWS;
+}
+
+/** True when this tenant may write to the pool right now (see poolTenantFilter). */
+export async function poolWritableFor(tenantId) {
+  if (await poolTenantReady()) return true;
+  return (tenantId || POOL_MASTER_TENANT_ID) === POOL_MASTER_TENANT_ID;
 }

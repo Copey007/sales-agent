@@ -10,7 +10,7 @@
  */
 
 import { json, serverError, withCors } from './_auth.mjs';
-import { requireOperator } from './_tenant.mjs';
+import { requireOperator, homeTenantId } from './_tenant.mjs';
 import { sb, serviceCreds, serviceHeaders, SupabaseConfigError } from './_supabase-rest.mjs';
 
 export function parseFilters(url) {
@@ -118,9 +118,13 @@ async function handler(req) {
         members: membersByTenant[t.id] || [],
         outreach,
         hires,
-      }));
+      }))
+      // The operator's own account (campaigns incl. the live master-tenant
+      // ones) is flagged and listed first; it is one account like any other.
+      .map((t) => ({ ...t, home: t.id === homeTenantId() }))
+      .sort((a, b) => (b.home ? 1 : 0) - (a.home ? 1 : 0));
 
-    return json(req, { tenants: shaped, total: shaped.length });
+    return json(req, { tenants: shaped, total: shaped.length, home_tenant_id: homeTenantId() });
   } catch (err) {
     if (err instanceof SupabaseConfigError) return json(req, { error: 'misconfigured' }, 503);
     return serverError(req, err, 'admin-subaccounts');

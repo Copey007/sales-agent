@@ -16,7 +16,7 @@ import { initAgents, getAgent, listAgents, getAgentStatuses } from './_agent-reg
 import { initConnectors, listConnectors, invoke } from './_mcp-connectors.mjs';
 import { remember, recall, getAccountMemories, getPendingTasks } from './_supabase-memory.mjs';
 import { withCors, isInternalCall } from './_auth.mjs';
-import { requireOperator } from './_tenant.mjs';
+import { requireOperator, readRequestedTenantId, isHomeTenant } from './_tenant.mjs';
 
 const __handler = async (req, context) => {
   const corsHeaders = {
@@ -60,8 +60,14 @@ const __handler = async (req, context) => {
     }
 
     switch (action) {
-      case 'list':
-        return await handleList(corsHeaders, { full: privileged });
+      case 'list': {
+        // The shared agents' live task text belongs to the operator's own
+        // account; a workspace scoped to another tenant gets the sanitized
+        // roster only.
+        const scope = readRequestedTenantId(req);
+        const scopedAway = !!scope.invalid || (!!scope.id && !isHomeTenant(scope.id));
+        return await handleList(corsHeaders, { full: privileged && !scopedAway });
+      }
 
       case 'delegate':
         return await handleDelegate(body, corsHeaders);

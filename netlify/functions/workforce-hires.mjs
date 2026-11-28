@@ -17,7 +17,7 @@
 
 import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
-import { tenantFromRequest } from './_tenant.mjs';
+import { scopedTenantFromRequest } from './_tenant.mjs';
 import { withCors, internalHeaders, siteUrl } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
 
@@ -39,7 +39,11 @@ function daysLeft(ends) {
 const __handler = async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
-  const ctx = await tenantFromRequest(req);
+  // ?tenant_id= scopes to that tenant (operator or member of it, else 403);
+  // absent → the caller's membership (legacy).
+  const scoped = await scopedTenantFromRequest(req, json);
+  if (scoped.response) return scoped.response;
+  const ctx = scoped.ctx;
   if (!ctx?.tenant?.id) return json({ error: 'unauthorized' }, 401);
   const tenantId = ctx.tenant.id;
 

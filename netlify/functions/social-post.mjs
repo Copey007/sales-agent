@@ -10,7 +10,7 @@
  * profile's posting schedule (or the explicit scheduled_at).
  */
 
-import { userFromToken } from './_tenant.mjs';
+import { userFromToken, readRequestedTenantId, isHomeTenant } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { operatorGuard } from './_tenant.mjs';
 
@@ -28,6 +28,11 @@ const __handler = async (req) => {
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   const user = await userFromToken(token);
   if (!user?.id) return json({ error: 'unauthorized' }, 401);
+  // Buffer is connected for the operator's own account only. A workspace
+  // scoped to any other tenant never sees (or posts to) those channels.
+  const scope = readRequestedTenantId(req);
+  if (scope.invalid) return json({ error: 'bad_request', reason: 'invalid_tenant_id' }, 400);
+  if (scope.id && !isHomeTenant(scope.id)) return json({ error: 'forbidden', reason: 'social_not_connected_for_tenant' }, 403);
 
   const TOKEN = bufferToken();
   if (!TOKEN) return json({ error: 'Buffer not connected.' }, 503);
