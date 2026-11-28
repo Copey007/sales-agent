@@ -59,13 +59,25 @@ const __handler = async (req, context) => {
       }
     }
 
+    // The shared workforce (live task text, pending tasks, global agent
+    // memory) belongs to the operator's own account. A Mission Control
+    // workspace scoped to another tenant (?tenant_id=) gets the sanitized
+    // roster, an empty task list, and no access to shared memory or runs.
+    const scope = readRequestedTenantId(req);
+    const scopedAway = !isInternalCall(req) && (!!scope.invalid || (!!scope.id && !isHomeTenant(scope.id)));
+    if (scopedAway && action === 'tasks') {
+      return new Response(JSON.stringify({ tasks: [], count: 0, scoped_tenant_id: scope.id || null }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    if (scopedAway && ['delegate', 'execute', 'memory'].includes(action)) {
+      return new Response(JSON.stringify({ error: 'forbidden', reason: 'shared_workforce_home_account_only' }), {
+        status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
     switch (action) {
       case 'list': {
-        // The shared agents' live task text belongs to the operator's own
-        // account; a workspace scoped to another tenant gets the sanitized
-        // roster only.
-        const scope = readRequestedTenantId(req);
-        const scopedAway = !!scope.invalid || (!!scope.id && !isHomeTenant(scope.id));
         return await handleList(corsHeaders, { full: privileged && !scopedAway });
       }
 

@@ -311,3 +311,18 @@ test('admin-subaccounts: the operator home account is flagged and listed first (
   const deny = await admin(req('https://aisdr.example.test/api/admin-subaccounts', { headers: bearer('alice') }), {});
   assert.equal(deny.status, 403);
 });
+
+test('workforce: shared tasks / memory / runs stay with the home account; a client-scoped workspace gets none', async () => {
+  setup();
+  const post = (tid, body) => workforce(req(U('/api/workforce', tid), { method: 'POST', headers: { ...bearer('op'), 'Content-Type': 'application/json' }, body }), {});
+  const t = await post(A, { action: 'tasks' });
+  assert.equal(t.status, 200);
+  assert.deepEqual((await t.json()).tasks, []);
+  for (const action of ['delegate', 'execute', 'memory']) {
+    const r = await post(A, { action, objective: 'x', operation: 'recall' });
+    assert.equal(r.status, 403, action);
+  }
+  const home = await post(HOME, { action: 'tasks' });
+  assert.equal(home.status, 200);
+  assert.ok(Array.isArray((await home.json()).tasks));
+});
