@@ -9,7 +9,7 @@
  * "queue_manager_active" flags are both enabled.
  */
 
-import { stealthWriteBlocked } from './_tenant.mjs';
+import { stealthWriteBlocked, withoutStealthTenants } from './_tenant.mjs';
 import {
   getFeatureFlag, listAllActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
@@ -65,7 +65,7 @@ const HARD_DAILY_CAP = () => Math.max(1, Number(authEnv('MAX_DAILY_SEND_LIMIT', 
 
 const NEW_OUTREACH_COOLDOWN_MS = 5 * 24 * 60 * 60 * 1000;
 
-async function processQueue() {
+export async function processQueue() {
   const now = new Date();
   const results = {
     campaigns_checked: 0,
@@ -81,7 +81,7 @@ async function processQueue() {
 
   // Get all active campaigns across every tenant — this cron has no JWT, so
   // each campaign's own tenant_id is the source of truth for scoping.
-  const campaigns = await listAllActiveCampaigns();
+  const campaigns = withoutStealthTenants(await listAllActiveCampaigns());
   results.campaigns_checked = campaigns.length;
 
   // ONE ledger scan per run. Blobs listRecords costs one GET per record, so

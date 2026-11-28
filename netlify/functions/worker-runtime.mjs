@@ -21,6 +21,7 @@ import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
 import { callLLM } from './_llm.mjs';
 import { userFromToken, scopedTenantFromRequest } from './_tenant.mjs';
+import { stealthWriteBlocked, withoutStealthTenants } from './_tenant.mjs';
 import { findProspectByEmail, isEmailSuppressed, DEFAULTS, listCampaigns, listRecords, putProspect, putCampaignProspect, putEmailSend, logActivity } from './_campaign-store.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
@@ -332,6 +333,7 @@ async function managerStep(hire) {
 }
 
 async function runCycle(hire) {
+  if (stealthWriteBlocked(hire?.tenant_id)) return { skipped: true, reason: 'stealth_readonly' };
   let step;
   if (hire.worker_id === 'researcher') step = await researcherStep(hire);
   else if (hire.worker_id === 'sdr') step = await sdrStep(hire);
@@ -381,13 +383,14 @@ export async function runDueWorkers({ rolesOnly = null } = {}) {
   const roleFilter = Array.isArray(rolesOnly) && rolesOnly.length
     ? `&worker_id=in.(${rolesOnly.join(',')})` : '';
   const r = await rest(`workforce_hires?status=eq.active${roleFilter}&or=(last_active_at.is.null,last_active_at.lt.${cutoff})&select=*&order=last_active_at.asc.nullsfirst&limit=8`);
-  const due = r.ok ? await r.json() : [];
+  const raw = r.ok ? await r.json() : [];
+  const due = withoutStealthTenants(Array.isArray(raw) ? raw : []);
   let ran = 0;
   for (const hire of due) {
     if (isTest(hire)) continue;
     try { await runCycle(hire); ran++; } catch (e) { console.warn('[worker-runtime]', hire.id, e.message); }
   }
-  return { ran, considered: due.length };
+  return { ran, considered: due.length, stealth_skipped: (Array.isArray(raw) ? raw : []).length - due.length };
 }
 
 export const config = { path: '/api/worker-runtime' };

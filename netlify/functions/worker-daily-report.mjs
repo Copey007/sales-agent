@@ -16,6 +16,7 @@ import { env } from './_mcp-connectors.mjs';
 import { serviceCreds } from './_supabase-rest.mjs';
 import { callLLM } from './_llm.mjs';
 import { scopedTenantFromRequest } from './_tenant.mjs';
+import { stealthWriteBlocked, withoutStealthTenants } from './_tenant.mjs';
 import { withCors } from './_auth.mjs';
 import { tenantGuard } from './_tenant.mjs';
 
@@ -56,6 +57,7 @@ Today's raw activity:\n${lines || '(quiet day — little logged)'}`;
 }
 
 async function sendReport(hire, toEmail) {
+  if (stealthWriteBlocked(hire?.tenant_id)) return { sent: false, reason: 'stealth_readonly', blocked: true };
   if (!toEmail) return { sent: false, reason: 'no recipient' };
   const RESEND = env('RESEND_API_KEY');
   if (!RESEND) return { sent: false, reason: 'no RESEND_API_KEY' };
@@ -83,7 +85,8 @@ async function ownerEmail(tenantId) {
 
 export async function runDailyReports() {
   const r = await rest(`workforce_hires?status=eq.active&select=*&limit=50`);
-  const hires = r.ok ? await r.json() : [];
+  const raw = r.ok ? await r.json() : [];
+  const hires = withoutStealthTenants(Array.isArray(raw) ? raw : []);
   let sent = 0;
   for (const h of hires) {
     if (/test|stripeok|trial\d|vfy|sample/i.test(`${h.company || ''} ${h.name || ''}`)) continue;

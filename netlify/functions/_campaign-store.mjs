@@ -22,6 +22,8 @@
  *   feature_flags    — feature flag state
  */
 
+import { isStealthTenant } from './_tenant.mjs';
+
 // @netlify/blobs is loaded dynamically at runtime (not bundled by esbuild)
 let _getStore = null;
 async function ensureBlobs() {
@@ -98,7 +100,9 @@ export async function listActiveCampaigns(tenantId) {
 // tenant from each campaign record instead of assuming a global default.
 export async function listAllActiveCampaigns() {
   const all = await listRecords("campaigns");
-  return all.filter(c => c.status === "active");
+  // Stealth tenants are excluded at the source so scheduled cycles never
+  // see them (queue-manager, researcher top-up, etc.).
+  return all.filter(c => c.status === "active" && !isStealthTenant(c.tenant_id));
 }
 
 // PERSONAS

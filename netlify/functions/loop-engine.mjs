@@ -13,6 +13,8 @@
  */
 
 import { callLLM as llmChat, cleanLLMJson, isLlmConfigIncompleteError } from './_llm.mjs';
+import { getCampaign } from './_campaign-store.mjs';
+import { stealthWriteBlocked } from './_tenant.mjs';
 
 // ─── LLM Configuration ──────────────────────────────────────────────────────────
 // Chat goes through shared getLLMConfig / callLLM (LLM_API_KEY, LLM_API_BASE).
@@ -303,6 +305,10 @@ Write a GAP Prospecting email. Return valid JSON only.`;
 // ─── Single Iteration (fits within Netlify timeout) ──────────────────────────────
 
 async function runSingleIteration(campaignId) {
+  const campaign = campaignId ? await getCampaign(campaignId) : null;
+  if (stealthWriteBlocked(campaign?.tenant_id)) {
+    return { skipped: true, reason: 'stealth_readonly', campaign_id: campaignId };
+  }
   let experiments = await loadExperiments(campaignId);
   let baseline = await loadBaseline(campaignId);
   
@@ -448,6 +454,15 @@ export default async (req, context) => {
     } else {
       const url = new URL(req.url);
       campaignId = url.searchParams.get('campaign_id') || null;
+    }
+
+    if (action === 'run' || action === 'reset') {
+      const camp = campaignId ? await getCampaign(campaignId) : null;
+      if (stealthWriteBlocked(camp?.tenant_id)) {
+        return new Response(JSON.stringify({ skipped: true, reason: 'stealth_readonly', campaign_id: campaignId }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     if (action === 'run') {
