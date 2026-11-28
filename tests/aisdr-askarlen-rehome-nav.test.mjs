@@ -81,3 +81,14 @@ test('new tenant agent URLs and plan CTA use AskArlen hosts', () => {
   assert.match(r('netlify/functions/provision-agent.mjs'), /agent_url: `https:\/\/aisdr\.askarlen\.com\/a\/\$\{b\.slug\}`/);
   assert.match(r('netlify/functions/_plans.mjs'), /ctaHref: 'https:\/\/askarlen\.com\/demo'/);
 });
+
+test('gtm-brain assessment_url and Marcus health-check targets use AskArlen hosts', () => {
+  assert.match(r('netlify/functions/gtm-brain.mjs'), /assessment_url: 'https:\/\/app\.askarlen\.com\/start'/);
+  assert.doesNotMatch(r('netlify/functions/gtm-brain.mjs'), /a-gent\.co\/assessment/);
+  const mon = r('netlify/functions/worker-runtime.mjs');
+  assert.match(mon, /\['Marketing site', 'https:\/\/askarlen\.com\/'\]/);
+  assert.match(mon, /\['AI SDR', 'https:\/\/aisdr\.askarlen\.com\/'\]/);
+  assert.match(mon, /\['CRM', 'https:\/\/crm\.askarlen\.com\/'\]/);
+  assert.match(mon, /\['Live demo', 'https:\/\/aisdr\.askarlen\.com\/a\/demo'\]/);
+  assert.doesNotMatch(mon, /WATCHED_PROPERTIES[\s\S]{0,400}https:\/\/[\w.-]*a-gent\.co/);
+});
