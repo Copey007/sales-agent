@@ -9,6 +9,7 @@
  * "queue_manager_active" flags are both enabled.
  */
 
+import { stealthWriteBlocked } from './_tenant.mjs';
 import {
   getFeatureFlag, listAllActiveCampaigns, getCampaign,
   listQueuedSends, countSentToday, isEmailSuppressed,
@@ -151,7 +152,10 @@ async function processQueue() {
       const dueAll = queuedSends.filter(s => new Date(s.scheduled_at) <= now);
       const pendingDrafts = allSends.filter(s => s.campaign_id === campaign.id && s.status === "pending_approval").length;
       const draftRoom = Math.max(0, Math.min(DRAFTS_PER_RUN(), MAX_PENDING_DRAFTS() - pendingDrafts));
-      const approvedDue = dueAll.filter(s => s.approved_at).slice(0, Math.max(0, remainingBudget));
+      // Stealth lock: never deliver approved outreach for this tenant.
+      const approvedDue = stealthWriteBlocked(campaignTenantId)
+        ? []
+        : dueAll.filter(s => s.approved_at).slice(0, Math.max(0, remainingBudget));
       const draftDue = dueAll.filter(s => !s.approved_at).slice(0, draftRoom);
       if (remainingBudget <= 0 && approvedDue.length === 0) results.sends_over_limit++;
       const dueSends = [...approvedDue, ...draftDue];

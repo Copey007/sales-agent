@@ -27,7 +27,7 @@ import {
   listActivityLog, countSentToday, listQueuedSends,
   listRecords, getProspect, listAllReplies, getEmailSend, putEmailSend
 } from "./_campaign-store.mjs";
-import { resolveTenantContext } from "./_tenant.mjs";
+import { resolveTenantContext, tenantGuard, denyStealthMutation } from "./_tenant.mjs";
 import { withCors, internalHeaders, siteUrl } from "./_auth.mjs";
 
 async function handler(req, context) {
@@ -56,6 +56,8 @@ async function handler(req, context) {
     });
   }
   const tenantId = authCtx.tenantId || DEFAULTS.TENANT_ID;
+  const stealthDenied = await denyStealthMutation(req, authCtx);
+  if (stealthDenied) return stealthDenied;
   const ownsCampaign = (campaign) =>
     campaign && (campaign.tenant_id || DEFAULTS.TENANT_ID) === tenantId;
   const isPrivileged = !!(authCtx.internal || authCtx.operator);
@@ -515,4 +517,4 @@ export const config = {
   path: "/api/campaign-admin"
 }
 
-export default withCors(handler);
+export default withCors(handler, { guard: tenantGuard({ allowInternal: true }) });

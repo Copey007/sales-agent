@@ -16,7 +16,7 @@ import { initAgents, getAgent, listAgents, getAgentStatuses } from './_agent-reg
 import { initConnectors, listConnectors, invoke } from './_mcp-connectors.mjs';
 import { remember, recall, getAccountMemories, getPendingTasks } from './_supabase-memory.mjs';
 import { withCors, isInternalCall } from './_auth.mjs';
-import { requireOperator, readRequestedTenantId, isHomeTenant } from './_tenant.mjs';
+import { requireOperator, readRequestedTenantId, isHomeTenant, denyStealthMutation } from './_tenant.mjs';
 
 const __handler = async (req, context) => {
   const corsHeaders = {
@@ -40,6 +40,9 @@ const __handler = async (req, context) => {
       try { body = await req.json(); } catch { body = {}; }
       action = body.action || 'list';
     }
+
+    const stealthDenied = await denyStealthMutation(req, { tenantId: readRequestedTenantId(req).id }, undefined, action);
+    if (stealthDenied) return stealthDenied;
 
     // SECURITY: only the read-only roster is public (workers.html, MC hire
     // modal), and it is sanitized for anonymous callers. Every action that
