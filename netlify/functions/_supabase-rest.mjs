@@ -114,8 +114,14 @@ export async function poolTenantFilter(tenantId) {
   return tenantId === POOL_MASTER_TENANT_ID ? '' : POOL_NO_ROWS;
 }
 
-/** True when this tenant may write to the pool right now (see poolTenantFilter). */
+/**
+ * Writes (and Hunter spend) stay home/master-only even after contact_pool
+ * has a tenant_id column. Other accounts can read their own (empty) slice
+ * via poolTenantFilter, but cannot add contacts or spend Hunter credits.
+ */
 export async function poolWritableFor(tenantId) {
-  if (await poolTenantReady()) return true;
-  return (tenantId || POOL_MASTER_TENANT_ID) === POOL_MASTER_TENANT_ID;
+  const id = tenantId || POOL_MASTER_TENANT_ID;
+  if (id === POOL_MASTER_TENANT_ID) return true;
+  const { isHomeTenant } = await import('./_tenant.mjs');
+  return isHomeTenant(id);
 }
